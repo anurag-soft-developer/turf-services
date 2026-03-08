@@ -7,17 +7,31 @@ import {
 } from '@nestjs/common';
 import { UsersService } from '../users/users.service';
 import { JwtAuthService } from './jwt-auth.service';
-import { RegisterDto, LoginDto, ChangePasswordDto } from './dto/auth.dto';
+import {
+  RegisterDto,
+  LoginDto,
+  ChangePasswordDto,
+  SendVerificationEmailDto,
+  VerifyEmailDto,
+  ForgotPasswordDto,
+  ResetPasswordDto,
+} from './dto/auth.dto';
 import type { IUser, Profile } from '../users/interfaces/user.interface';
-import { OAuthProvider, UserDocument } from 'users/schemas/user.schema';
+import {
+  OAuthProvider,
+  OtpKeys,
+  UserDocument,
+} from 'users/schemas/user.schema';
 import { IAuthResponse } from './interfaces/auth.interface';
 import { GoogleProfile } from './strategies/google.strategy';
+import { EmailService } from '../common/services/email.service';
 
 @Injectable()
 export class AuthService {
   constructor(
     private usersService: UsersService,
     private jwtAuthService: JwtAuthService,
+    private emailService: EmailService,
   ) {}
 
   async register(registerDto: RegisterDto): Promise<IAuthResponse> {
@@ -178,6 +192,190 @@ export class AuthService {
     );
   }
 
+  async sendVerificationEmail(
+    sendVerificationEmailDto: SendVerificationEmailDto,
+  ): Promise<{ message: string }> {
+    const user = await this.usersService.findByEmail(
+      sendVerificationEmailDto.email,
+    );
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (user.isEmailVerified) {
+      throw new BadRequestException('Email is already verified');
+    }
+
+    const { otpWithKey, otpDisplay } = this.generateOTP(OtpKeys.VERIFY_EMAIL);
+    const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    await this.usersService.updateOTP(
+      user._id.toString(),
+      otpWithKey,
+      otpExpiry,
+    );
+
+    await this.emailService.sendVerificationEmail({
+      to: user.email,
+      userFullName: user.fullName || 'User',
+      otpCode: otpDisplay,
+    });
+
+    return { message: 'Verification email sent successfully' };
+  }
+
+  async verifyEmail(
+    verifyEmailDto: VerifyEmailDto,
+  ): Promise<{ message: string }> {
+    const user = await this.usersService.findByEmailWithOTP(
+      verifyEmailDto.email,
+    );
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (user.isEmailVerified) {
+      throw new BadRequestException('Email is already verified');
+    }
+
+    if (!user.otp || !user.otpExpiry) {
+      throw new BadRequestException(
+        'No verification code found. Please request a new one',
+      );
+    }
+
+    if (new Date() > user.otpExpiry) {
+      throw new BadRequestException(
+        'Verification code has expired. Please request a new one',
+      );
+    }
+
+    const { otp: storedOtp, key: storedKey } = this.splitOTPAndKey(user.otp);
+
+    if (storedOtp !== verifyEmailDto.otp) {
+      throw new BadRequestException('Invalid verification code');
+    }
+
+    if (storedKey !== OtpKeys.VERIFY_EMAIL) {
+      throw new BadRequestException('Invalid verification context');
+    }
+
+    await this.usersService.updateById(user._id.toString(), {
+      isEmailVerified: true,
+      otp: undefined,
+      otpExpiry: undefined,
+    });
+
+    return { message: 'Email verified successfully' };
+  }
+
+  async forgotPassword(
+    forgotPasswordDto: ForgotPasswordDto,
+  ): Promise<{ message: string }> {
+    const user = await this.usersService.findByEmail(forgotPasswordDto.email);
+
+    if (!user) {
+      // Don't reveal if user exists for security reasons
+      return {
+        message:
+          'If an account with that email exists, we have sent a password reset code',
+      };
+    }
+
+    const { otpWithKey, otpDisplay } = this.generateOTP(
+      OtpKeys.FORGOT_PASSWORD,
+    );
+    const otpExpiry = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    await this.usersService.updateOTP(
+      user._id.toString(),
+      otpWithKey,
+      otpExpiry,
+    );
+
+    await this.emailService.sendPasswordResetEmail({
+      to: user.email,
+      userFullName: user.fullName || 'User',
+      otpCode: otpDisplay,
+    });
+
+    return {
+      message:
+        'If an account with that email exists, we have sent a password reset code',
+    };
+  }
+
+  async resetPassword(
+    resetPasswordDto: ResetPasswordDto,
+  ): Promise<{ message: string }> {
+    const user = await this.usersService.findByEmailWithOTP(
+      resetPasswordDto.email,
+    );
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (!user.otp || !user.otpExpiry) {
+      throw new BadRequestException(
+        'No reset code found. Please request a new one',
+      );
+    }
+
+    if (new Date() > user.otpExpiry) {
+      throw new BadRequestException(
+        'Reset code has expired. Please request a new one',
+      );
+    }
+
+    const { otp: storedOtp, key: storedKey } = this.splitOTPAndKey(user.otp);
+
+    if (storedOtp !== resetPasswordDto.otp) {
+      throw new BadRequestException('Invalid reset code');
+    }
+
+    if (storedKey !== OtpKeys.FORGOT_PASSWORD) {
+      throw new BadRequestException('Invalid reset context');
+    }
+
+    await this.usersService.changePassword(
+      user._id.toString(),
+      resetPasswordDto.password,
+    );
+    await this.usersService.clearOTP(user._id.toString());
+
+    return { message: 'Password reset successfully' };
+  }
+
+  private generateOTP(key: OtpKeys): {
+    otpWithKey: string;
+    otpDisplay: string;
+  } {
+    const otp = Math.floor(100000 + Math.random() * 900000).toString(); // 6-digit OTP
+    const otpWithKey = `${key}:${otp}`;
+
+    return {
+      otpWithKey,
+      otpDisplay: otp,
+    };
+  }
+
+  private splitOTPAndKey(otpWithKey: string): { key: OtpKeys; otp: string } {
+    const parts = otpWithKey.split(':');
+    if (
+      parts.length !== 2 ||
+      !Object.values(OtpKeys).includes(parts[0] as OtpKeys)
+    ) {
+      throw new BadRequestException('Invalid OTP format');
+    }
+
+    return {
+      key: parts[0] as OtpKeys,
+      otp: parts[1],
+    };
+  }
 
   sanitizeProfile(user: IUser | UserDocument): Profile {
     return {

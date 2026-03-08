@@ -219,4 +219,26 @@ export class UsersService {
   async activateUser(id: string): Promise<UserDocument> {
     return await this.updateById(id, { isActive: true });
   }
+
+  async findByEmailWithOTP(email: string): Promise<UserDocument | null> {
+    return await this.userModel
+      .findOne({ email: email.toLowerCase() })
+      .select('+otp +otpExpiry')
+      .exec();
+  }
+
+  async updateOTP(id: string, otpWithKey: string, otpExpiry: Date): Promise<void> {
+    await this.updateById(id, {
+      otp: otpWithKey,
+      otpExpiry: otpExpiry,
+    });
+  }
+
+
+  async clearOTP(id: string): Promise<void> {
+    await this.updateById(id, {
+      otp: undefined,
+      otpExpiry: undefined,
+    });
+  }
 }

@@ -21,6 +21,11 @@ export enum OAuthProvider {
   LINKEDIN = 'linkedin',
 }
 
+export enum OtpKeys{
+  VERIFY_EMAIL = 'verify_email',
+  FORGOT_PASSWORD = 'forgot_password',
+}
+
 @Schema({
   timestamps: true,
   toJSON: {
@@ -110,6 +115,12 @@ export class User extends Document implements UserDocument {
     select: false,
   })
   otp?: string;
+
+  @Prop({
+    type: Date,
+    select: false,
+  })
+  otpExpiry?: Date;
 
   @Prop({
     type: String,

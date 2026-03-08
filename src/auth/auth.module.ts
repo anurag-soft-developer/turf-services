@@ -8,6 +8,7 @@ import { JwtAuthService } from './jwt-auth.service';
 
 import { UsersModule } from '../users/users.module';
 import { config } from '../config/env.config';
+import { EmailService } from '../common/services/email.service';
 
 import { LocalStrategy } from './strategies/local.strategy';
 import { JwtStrategy } from './strategies/jwt.strategy';
@@ -28,6 +29,7 @@ import { GoogleStrategy } from './strategies/google.strategy';
   providers: [
     AuthService,
     JwtAuthService,
+    EmailService,
     LocalStrategy,
     JwtStrategy,
     GoogleStrategy,

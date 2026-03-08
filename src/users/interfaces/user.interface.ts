@@ -26,4 +26,5 @@ export interface IUser extends Profile {
   password?: string;
   oAuthStrategies?: IOAuthStrategy[];
   otp?: string;
+  otpExpiry?: Date;
 }

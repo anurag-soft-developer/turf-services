@@ -18,6 +18,10 @@ import {
   LoginDto,
   ChangePasswordDto,
   UpdateProfileDto,
+  SendVerificationEmailDto,
+  VerifyEmailDto,
+  ForgotPasswordDto,
+  ResetPasswordDto,
 } from './dto/auth.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { GoogleAuthGuard } from './guards/google-auth.guard';
@@ -100,6 +104,42 @@ export class AuthController {
   ): Promise<{ message: string }> {
     await this.authService.changePassword(user._id, changePasswordDto);
     return { message: 'Password changed successfully' };
+  }
+
+  @Public()
+  @Post('send-verification-email')
+  @HttpCode(HttpStatus.OK)
+  async sendVerificationEmail(
+    @Body() sendVerificationEmailDto: SendVerificationEmailDto,
+  ): Promise<{ message: string }> {
+    return this.authService.sendVerificationEmail(sendVerificationEmailDto);
+  }
+
+  @Public()
+  @Post('verify-email')
+  @HttpCode(HttpStatus.OK)
+  async verifyEmail(
+    @Body() verifyEmailDto: VerifyEmailDto,
+  ): Promise<{ message: string }> {
+    return this.authService.verifyEmail(verifyEmailDto);
+  }
+
+  @Public()
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  async forgotPassword(
+    @Body() forgotPasswordDto: ForgotPasswordDto,
+  ): Promise<{ message: string }> {
+    return this.authService.forgotPassword(forgotPasswordDto);
+  }
+
+  @Public()
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  async resetPassword(
+    @Body() resetPasswordDto: ResetPasswordDto,
+  ): Promise<{ message: string }> {
+    return this.authService.resetPassword(resetPasswordDto);
   }
 
   @UseGuards(JwtAuthGuard)

@@ -63,8 +63,14 @@ export class ForgotPasswordDto {
 }
 
 export class ResetPasswordDto {
-  @IsString({ message: 'Token is required' })
-  token!: string;
+  @IsEmail({}, { message: 'Please provide a valid email address' })
+  email!: string;
+
+  @IsString({ message: 'OTP is required' })
+  @MinLength(6, { message: 'OTP must be 6 digits' })
+  @MaxLength(6, { message: 'OTP must be 6 digits' })
+  @Matches(/^\d{6}$/, { message: 'OTP must be 6 digits' })
+  otp!: string;
 
   @IsString({ message: 'Password must be a string' })
   @MinLength(8, { message: 'Password must be at least 8 characters long' })
@@ -95,4 +101,20 @@ export class UpdateProfileDto {
   @IsOptional()
   @IsString({ message: 'Avatar must be a string' })
   avatar?: string;
+}
+
+export class SendVerificationEmailDto {
+  @IsEmail({}, { message: 'Please provide a valid email address' })
+  email!: string;
+}
+
+export class VerifyEmailDto {
+  @IsEmail({}, { message: 'Please provide a valid email address' })
+  email!: string;
+
+  @IsString({ message: 'OTP is required' })
+  @MinLength(6, { message: 'OTP must be 6 digits' })
+  @MaxLength(6, { message: 'OTP must be 6 digits' })
+  @Matches(/^\d{6}$/, { message: 'OTP must be 6 digits' })
+  otp!: string;
 }
