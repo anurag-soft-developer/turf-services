@@ -32,7 +32,7 @@ export function validateConfig() {
       PORT: process.env.PORT || 3000,
       NODE_ENV: process.env.NODE_ENV || 'development',
       FRONTEND_URL: process.env.FRONTEND_URL || 'http://localhost:3000',
-      APP_NAME: process.env.APP_NAME || 'Truf Services',
+      APP_NAME: process.env.APP_NAME || 'Turf Services',
       APP_VERSION: process.env.APP_VERSION || '1.0.0',
 
       // Email Configuration
@@ -40,7 +40,7 @@ export function validateConfig() {
       SMTP_PORT: parseInt(process.env.SMTP_PORT || '587'),
       SMTP_USER: process.env.SMTP_USER || '',
       SMTP_PASS: process.env.SMTP_PASS || '',
-      SMTP_FROM: process.env.SMTP_FROM || 'noreply@trufservices.com',
+      SMTP_FROM: process.env.SMTP_FROM || 'noreply@turfservices.com',
     };
 
     const missingKeys = Object.entries(config)

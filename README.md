@@ -1,4 +1,4 @@
-# Truf Services
+# Turf Services
 
 A NestJS-based authentication service with email verification and password reset functionality using OTP (One-Time Password) system.
 
@@ -35,7 +35,7 @@ A NestJS-based authentication service with email verification and password reset
 1. Clone the repository
 ```bash
 git clone <repository-url>
-cd truf-services
+cd turf-services
 ```
 
 2. Install dependencies
@@ -52,7 +52,7 @@ Edit the `.env` file with your configuration:
 
 ```env
 # Database
-MONGODB_URI=mongodb://localhost:27017/truf-services
+MONGODB_URI=mongodb://localhost:27017/turf-services
 
 # JWT Configuration
 JWT_SECRET=your-jwt-secret-key
@@ -65,7 +65,7 @@ SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=your-email@gmail.com
 SMTP_PASS=your-app-password
-SMTP_FROM=noreply@trufservices.com
+SMTP_FROM=noreply@turfservices.com
 
 # Google OAuth
 GOOGLE_CLIENT_ID=your-google-client-id
@@ -74,7 +74,7 @@ GOOGLE_CLIENT_SECRET=your-google-client-secret
 # Application
 PORT=3000
 FRONTEND_URL=http://localhost:3000
-APP_NAME=Truf Services
+APP_NAME=Turf Services
 ```
 
 ## Running the Application
@@ -297,4 +297,4 @@ This project is licensed under the MIT License.
 
 ## Support
 
-For support, email support@trufservices.com or create an issue in the repository.
+For support, email support@turfservices.com or create an issue in the repository.
