@@ -1,11 +1,21 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
+import morgan from 'morgan';
 import { AppModule } from './app.module';
 import { config } from './config/env.config';
+import helmet from 'helmet';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const logger = new Logger('Bootstrap');
+
+  app.use(helmet());
+
+  app.use(
+    morgan(
+      '📨 :method :url :status :res[content-length] - :response-time ms - :remote-addr',
+    ),
+  );
 
   // Global validation pipe
   app.useGlobalPipes(
@@ -31,13 +41,8 @@ async function bootstrap() {
     allowedHeaders: ['Content-Type', 'Authorization'],
   });
 
-  // Set global prefix
-  app.setGlobalPrefix('api/v1');
-
   await app.listen(config.PORT);
   logger.log(`🚀 Application is running on: http://localhost:${config.PORT}`);
-  logger.log(`📖 API Documentation: http://localhost:${config.PORT}/api`);
   logger.log(`🌍 Environment: ${config.NODE_ENV}`);
-  logger.log(`📱 App: ${config.APP_NAME} v${config.APP_VERSION}`);
 }
 bootstrap();

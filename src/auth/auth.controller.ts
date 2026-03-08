@@ -9,6 +9,7 @@ import {
   Patch,
   HttpCode,
   HttpStatus,
+  UnauthorizedException,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { AuthService } from './auth.service';
@@ -39,15 +40,31 @@ export class AuthController {
 
   @Public()
   @Post('register')
-  async register(@Body() registerDto: RegisterDto): Promise<IAuthResponse> {
-    return this.authService.register(registerDto);
+  async register(
+    @Body() registerDto: RegisterDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<IAuthResponse> {
+    const authResult = await this.authService.register(registerDto);
+    
+    // Set HTTP-only cookies
+    this.authService.setCookies(res, authResult.accessToken, authResult.refreshToken);
+    
+    return authResult;
   }
 
   @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  async login(@Body() loginDto: LoginDto): Promise<IAuthResponse> {
-    return this.authService.login(loginDto);
+  async login(
+    @Body() loginDto: LoginDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<IAuthResponse> {
+    const authResult = await this.authService.login(loginDto);
+    
+    // Set HTTP-only cookies
+    this.authService.setCookies(res, authResult.accessToken, authResult.refreshToken);
+    
+    return authResult;
   }
 
   @Public()
@@ -63,6 +80,9 @@ export class AuthController {
   async googleAuthCallback(@Req() req: Request, @Res() res: Response) {
     const authResult = req.user as IAuthResponse;
 
+    // Set HTTP-only cookies
+    this.authService.setCookies(res, authResult.accessToken, authResult.refreshToken);
+
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
     const redirectUrl = `${frontendUrl}/auth/callback?token=${authResult.accessToken}&refresh=${authResult.refreshToken}`;
 
@@ -73,15 +93,38 @@ export class AuthController {
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   async refreshToken(
-    @Body('refreshToken') refreshToken: string,
+    @Body('refreshToken') bodyRefreshToken: string,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
   ): Promise<IAuthResponse> {
-    return this.authService.refreshToken(refreshToken);
+    // Try to get refresh token from cookie first, then from body
+    const refreshToken = req.cookies?.refreshToken || bodyRefreshToken;
+    
+    if (!refreshToken) {
+      throw new UnauthorizedException('Refresh token not provided');
+    }
+    
+    const authResult = await this.authService.refreshToken(refreshToken);
+    
+    // Set new HTTP-only cookies
+    this.authService.setCookies(res, authResult.accessToken, authResult.refreshToken);
+    
+    return authResult;
   }
 
   @UseGuards(JwtAuthGuard)
   @Get('profile')
   async getProfile(@CurrentUser() user: IUser) {
     return this.authService.sanitizeProfile(user);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('status')
+  async getAuthStatus(@CurrentUser() user: IUser) {
+    return {
+      isAuthenticated: true,
+      user: this.authService.sanitizeProfile(user),
+    };
   }
 
   @UseGuards(JwtAuthGuard)
@@ -145,9 +188,10 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @Post('logout')
   @HttpCode(HttpStatus.OK)
-  async logout(): Promise<{ message: string }> {
-    // In a stateless JWT setup, logout is handled on the frontend
-    // by removing the token from storage.
+  async logout(@Res({ passthrough: true }) res: Response): Promise<{ message: string }> {
+    // Clear HTTP-only cookies
+    this.authService.clearCookies(res);
+    
     return { message: 'Logged out successfully' };
   }
 }

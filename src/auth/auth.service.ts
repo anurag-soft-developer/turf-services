@@ -25,6 +25,7 @@ import {
 import { IAuthResponse } from './interfaces/auth.interface';
 import { GoogleProfile } from './strategies/google.strategy';
 import { EmailService } from '../common/services/email.service';
+import type { CookieOptions, Response } from 'express';
 
 @Injectable()
 export class AuthService {
@@ -347,6 +348,38 @@ export class AuthService {
     await this.usersService.clearOTP(user._id.toString());
 
     return { message: 'Password reset successfully' };
+  }
+
+  private getCookieOptions(): CookieOptions {
+    const isProduction = process.env.NODE_ENV === 'production';
+
+    return {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: isProduction ? 'none' : 'lax',
+      path: '/',
+    };
+  }
+
+  setCookies(res: Response, accessToken: string, refreshToken: string): void {
+    const accessTokenOptions = this.getCookieOptions();
+
+    accessTokenOptions.maxAge = 15 * 60 * 1000; // 15 minutes
+
+    const refreshTokenOptions: CookieOptions = {
+      ...accessTokenOptions,
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    };
+
+    res.cookie('accessToken', accessToken, accessTokenOptions);
+    res.cookie('refreshToken', refreshToken, refreshTokenOptions);
+  }
+
+  clearCookies(res: Response): void {
+    const clearOptions = this.getCookieOptions();
+
+    res.clearCookie('accessToken', clearOptions);
+    res.clearCookie('refreshToken', clearOptions);
   }
 
   private generateOTP(key: OtpKeys): {

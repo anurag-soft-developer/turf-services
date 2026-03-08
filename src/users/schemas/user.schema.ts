@@ -153,5 +153,5 @@ export class User extends Document implements UserDocument {
 export const UserSchema = SchemaFactory.createForClass(User);
 
 // Index for better query performance
-UserSchema.index({ email: 1 });
+// UserSchema.index({ email: 1 });
 UserSchema.index({ 'oAuthStrategies.provider': 1, 'oAuthStrategies.id': 1 });
