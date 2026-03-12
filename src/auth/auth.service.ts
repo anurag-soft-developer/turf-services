@@ -367,6 +367,7 @@ export class AuthService {
       secure: isProduction,
       sameSite: isProduction ? 'none' : 'lax',
       path: '/',
+      domain: isProduction ? config.COOKIE_DOMAIN : undefined,
     };
   }
 
