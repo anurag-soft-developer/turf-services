@@ -26,6 +26,7 @@ import { IAuthResponse } from './interfaces/auth.interface';
 import { GoogleProfile } from './strategies/google.strategy';
 import { EmailService } from '../common/services/email.service';
 import type { CookieOptions, Response } from 'express';
+import { config } from 'config/env.config';
 
 @Injectable()
 export class AuthService {
@@ -226,9 +227,7 @@ export class AuthService {
     return { message: 'Verification email sent successfully' };
   }
 
-  async verifyEmail(
-    verifyEmailDto: VerifyEmailDto,
-  ): Promise<{ message: string }> {
+  async verifyEmail(verifyEmailDto: VerifyEmailDto) {
     const user = await this.usersService.findByEmailWithOTP(
       verifyEmailDto.email,
     );
@@ -263,13 +262,23 @@ export class AuthService {
       throw new BadRequestException('Invalid verification context');
     }
 
-    await this.usersService.updateById(user._id.toString(), {
-      isEmailVerified: true,
-      otp: undefined,
-      otpExpiry: undefined,
-    });
+    const updatedUser = await this.usersService.updateById(
+      user._id.toString(),
+      {
+        isEmailVerified: true,
+        otp: undefined,
+        otpExpiry: undefined,
+      },
+    );
 
-    return { message: 'Email verified successfully' };
+    const accessToken = this.jwtAuthService.generateAccessToken(updatedUser);
+    const refreshToken = this.jwtAuthService.generateRefreshToken(updatedUser);
+
+    return {
+      message: 'Email verified successfully',
+      accessToken,
+      refreshToken,
+    };
   }
 
   async forgotPassword(
@@ -351,7 +360,7 @@ export class AuthService {
   }
 
   private getCookieOptions(): CookieOptions {
-    const isProduction = process.env.NODE_ENV === 'production';
+    const isProduction = config.NODE_ENV === 'production';
 
     return {
       httpOnly: true,
@@ -364,7 +373,7 @@ export class AuthService {
   setCookies(res: Response, accessToken: string, refreshToken: string): void {
     const accessTokenOptions = this.getCookieOptions();
 
-    accessTokenOptions.maxAge = 15 * 60 * 1000; // 15 minutes
+    accessTokenOptions.maxAge = 7 * 24 * 60 * 60 * 1000; // 7 days
 
     const refreshTokenOptions: CookieOptions = {
       ...accessTokenOptions,

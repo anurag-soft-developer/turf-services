@@ -5,6 +5,7 @@ import {
   MaxLength,
   Matches,
   IsOptional,
+  ValidateIf,
 } from 'class-validator';
 
 export class RegisterDto {
@@ -26,6 +27,7 @@ export class RegisterDto {
 
   @IsOptional()
   @IsString({ message: 'Phone must be a string' })
+  @ValidateIf((o) => o.phone !== '')
   @Matches(/^\+?[\d\s\-\(\)]{10,15}$/, { message: 'Please provide a valid phone number' })
   phone?: string;
 

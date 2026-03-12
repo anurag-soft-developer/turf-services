@@ -4,12 +4,13 @@ import morgan from 'morgan';
 import { AppModule } from './app.module';
 import { config } from './config/env.config';
 import helmet from 'helmet';
-
+import cookieParser from 'cookie-parser';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const logger = new Logger('Bootstrap');
 
   app.use(helmet());
+  app.use(cookieParser());
 
   app.use(
     morgan(

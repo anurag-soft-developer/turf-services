@@ -24,8 +24,8 @@ export class EmailService {
   constructor() {
     this.transporter = nodemailer.createTransport({
       host: config.SMTP_HOST,
-      port: config.SMTP_PORT,
-      secure: config.SMTP_PORT === 465,
+      port: parseInt(config.SMTP_PORT),
+      secure: config.SMTP_PORT === '465',
       auth: {
         user: config.SMTP_USER,
         pass: config.SMTP_PASS,
@@ -33,14 +33,16 @@ export class EmailService {
     });
   }
 
-  async sendVerificationEmail(options: SendVerificationEmailOptions): Promise<void> {
+  async sendVerificationEmail(
+    options: SendVerificationEmailOptions,
+  ): Promise<void> {
     try {
       const emailHtml = await render(
         VerificationEmail({
           userFullName: options.userFullName,
           otpCode: options.otpCode,
           companyName: config.APP_NAME,
-        })
+        }),
       );
 
       const mailOptions = {
@@ -57,14 +59,16 @@ export class EmailService {
     }
   }
 
-  async sendPasswordResetEmail(options: SendPasswordResetEmailOptions): Promise<void> {
+  async sendPasswordResetEmail(
+    options: SendPasswordResetEmailOptions,
+  ): Promise<void> {
     try {
       const emailHtml = await render(
         PasswordResetEmail({
           userFullName: options.userFullName,
           otpCode: options.otpCode,
           companyName: config.APP_NAME,
-        })
+        }),
       );
 
       const mailOptions = {

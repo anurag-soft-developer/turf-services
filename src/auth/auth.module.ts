@@ -9,7 +9,7 @@ import { JwtAuthService } from './jwt-auth.service';
 import { UsersModule } from '../users/users.module';
 import { config } from '../config/env.config';
 import { EmailService } from '../common/services/email.service';
-
+import type { StringValue } from 'ms';
 import { LocalStrategy } from './strategies/local.strategy';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { GoogleStrategy } from './strategies/google.strategy';
@@ -21,7 +21,7 @@ import { GoogleStrategy } from './strategies/google.strategy';
     JwtModule.register({
       secret: config.JWT_SECRET,
       signOptions: {
-        expiresIn: config.JWT_EXPIRES_IN,
+        expiresIn: config.JWT_EXPIRES_IN as StringValue,
       },
     }),
   ],
