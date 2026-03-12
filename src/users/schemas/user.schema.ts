@@ -1,7 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
 import type { IUser, IOAuthStrategy } from '../interfaces/user.interface';
-import { UserRole } from 'auth/decorators/roles.decorator';
+import { UserRole } from '../../auth/decorators/roles.decorator';
 
 export type UserDocument = Omit<
   IUser,
@@ -21,7 +21,7 @@ export enum OAuthProvider {
   LINKEDIN = 'linkedin',
 }
 
-export enum OtpKeys{
+export enum OtpKeys {
   VERIFY_EMAIL = 'verify_email',
   FORGOT_PASSWORD = 'forgot_password',
 }

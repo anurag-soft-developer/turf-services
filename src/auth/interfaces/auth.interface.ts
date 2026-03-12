@@ -1,4 +1,4 @@
-import { Profile } from 'users/interfaces/user.interface';
+import { Profile } from '../../users/interfaces/user.interface';
 
 export interface IJwtPayload {
   sub: string;

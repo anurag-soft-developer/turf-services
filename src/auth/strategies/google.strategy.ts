@@ -10,9 +10,7 @@ import { config } from '../../config/env.config';
 
 @Injectable()
 export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
-  constructor(
-    private authService: AuthService,
-  ) {
+  constructor(private authService: AuthService) {
     super({
       clientID: config.GOOGLE_CLIENT_ID,
       clientSecret: config.GOOGLE_CLIENT_SECRET,
@@ -35,6 +33,5 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
     }
   }
 }
-
 
 export type { GoogleProfile };

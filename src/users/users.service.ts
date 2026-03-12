@@ -227,13 +227,16 @@ export class UsersService {
       .exec();
   }
 
-  async updateOTP(id: string, otpWithKey: string, otpExpiry: Date): Promise<void> {
+  async updateOTP(
+    id: string,
+    otpWithKey: string,
+    otpExpiry: Date,
+  ): Promise<void> {
     await this.updateById(id, {
       otp: otpWithKey,
       otpExpiry: otpExpiry,
     });
   }
-
 
   async clearOTP(id: string): Promise<void> {
     await this.updateById(id, {

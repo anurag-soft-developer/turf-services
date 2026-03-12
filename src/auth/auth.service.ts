@@ -21,12 +21,12 @@ import {
   OAuthProvider,
   OtpKeys,
   UserDocument,
-} from 'users/schemas/user.schema';
+} from '../users/schemas/user.schema';
 import { IAuthResponse } from './interfaces/auth.interface';
 import { GoogleProfile } from './strategies/google.strategy';
 import { EmailService } from '../common/services/email.service';
 import type { CookieOptions, Response } from 'express';
-import { config } from 'config/env.config';
+import { config } from '../config/env.config';
 
 @Injectable()
 export class AuthService {

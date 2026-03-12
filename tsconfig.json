@@ -14,9 +14,8 @@
     "sourceMap": true,
     "outDir": "./dist",
     "jsx": "react-jsx",
-    "paths": {
-      "*": ["./src/*"]
-    },
+    // Removed baseUrl and paths to prevent bare module imports
+    // This forces developers to use proper relative imports
     // "baseUrl": "./",
     // "ignoreDeprecations": "6.0",
     "incremental": true,
