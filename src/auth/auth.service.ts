@@ -360,14 +360,14 @@ export class AuthService {
   }
 
   private getCookieOptions(): CookieOptions {
-    const isProduction = config.NODE_ENV === 'production';
+    // const isProduction = config.NODE_ENV === 'production';
 
     return {
       httpOnly: true,
-      secure: isProduction,
-      sameSite: isProduction ? 'none' : 'lax',
+      secure: true,
+      sameSite: 'none',
       path: '/',
-      domain: isProduction ? config.COOKIE_DOMAIN : undefined,
+      // domain: isProduction ? config.COOKIE_DOMAIN : undefined,
     };
   }
 
