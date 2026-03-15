@@ -23,6 +23,7 @@ import {
   VerifyEmailDto,
   ForgotPasswordDto,
   ResetPasswordDto,
+  GoogleMobileAuthDto,
 } from './dto/auth.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { GoogleAuthGuard } from './guards/google-auth.guard';
@@ -30,12 +31,14 @@ import { Public } from './decorators/public.decorator';
 import { CurrentUser } from './decorators/current-user.decorator';
 import type { IUser } from '../users/interfaces/user.interface';
 import { IAuthResponse } from './interfaces/auth.interface';
+import { GoogleMobileStrategy } from './strategies/google.strategy';
 
 @Controller('auth')
 export class AuthController {
   constructor(
     private authService: AuthService,
     private usersService: UsersService,
+    private googleMobileStrategy: GoogleMobileStrategy,
   ) {}
 
   @Public()
@@ -99,6 +102,26 @@ export class AuthController {
     const redirectUrl = `${frontendUrl}/auth/callback?token=${authResult.accessToken}&refresh=${authResult.refreshToken}`;
 
     res.redirect(redirectUrl);
+  }
+
+  @Public()
+  @Post('google/mobile')
+  @HttpCode(HttpStatus.OK)
+  async googleMobileAuth(
+    @Body() googleMobileAuthDto: GoogleMobileAuthDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<IAuthResponse> {
+    const authResult = await this.googleMobileStrategy.validateIdToken(
+      googleMobileAuthDto.idToken,
+    );
+
+    this.authService.setCookies(
+      res,
+      authResult.accessToken,
+      authResult.refreshToken,
+    );
+
+    return authResult;
   }
 
   @Public()

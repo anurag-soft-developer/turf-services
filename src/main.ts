@@ -42,8 +42,8 @@ async function bootstrap() {
     allowedHeaders: ['Content-Type', 'Authorization'],
   });
 
-  await app.listen(config.PORT);
-  logger.log(`🚀 Application is running on: http://localhost:${config.PORT}`);
+  await app.listen(config.PORT, '0.0.0.0');
+  logger.log(`🚀 Application is running on: http://0.0.0.0:${config.PORT}`);
   logger.log(`🌍 Environment: ${config.NODE_ENV}`);
 }
 bootstrap();

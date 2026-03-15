@@ -127,3 +127,8 @@ export class VerifyEmailDto {
   @Matches(/^\d{6}$/, { message: 'OTP must be 6 digits' })
   otp!: string;
 }
+
+export class GoogleMobileAuthDto {
+  @IsString({ message: 'Google ID token is required' })
+  idToken!: string;
+}

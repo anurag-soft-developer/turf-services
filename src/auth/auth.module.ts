@@ -12,7 +12,7 @@ import { EmailService } from '../common/services/email.service';
 import type { StringValue } from 'ms';
 import { LocalStrategy } from './strategies/local.strategy';
 import { JwtStrategy } from './strategies/jwt.strategy';
-import { GoogleStrategy } from './strategies/google.strategy';
+import { GoogleStrategy, GoogleMobileStrategy } from './strategies/google.strategy';
 
 @Module({
   imports: [
@@ -33,6 +33,7 @@ import { GoogleStrategy } from './strategies/google.strategy';
     LocalStrategy,
     JwtStrategy,
     GoogleStrategy,
+    GoogleMobileStrategy,
   ],
   exports: [AuthService, JwtAuthService],
 })
