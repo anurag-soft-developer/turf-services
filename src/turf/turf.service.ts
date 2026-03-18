@@ -9,12 +9,16 @@ import { Turf, TurfDocument } from './schemas/turf.schema';
 import { CreateTurfDto, UpdateTurfDto } from './dto/turf.dto';
 import { SearchTurfDto } from './dto/turf.filter.dto';
 import { ITurf } from './interfaces/turf.interface';
+import { PaginatedResult } from '../common/interfaces/common';
 
 @Injectable()
 export class TurfService {
   constructor(@InjectModel(Turf.name) private turfModel: Model<Turf>) {}
 
-  async create(postedBy: string, createTurfDto: CreateTurfDto): Promise<TurfDocument> {
+  async create(
+    postedBy: string,
+    createTurfDto: CreateTurfDto,
+  ): Promise<TurfDocument> {
     const existingTurf = await this.turfModel
       .findOne({ name: createTurfDto.name })
       .exec();
@@ -102,7 +106,7 @@ export class TurfService {
     };
   }
 
-  async searchTurfs(searchDto: SearchTurfDto) {
+  async searchTurfs(searchDto: SearchTurfDto): Promise<PaginatedResult<ITurf>> {
     const {
       globalSearchText,
       sportTypes,
@@ -160,7 +164,7 @@ export class TurfService {
     }
 
     // Location-based search (using geospatial query)
-    let geoNearStage:PipelineStage|null = null;
+    let geoNearStage: PipelineStage | null = null;
     if (location?.lat && location?.lng) {
       geoNearStage = {
         $geoNear: {
@@ -214,7 +218,7 @@ export class TurfService {
 
     return {
       data,
-      total: metadata.total,
+      totalDocuments: metadata.total,
       page,
       limit,
       totalPages: Math.ceil(metadata.total / limit),

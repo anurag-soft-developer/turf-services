@@ -37,6 +37,8 @@ export interface ITurf {
   operatingHours: IOperatingHours;
   isAvailable: boolean;
   slotBufferMins: number;
+  averageRating?: number;
+  totalReviews?: number;
   createdAt: string;
   updatedAt: string;
 }

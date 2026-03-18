@@ -9,8 +9,10 @@ import {
 } from '../interfaces/turf.interface';
 import { User } from '../../users/schemas/user.schema';
 
-export type TurfDocument = Omit<ITurf, '_id' | 'createdAt' | 'updatedAt'> &
-  Document;
+export type TurfDocument = Omit<ITurf, '_id' | 'createdAt' | 'updatedAt'> & {
+  createdAt: Date;
+  updatedAt: Date;
+} & Document;
 
 @Schema()
 export class Location implements ILocation {
@@ -138,6 +140,33 @@ export class Turf extends Document implements TurfDocument {
     default: 15,
   })
   slotBufferMins!: number;
+
+  @Prop({
+    type: Number,
+    default: 0,
+    min: 0,
+    max: 5,
+  })
+  averageRating!: number;
+
+  @Prop({
+    type: Number,
+    default: 0,
+    min: 0,
+  })
+  totalReviews!: number;
+
+  @Prop({
+    type: Date,
+    default: Date.now,
+  })
+  createdAt!: Date;
+
+  @Prop({
+    type: Date,
+    default: Date.now,
+  })
+  updatedAt!: Date;
 }
 
 export const TurfSchema = SchemaFactory.createForClass(Turf);

@@ -9,6 +9,8 @@ export type UserDocument = Omit<
 > &
   Document & {
     lastLogin?: Date;
+    createdAt:Date;
+    updatedAt:Date;
   };
 
 export enum OAuthProvider {
@@ -134,6 +136,18 @@ export class User extends Document implements UserDocument {
     type: Date,
   })
   lastLogin?: Date;
+
+  @Prop({
+    type: Date,
+    default: Date.now,
+  })
+  createdAt!: Date;
+
+  @Prop({
+    type: Date,
+    default: Date.now,
+  })
+  updatedAt!: Date;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
