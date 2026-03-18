@@ -32,6 +32,7 @@ import { CurrentUser } from './decorators/current-user.decorator';
 import type { IUser } from '../users/interfaces/user.interface';
 import { IAuthResponse } from './interfaces/auth.interface';
 import { GoogleMobileStrategy } from './strategies/google.strategy';
+import { config } from '../config/env.config';
 
 @Controller('auth')
 export class AuthController {
@@ -98,8 +99,7 @@ export class AuthController {
       authResult.refreshToken,
     );
 
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-    const redirectUrl = `${frontendUrl}/auth/callback?token=${authResult.accessToken}&refresh=${authResult.refreshToken}`;
+    const redirectUrl = `${config.FRONTEND_URL}/auth/callback?token=${authResult.accessToken}&refresh=${authResult.refreshToken}`;
 
     res.redirect(redirectUrl);
   }

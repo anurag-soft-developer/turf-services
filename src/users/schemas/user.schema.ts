@@ -8,8 +8,6 @@ export type UserDocument = Omit<
   '_id' | 'lastLogin' | 'createdAt' | 'updatedAt'
 > &
   Document & {
-    createdAt: Date;
-    updatedAt: Date;
     lastLogin?: Date;
   };
 
@@ -136,18 +134,6 @@ export class User extends Document implements UserDocument {
     type: Date,
   })
   lastLogin?: Date;
-
-  @Prop({
-    type: Date,
-    default: Date.now,
-  })
-  createdAt!: Date;
-
-  @Prop({
-    type: Date,
-    default: Date.now,
-  })
-  updatedAt!: Date;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

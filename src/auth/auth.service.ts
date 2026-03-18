@@ -421,6 +421,10 @@ export class AuthService {
   }
 
   sanitizeProfile(user: IUser | UserDocument): Profile {
+    const createdAt =
+      'createdAt' in user ? user.createdAt.toString() : new Date().toString();
+    const updatedAt =
+      'updatedAt' in user ? user.updatedAt.toString() : new Date().toString();
     return {
       _id: user._id.toString(),
       email: user.email,
@@ -433,8 +437,8 @@ export class AuthService {
       phone: user.phone,
       bio: user.bio,
       lastLogin: user.lastLogin?.toString(),
-      createdAt: user.createdAt.toString(),
-      updatedAt: user.updatedAt.toString(),
+      createdAt,
+      updatedAt,
     };
   }
 }
