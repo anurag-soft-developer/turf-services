@@ -1,126 +1,60 @@
-import { 
-  IsOptional, 
-  IsString, 
-  IsNumber, 
-  Min, 
-  Max, 
-  IsArray, 
-  IsBoolean,
-  IsLatitude,
-  IsLongitude,
-  ValidateNested,
-  Matches
-} from 'class-validator';
-import { Transform, Type } from 'class-transformer';
+import { z } from 'zod';
+import { createZodDto } from 'nestjs-zod';
 
-export class LocationFilterDto {
-  @IsOptional()
-  @IsLatitude()
-  @Transform(({ value }) => parseFloat(value))
-  lat?: number;
+// Location Filter Schema
+export const LocationFilterSchema = z.object({
+  lat: z.number().min(-90).max(90).optional(),
+  lng: z.number().min(-180).max(180).optional(),
+  radius: z.number().min(1).max(100).default(10),
+}).transform((data) => ({
+  ...data,
+  lat: data.lat ? Number(data.lat) : undefined,
+  lng: data.lng ? Number(data.lng) : undefined,
+  radius: data.radius ? Number(data.radius) : 10,
+}));
 
-  @IsOptional()
-  @IsLongitude()
-  @Transform(({ value }) => parseFloat(value))
-  lng?: number;
+// Pricing Filter Schema
+export const PricingFilterSchema = z.object({
+  minPrice: z.number().min(0).optional(),
+  maxPrice: z.number().min(0).optional(),
+  includeWeekendSurge: z.boolean().optional(),
+}).transform((data) => ({
+  ...data,
+  minPrice: data.minPrice ? Number(data.minPrice) : undefined,
+  maxPrice: data.maxPrice ? Number(data.maxPrice) : undefined,
+  includeWeekendSurge: data.includeWeekendSurge === true,
+}));
 
-  @IsOptional()
-  @IsNumber()
-  @Min(1)
-  @Max(100)
-  @Transform(({ value }) => parseInt(value))
-  radius?: number = 10;
-}
+// Search Turf Schema
+export const SearchTurfSchema = z.object({
+  globalSearchText: z.string().optional(),
+  sportTypes: z.union([
+    z.string().transform((val) => val.split(',').map(v => v.trim())),
+    z.array(z.string())
+  ]).optional(),
+  amenities: z.union([
+    z.string().transform((val) => val.split(',').map(v => v.trim())),
+    z.array(z.string())
+  ]).optional(),
+  location: LocationFilterSchema.optional(),
+  pricing: PricingFilterSchema.optional(),
+  isAvailable: z.union([
+    z.boolean(),
+    z.string().transform((val) => val === 'true')
+  ]).optional(),
+  minRating: z.number().min(0).max(5).optional(),
+  operatingTime: z.string()
+    .regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Operating time must be in HH:mm format')
+    .optional(),
+  page: z.number().min(1).default(1),
+  limit: z.number().min(1).max(100).default(10),
+  sort: z.string().optional(),
+}).transform((data) => ({
+  ...data,
+  page: data.page ? Number(data.page) : 1,
+  limit: data.limit ? Number(data.limit) : 10,
+  minRating: data.minRating ? Number(data.minRating) : undefined,
+}));
 
-export class PricingFilterDto {
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  @Transform(({ value }) => parseFloat(value))
-  minPrice?: number;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  @Transform(({ value }) => parseFloat(value))
-  maxPrice?: number;
-
-  @IsOptional()
-  @IsBoolean()
-  @Transform(({ value }) => value === 'true')
-  includeWeekendSurge?: boolean;
-}
-
-export class SearchTurfDto {
-  @IsOptional()
-  @IsString()
-  globalSearchText?: string;
-
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  @Transform(({ value }) => {
-    if (typeof value === 'string') {
-      return value.split(',').map(v => v.trim());
-    }
-    return value;
-  })
-  sportTypes?: string[];
-
-  @IsOptional()
-  @IsArray()
-  @IsString({ each: true })
-  @Transform(({ value }) => {
-    if (typeof value === 'string') {
-      return value.split(',').map(v => v.trim());
-    }
-    return value;
-  })
-  amenities?: string[];
-
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => LocationFilterDto)
-  location?: LocationFilterDto;
-
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => PricingFilterDto)
-  pricing?: PricingFilterDto;
-
-  @IsOptional()
-  @IsBoolean()
-  @Transform(({ value }) => value === 'true')
-  isAvailable?: boolean;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  @Max(5)
-  @Transform(({ value }) => parseFloat(value))
-  minRating?: number;
-
-  @IsOptional()
-  @IsString()
-  @Matches(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, {
-    message: 'Operating time must be in HH:mm format',
-  })
-  operatingTime?: string;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(1)
-  @Transform(({ value }) => parseInt(value))
-  page?: number = 1;
-
-  @IsOptional()
-  @IsNumber()
-  @Min(1)
-  @Max(100)
-  @Transform(({ value }) => parseInt(value))
-  limit?: number = 10;
-
-  @IsOptional()
-  @IsString()
-  sort?: string;
-}
+// DTO Classes using nestjs-zod
+export class SearchTurfDto extends createZodDto(SearchTurfSchema) {}

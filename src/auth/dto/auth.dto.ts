@@ -1,134 +1,101 @@
-import {
-  IsEmail,
-  IsString,
-  MinLength,
-  MaxLength,
-  Matches,
-  IsOptional,
-  ValidateIf,
-} from 'class-validator';
+import { z } from 'zod';
+import { createZodDto } from 'nestjs-zod';
 
-export class RegisterDto {
-  @IsEmail({}, { message: 'Please provide a valid email address' })
-  email!: string;
+// Password validation regex
+const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/;
+const phoneRegex = /^\+?[\d\s\-\(\)]{10,15}$/;
+const otpRegex = /^\d{6}$/;
 
-  @IsString({ message: 'Password must be a string' })
-  @MinLength(8, { message: 'Password must be at least 8 characters long' })
-  @MaxLength(50, { message: 'Password must not exceed 50 characters' })
-  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/, {
-    message:
-      'Password must contain at least one uppercase letter, one lowercase letter, one number and one special character',
-  })
-  password!: string;
+// Register Schema
+export const RegisterSchema = z.object({
+  email: z.string().email('Please provide a valid email address'),
+  password: z.string()
+    .min(8, 'Password must be at least 8 characters long')
+    .max(50, 'Password must not exceed 50 characters')
+    .regex(passwordRegex, 'Password must contain at least one uppercase letter, one lowercase letter, one number and one special character'),
+  fullName: z.string()
+    .min(2, 'Full name must be at least 2 characters long')
+    .max(100, 'Full name must not exceed 100 characters'),
+  phone: z.string()
+    .regex(phoneRegex, 'Please provide a valid phone number')
+    .optional(),
+  bio: z.string()
+    .max(500, 'Bio must not exceed 500 characters')
+    .optional(),
+});
 
-  @IsString({ message: 'Full name must be a string' })
-  @MinLength(2, { message: 'Full name must be at least 2 characters long' })
-  @MaxLength(100, { message: 'Full name must not exceed 100 characters' })
-  fullName!: string;
+// Login Schema
+export const LoginSchema = z.object({
+  email: z.string().email('Please provide a valid email address'),
+  password: z.string().min(1, 'Password cannot be empty'),
+});
 
-  @IsOptional()
-  @IsString({ message: 'Phone must be a string' })
-  @ValidateIf((o) => o.phone !== '')
-  @Matches(/^\+?[\d\s\-\(\)]{10,15}$/, {
-    message: 'Please provide a valid phone number',
-  })
-  phone?: string;
+// Change Password Schema
+export const ChangePasswordSchema = z.object({
+  currentPassword: z.string().min(1, 'Current password is required'),
+  newPassword: z.string()
+    .min(8, 'New password must be at least 8 characters long')
+    .max(50, 'New password must not exceed 50 characters')
+    .regex(passwordRegex, 'New password must contain at least one uppercase letter, one lowercase letter, one number and one special character'),
+});
 
-  @IsOptional()
-  @IsString({ message: 'Bio must be a string' })
-  @MaxLength(500, { message: 'Bio must not exceed 500 characters' })
-  bio?: string;
-}
+// Forgot Password Schema
+export const ForgotPasswordSchema = z.object({
+  email: z.string().email('Please provide a valid email address'),
+});
 
-export class LoginDto {
-  @IsEmail({}, { message: 'Please provide a valid email address' })
-  email!: string;
+// Reset Password Schema
+export const ResetPasswordSchema = z.object({
+  email: z.string().email('Please provide a valid email address'),
+  otp: z.string()
+    .length(6, 'OTP must be 6 digits')
+    .regex(otpRegex, 'OTP must be 6 digits'),
+  password: z.string()
+    .min(8, 'Password must be at least 8 characters long')
+    .max(50, 'Password must not exceed 50 characters')
+    .regex(passwordRegex, 'Password must contain at least one uppercase letter, one lowercase letter, one number and one special character'),
+});
 
-  @IsString({ message: 'Password is required' })
-  @MinLength(1, { message: 'Password cannot be empty' })
-  password!: string;
-}
+// Update Profile Schema
+export const UpdateProfileSchema = z.object({
+  fullName: z.string()
+    .min(2, 'Full name must be at least 2 characters long')
+    .max(100, 'Full name must not exceed 100 characters')
+    .optional(),
+  phone: z.string()
+    .regex(phoneRegex, 'Please provide a valid phone number')
+    .optional(),
+  bio: z.string()
+    .max(500, 'Bio must not exceed 500 characters')
+    .optional(),
+  avatar: z.string().optional(),
+});
 
-export class ChangePasswordDto {
-  @IsString({ message: 'Current password is required' })
-  currentPassword!: string;
+// Send Verification Email Schema
+export const SendVerificationEmailSchema = z.object({
+  email: z.string().email('Please provide a valid email address'),
+});
 
-  @IsString({ message: 'New password must be a string' })
-  @MinLength(8, { message: 'New password must be at least 8 characters long' })
-  @MaxLength(50, { message: 'New password must not exceed 50 characters' })
-  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/, {
-    message:
-      'New password must contain at least one uppercase letter, one lowercase letter, one number and one special character',
-  })
-  newPassword!: string;
-}
+// Verify Email Schema
+export const VerifyEmailSchema = z.object({
+  email: z.string().email('Please provide a valid email address'),
+  otp: z.string()
+    .length(6, 'OTP must be 6 digits')
+    .regex(otpRegex, 'OTP must be 6 digits'),
+});
 
-export class ForgotPasswordDto {
-  @IsEmail({}, { message: 'Please provide a valid email address' })
-  email!: string;
-}
+// Google Mobile Auth Schema
+export const GoogleMobileAuthSchema = z.object({
+  idToken: z.string().min(1, 'Google ID token is required'),
+});
 
-export class ResetPasswordDto {
-  @IsEmail({}, { message: 'Please provide a valid email address' })
-  email!: string;
-
-  @IsString({ message: 'OTP is required' })
-  @MinLength(6, { message: 'OTP must be 6 digits' })
-  @MaxLength(6, { message: 'OTP must be 6 digits' })
-  @Matches(/^\d{6}$/, { message: 'OTP must be 6 digits' })
-  otp!: string;
-
-  @IsString({ message: 'Password must be a string' })
-  @MinLength(8, { message: 'Password must be at least 8 characters long' })
-  @MaxLength(50, { message: 'Password must not exceed 50 characters' })
-  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/, {
-    message:
-      'Password must contain at least one uppercase letter, one lowercase letter, one number and one special character',
-  })
-  password!: string;
-}
-
-export class UpdateProfileDto {
-  @IsOptional()
-  @IsString({ message: 'Full name must be a string' })
-  @MinLength(2, { message: 'Full name must be at least 2 characters long' })
-  @MaxLength(100, { message: 'Full name must not exceed 100 characters' })
-  fullName?: string;
-
-  @IsOptional()
-  @IsString({ message: 'Phone must be a string' })
-  @Matches(/^\+?[\d\s\-\(\)]{10,15}$/, {
-    message: 'Please provide a valid phone number',
-  })
-  phone?: string;
-
-  @IsOptional()
-  @IsString({ message: 'Bio must be a string' })
-  @MaxLength(500, { message: 'Bio must not exceed 500 characters' })
-  bio?: string;
-
-  @IsOptional()
-  @IsString({ message: 'Avatar must be a string' })
-  avatar?: string;
-}
-
-export class SendVerificationEmailDto {
-  @IsEmail({}, { message: 'Please provide a valid email address' })
-  email!: string;
-}
-
-export class VerifyEmailDto {
-  @IsEmail({}, { message: 'Please provide a valid email address' })
-  email!: string;
-
-  @IsString({ message: 'OTP is required' })
-  @MinLength(6, { message: 'OTP must be 6 digits' })
-  @MaxLength(6, { message: 'OTP must be 6 digits' })
-  @Matches(/^\d{6}$/, { message: 'OTP must be 6 digits' })
-  otp!: string;
-}
-
-export class GoogleMobileAuthDto {
-  @IsString({ message: 'Google ID token is required' })
-  idToken!: string;
-}
+// DTO Classes using nestjs-zod
+export class RegisterDto extends createZodDto(RegisterSchema) {}
+export class LoginDto extends createZodDto(LoginSchema) {}
+export class ChangePasswordDto extends createZodDto(ChangePasswordSchema) {}
+export class ForgotPasswordDto extends createZodDto(ForgotPasswordSchema) {}
+export class ResetPasswordDto extends createZodDto(ResetPasswordSchema) {}
+export class UpdateProfileDto extends createZodDto(UpdateProfileSchema) {}
+export class SendVerificationEmailDto extends createZodDto(SendVerificationEmailSchema) {}
+export class VerifyEmailDto extends createZodDto(VerifyEmailSchema) {}
+export class GoogleMobileAuthDto extends createZodDto(GoogleMobileAuthSchema) {}
