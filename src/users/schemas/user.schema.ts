@@ -9,8 +9,8 @@ export type UserDocument = Omit<
 > &
   Document & {
     lastLogin?: Date;
-    createdAt:Date;
-    updatedAt:Date;
+    createdAt: Date;
+    updatedAt: Date;
   };
 
 export enum OAuthProvider {
@@ -25,6 +25,8 @@ export enum OtpKeys {
   VERIFY_EMAIL = 'verify_email',
   FORGOT_PASSWORD = 'forgot_password',
 }
+
+export const userSelectFields: string = '_id fullName avatar email';
 
 @Schema({
   timestamps: true,

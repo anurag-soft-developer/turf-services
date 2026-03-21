@@ -6,12 +6,16 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, QueryFilter } from 'mongoose';
+import { Model, PopulateOptions, QueryFilter } from 'mongoose';
 import {
   TurfBooking,
   TurfBookingDocument,
 } from './schemas/turf-booking.schema';
-import { Turf, TurfDocument } from '../turf/schemas/turf.schema';
+import {
+  turfSelectFields,
+  Turf,
+  TurfDocument,
+} from '../turf/schemas/turf.schema';
 import {
   CreateTurfBookingDto,
   UpdateTurfBookingDto,
@@ -23,9 +27,21 @@ import {
   PaymentStatus,
 } from './interfaces/turf-booking.interface';
 import { PaginatedResult } from '../common/interfaces/common';
+import { userSelectFields } from '../users/schemas/user.schema';
 
 @Injectable()
 export class TurfBookingService {
+  static populateOptions: PopulateOptions[] = [
+    {
+      path: 'turf',
+      select: turfSelectFields,
+    },
+    {
+      path: 'bookedBy',
+      select: userSelectFields,
+    },
+  ];
+
   constructor(
     @InjectModel(TurfBooking.name)
     private turfBookingModel: Model<TurfBookingDocument>,
@@ -89,7 +105,9 @@ export class TurfBookingService {
       paymentStatus: PaymentStatus.PENDING,
     });
 
-    return await booking.save();
+    return await (
+      await booking.save()
+    ).populate(TurfBookingService.populateOptions);
   }
 
   async updateBooking(
@@ -130,7 +148,9 @@ export class TurfBookingService {
     }
 
     Object.assign(booking, updateBookingDto);
-    return await booking.save();
+    return await (
+      await booking.save()
+    ).populate(TurfBookingService.populateOptions);
   }
 
   async checkTimeSlotAvailability(
@@ -228,8 +248,7 @@ export class TurfBookingService {
     const [bookings, total] = await Promise.all([
       this.turfBookingModel
         .find(filter)
-        .populate('turf', 'name location images pricing')
-        .populate('bookedBy', 'name email')
+        .populate(TurfBookingService.populateOptions)
         .sort({ [sortBy]: sortDirection })
         .skip(skip)
         .limit(limit)
@@ -249,8 +268,7 @@ export class TurfBookingService {
   async findById(id: string): Promise<TurfBookingDocument | null> {
     return await this.turfBookingModel
       .findById(id)
-      .populate('turf', 'name location images pricing postedBy')
-      .populate('bookedBy', 'name email')
+      .populate(TurfBookingService.populateOptions)
       .exec();
   }
 
@@ -308,8 +326,7 @@ export class TurfBookingService {
     const [bookings, total] = await Promise.all([
       this.turfBookingModel
         .find(filter)
-        .populate('turf', 'name location images pricing')
-        .populate('bookedBy', 'name email')
+        .populate(TurfBookingService.populateOptions)
         .sort({ [sortBy]: sortDirection })
         .skip(skip)
         .limit(limit)

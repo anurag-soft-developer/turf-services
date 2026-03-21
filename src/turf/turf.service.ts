@@ -4,15 +4,23 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, PipelineStage, QueryFilter } from 'mongoose';
+import { Model, PipelineStage, PopulateOptions, QueryFilter } from 'mongoose';
 import { Turf, TurfDocument } from './schemas/turf.schema';
 import { CreateTurfDto, UpdateTurfDto } from './dto/turf.dto';
 import { SearchTurfDto } from './dto/turf.filter.dto';
 import { ITurf } from './interfaces/turf.interface';
 import { PaginatedResult } from '../common/interfaces/common';
+import { userSelectFields } from '../users/schemas/user.schema';
 
 @Injectable()
 export class TurfService {
+  static populateOptions: PopulateOptions[] = [
+    {
+      path: 'postedBy',
+      select: userSelectFields,
+    },
+  ];
+
   constructor(@InjectModel(Turf.name) private turfModel: Model<Turf>) {}
 
   async create(
@@ -28,11 +36,14 @@ export class TurfService {
     }
 
     const turf = new this.turfModel({ ...createTurfDto, postedBy });
-    return await turf.save();
+    return await (await turf.save()).populate(TurfService.populateOptions);
   }
 
   async findById(id: string): Promise<TurfDocument> {
-    const turf = await this.turfModel.findById(id).exec();
+    const turf = await this.turfModel
+      .findById(id)
+      .populate(TurfService.populateOptions)
+      .exec();
     if (!turf) {
       throw new NotFoundException('Turf not found');
     }
@@ -46,6 +57,7 @@ export class TurfService {
     if (updateTurfDto.name) {
       const existingTurf = await this.turfModel
         .findOne({ name: updateTurfDto.name, _id: { $ne: id } })
+
         .exec();
 
       if (existingTurf) {
@@ -58,6 +70,7 @@ export class TurfService {
         new: true,
         runValidators: true,
       })
+      .populate(TurfService.populateOptions)
       .exec();
 
     if (!turf) {
@@ -202,6 +215,29 @@ export class TurfService {
     if (Object.keys(sortOptions).length > 0) {
       pipeline.push({ $sort: sortOptions });
     }
+
+    // Add population for postedBy field
+    pipeline.push({
+      $lookup: {
+        from: 'Users', // Collection name in MongoDB
+        localField: 'postedBy',
+        foreignField: '_id',
+        as: 'postedBy',
+        pipeline: [
+          {
+            $project: userSelectFields.split(' ').reduce((acc, field) => {
+              acc[field] = 1;
+              return acc;
+            }, {}),
+          },
+        ],
+      },
+    });
+
+    // Convert postedBy array to single object (since it's a single reference)
+    pipeline.push({
+      $unwind: '$postedBy',
+    });
 
     // Add facet for pagination and total count
     pipeline.push({

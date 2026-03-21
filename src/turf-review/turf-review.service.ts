@@ -5,9 +5,13 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, QueryFilter } from 'mongoose';
+import { Model, PopulateOptions, QueryFilter } from 'mongoose';
 import { TurfReview, TurfReviewDocument } from './schemas/turf-review.schema';
-import { Turf, TurfDocument } from '../turf/schemas/turf.schema';
+import {
+  Turf,
+  TurfDocument,
+  turfSelectFields,
+} from '../turf/schemas/turf.schema';
 import {
   CreateTurfReviewDto,
   UpdateTurfReviewDto,
@@ -17,9 +21,24 @@ import {
   ModerateReviewDto,
 } from './dto/turf-review.dto';
 import { PaginatedResult } from '../common/interfaces/common';
+import { userSelectFields } from '../users/schemas/user.schema';
 
 @Injectable()
 export class TurfReviewService {
+  static populateOptions: PopulateOptions[] = [
+    {
+      path: 'reviewedBy',
+      select: userSelectFields,
+    },
+    {
+      path: 'turf',
+      select: turfSelectFields,
+    },
+    {
+      path: 'moderatedBy',
+      select: userSelectFields,
+    },
+  ];
   constructor(
     @InjectModel(TurfReview.name)
     private turfReviewModel: Model<TurfReviewDocument>,
@@ -58,7 +77,9 @@ export class TurfReviewService {
       isVerifiedBooking,
     });
 
-    const savedReview = await review.save();
+    const savedReview = await (
+      await review.save()
+    ).populate(TurfReviewService.populateOptions);
 
     await this.updateTurfRatingStats(turf);
 
@@ -83,7 +104,10 @@ export class TurfReviewService {
     const updateData = { ...updateReviewDto };
 
     Object.assign(review, updateData);
-    const updatedReview = await review.save();
+
+    const updatedReview = await (
+      await review.save()
+    ).populate(TurfReviewService.populateOptions);
 
     // Update turf's average rating if rating changed
     if (updateReviewDto.rating !== undefined) {
@@ -137,8 +161,7 @@ export class TurfReviewService {
     const [reviews, total] = await Promise.all([
       this.turfReviewModel
         .find(filter)
-        .populate('reviewedBy', 'name email')
-        .populate('turf', 'name location images')
+        .populate(TurfReviewService.populateOptions)
         .sort({ [sortBy]: sortDirection })
         .skip(skip)
         .limit(limit)
@@ -172,18 +195,16 @@ export class TurfReviewService {
   async findById(id: string): Promise<TurfReviewDocument | null> {
     return await this.turfReviewModel
       .findById(id)
-      .populate('reviewedBy', 'name email')
-      .populate('turf', 'name location images pricing')
-      .populate('moderatedBy', 'name email')
+      .populate(TurfReviewService.populateOptions)
       .exec();
   }
 
   async findUserReviews(
     userId: string,
     filterDto: Partial<TurfReviewFilterDto>,
-  ){
+  ) {
     const result = await this.findAll({ ...filterDto, reviewedBy: userId });
-    return result
+    return result;
   }
 
   async findTurfReviews(
@@ -191,7 +212,7 @@ export class TurfReviewService {
     filterDto: Partial<TurfReviewFilterDto>,
   ) {
     const result = await this.findAll({ ...filterDto, turf: turfId });
-    return result
+    return result;
   }
 
   async voteReview(
@@ -212,7 +233,9 @@ export class TurfReviewService {
       review.notHelpfulVotes += 1;
     }
 
-    return await review.save();
+    return await (
+      await review.save()
+    ).populate(TurfReviewService.populateOptions);
   }
 
   async reportReview(
@@ -234,7 +257,9 @@ export class TurfReviewService {
       review.moderatedAt = new Date();
     }
 
-    return await review.save();
+    return await (
+      await review.save()
+    ).populate(TurfReviewService.populateOptions);
   }
 
   async moderateReview(
@@ -251,7 +276,9 @@ export class TurfReviewService {
     review.moderatedAt = new Date();
     review.moderatedBy = moderatorId;
 
-    return await review.save();
+    return await (
+      await review.save()
+    ).populate(TurfReviewService.populateOptions);
   }
 
   async deleteReview(id: string, userId: string): Promise<void> {

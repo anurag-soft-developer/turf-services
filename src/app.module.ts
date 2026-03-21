@@ -10,6 +10,7 @@ import { UsersModule } from './users/users.module';
 import { TurfModule } from './turf/turf.module';
 import { TurfBookingModule } from './turf-booking/turf-booking.module';
 import { TurfReviewModule } from './turf-review/turf-review.module';
+import { AppMetadataModule } from './app-metadata/app-metadata.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { ConfigModule } from '@nestjs/config';
 import { config } from './config/env.config';
@@ -23,6 +24,7 @@ import { config } from './config/env.config';
     TurfModule,
     TurfBookingModule,
     TurfReviewModule,
+    AppMetadataModule,
   ],
   controllers: [AppController],
   providers: [

@@ -14,6 +14,8 @@ export type TurfDocument = Omit<ITurf, '_id' | 'createdAt' | 'updatedAt'> & {
   updatedAt: Date;
 } & Document;
 
+export const turfSelectFields: string = '_id name location images pricing postedBy';
+
 @Schema()
 export class Location implements ILocation {
   @Prop({ required: true })
