@@ -128,6 +128,7 @@ export class TurfService {
       pricing,
       isAvailable,
       operatingTime,
+      postedBy,
       page = 1,
       limit = 10,
       sort,
@@ -135,6 +136,10 @@ export class TurfService {
 
     // Build the query
     const query: QueryFilter<ITurf> = {};
+
+    if (postedBy) {
+      query.postedBy = postedBy.toString();
+    }
 
     if (globalSearchText) {
       const searchRegex = new RegExp(globalSearchText, 'i');
@@ -218,9 +223,15 @@ export class TurfService {
 
     // Add population for postedBy field
     pipeline.push({
+      $addFields: {
+        postedByObjectId: { $toObjectId: '$postedBy' }
+      }
+    });
+
+    pipeline.push({
       $lookup: {
-        from: 'Users', // Collection name in MongoDB
-        localField: 'postedBy',
+        from: 'users', // Collection name in MongoDB (lowercase and pluralized)
+        localField: 'postedByObjectId',
         foreignField: '_id',
         as: 'postedBy',
         pipeline: [
@@ -234,19 +245,31 @@ export class TurfService {
       },
     });
 
-    // Convert postedBy array to single object (since it's a single reference)
+    // Convert postedBy array to single object and remove temporary field
     pipeline.push({
-      $unwind: '$postedBy',
+      $addFields: {
+        postedBy: {
+          $cond: {
+            if: { $gt: [{ $size: '$postedBy' }, 0] },
+            then: { $arrayElemAt: ['$postedBy', 0] },
+            else: null
+          }
+        }
+      }
     });
 
-    // Add facet for pagination and total count
+    // Remove the temporary ObjectId field
+    pipeline.push({
+      $unset: 'postedByObjectId'
+    });
+
+    // // Add facet for pagination and total count
     pipeline.push({
       $facet: {
         metadata: [{ $count: 'total' }],
         data: [{ $skip: (page - 1) * limit }, { $limit: limit }],
       },
     });
-
     const results = await this.turfModel.aggregate(pipeline);
 
     const metadata = results[0]?.metadata[0] || { total: 0 };

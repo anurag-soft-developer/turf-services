@@ -39,7 +39,19 @@ export class TurfController {
     return turfs;
   }
 
-  @Get('stats')
+  @Get('/owner/my')
+  async findMyTurfs(
+    @Query() query: SearchTurfDto,
+    @CurrentUser() user: UserInterface.IUser,
+  ) {
+    const turfs = await this.turfService.searchTurfs({
+      ...query,
+      postedBy: user._id,
+    });
+    return turfs;
+  }
+
+  @Get('/stats')
   async getStats() {
     const stats = await this.turfService.getStats();
     return stats;

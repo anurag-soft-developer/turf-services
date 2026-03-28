@@ -1,5 +1,5 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe, Logger } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import morgan from 'morgan';
 import { AppModule } from './app.module';
 import { config } from './config/env.config';
@@ -16,18 +16,6 @@ async function bootstrap() {
     morgan(
       '📨 :method :url :status :res[content-length] - :response-time ms - :remote-addr',
     ),
-  );
-
-  // Global validation pipe
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-      transformOptions: {
-        enableImplicitConversion: true,
-      },
-    }),
   );
 
   // Enable CORS

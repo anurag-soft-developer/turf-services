@@ -17,6 +17,7 @@ import {
   ResetPasswordDto,
 } from './dto/auth.dto';
 import type { IUser, Profile } from '../users/interfaces/user.interface';
+import ms from 'ms';
 import {
   OAuthProvider,
   OtpKeys,
@@ -374,11 +375,11 @@ export class AuthService {
   setCookies(res: Response, accessToken: string, refreshToken: string): void {
     const accessTokenOptions = this.getCookieOptions();
 
-    accessTokenOptions.maxAge = 7 * 24 * 60 * 60 * 1000; // 7 days
+    accessTokenOptions.maxAge = ms(config.JWT_EXPIRES_IN); // 7 days
 
     const refreshTokenOptions: CookieOptions = {
       ...accessTokenOptions,
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      maxAge: ms(config.JWT_REFRESH_EXPIRES_IN), // 7 days
     };
 
     res.cookie('accessToken', accessToken, accessTokenOptions);

@@ -27,6 +27,7 @@ export const PricingFilterSchema = z.object({
 
 // Search Turf Schema
 export const SearchTurfSchema = z.object({
+  postedBy: z.string().optional(),
   globalSearchText: z.string().optional(),
   sportTypes: z.union([
     z.string().transform((val) => val.split(',').map(v => v.trim())),
@@ -42,19 +43,14 @@ export const SearchTurfSchema = z.object({
     z.boolean(),
     z.string().transform((val) => val === 'true')
   ]).optional(),
-  minRating: z.number().min(0).max(5).optional(),
+  minRating: z.coerce.number().min(0).max(5).optional(),
   operatingTime: z.string()
     .regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Operating time must be in HH:mm format')
     .optional(),
-  page: z.number().min(1).default(1),
-  limit: z.number().min(1).max(100).default(10),
+  page: z.coerce.number().min(1).default(1),
+  limit: z.coerce.number().min(1).max(100).default(10),
   sort: z.string().optional(),
-}).transform((data) => ({
-  ...data,
-  page: data.page ? Number(data.page) : 1,
-  limit: data.limit ? Number(data.limit) : 10,
-  minRating: data.minRating ? Number(data.minRating) : undefined,
-}));
+});
 
 // DTO Classes using nestjs-zod
 export class SearchTurfDto extends createZodDto(SearchTurfSchema) {}
