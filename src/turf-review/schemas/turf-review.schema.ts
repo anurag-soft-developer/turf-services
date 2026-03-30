@@ -1,8 +1,9 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document } from 'mongoose';
+import { Document, Types } from 'mongoose';
 import { ITurfReview } from '../interfaces/turf-review.interface';
 import { User } from '../../users/schemas/user.schema';
 import { Turf } from '../../turf/schemas/turf.schema';
+import { Schema as MongooseSchema } from 'mongoose';
 
 export type TurfReviewDocument = Omit<
   ITurfReview,
@@ -19,18 +20,18 @@ export type TurfReviewDocument = Omit<
 })
 export class TurfReview extends Document implements TurfReviewDocument {
   @Prop({
-    type: String,
+    type: MongooseSchema.Types.ObjectId,
     required: true,
     ref: Turf.name,
   })
-  turf!: string;
+  turf!: Types.ObjectId;
 
   @Prop({
-    type: String,
+    type: MongooseSchema.Types.ObjectId,
     required: true,
     ref: User.name,
   })
-  reviewedBy!: string;
+  reviewedBy!: Types.ObjectId;
 
   @Prop({
     type: Number,
@@ -110,10 +111,10 @@ export class TurfReview extends Document implements TurfReviewDocument {
   moderatedAt?: Date;
 
   @Prop({
-    type: String,
+    type: MongooseSchema.Types.ObjectId,
     ref: User.name,
   })
-  moderatedBy?: string;
+  moderatedBy?: Types.ObjectId;
 
   @Prop({
     type: Date,

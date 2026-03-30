@@ -1,3 +1,5 @@
+import { Types } from 'mongoose';
+
 export interface ILocation {
   address: string;
   coordinates: {
@@ -22,10 +24,9 @@ export interface IOperatingHours {
   close: string;
 }
 
-
 export interface ITurf {
   _id: string;
-  postedBy: string;
+  postedBy: Types.ObjectId;
   name: string;
   description: string;
   location: ILocation;

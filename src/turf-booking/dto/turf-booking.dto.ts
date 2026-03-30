@@ -1,22 +1,26 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 import { TurfBookingStatus, PaymentStatus } from '../interfaces/turf-booking.interface';
+import { date } from '../../core/dto';
+
+const TimeSlotSchema = z.object({
+  startTime: date,
+  endTime: date,
+});
 
 const CreateTurfBookingSchema = z.object({
   turf: z.string().min(1, 'Turf ID is required'),
-  startTime: z.string().datetime('Invalid start time format'),
-  endTime: z.string().datetime('Invalid end time format'),
+  timeSlots: z.array(TimeSlotSchema).min(1, 'At least one time slot is required'),
   playerCount: z.number().min(1).max(50).optional(),
   notes: z.string().max(500).optional(),
 });
 
 const UpdateTurfBookingSchema = z.object({
-//   startTime: z.string().datetime('Invalid start time format').optional(),
-//   endTime: z.string().datetime('Invalid end time format').optional(),
+  timeSlots: z.array(TimeSlotSchema).min(1, 'At least one time slot is required').optional(),
   playerCount: z.number().min(1).max(50).optional(),
   notes: z.string().max(500).optional(),
-  status: z.nativeEnum(TurfBookingStatus).optional(),
-  paymentStatus: z.nativeEnum(PaymentStatus).optional(),
+  status: z.enum(TurfBookingStatus).optional(),
+  paymentStatus: z.enum(PaymentStatus).optional(),
   paymentId: z.string().optional(),
   cancelReason: z.string().max(200).optional(),
 });
@@ -24,20 +28,19 @@ const UpdateTurfBookingSchema = z.object({
 const TurfBookingFilterSchema = z.object({
   turf: z.string().optional(),
   bookedBy: z.string().optional(),
-  status: z.nativeEnum(TurfBookingStatus).optional(),
-  paymentStatus: z.nativeEnum(PaymentStatus).optional(),
-  startDate: z.string().datetime().optional(),
-  endDate: z.string().datetime().optional(),
-  page: z.number().min(1).default(1).optional(),
-  limit: z.number().min(1).max(100).default(10).optional(),
+  status: z.enum(TurfBookingStatus).optional(),
+  paymentStatus: z.enum(PaymentStatus).optional(),
+  startDate: date.optional(),
+  endDate: date.optional(),
+  page: z.coerce.number().min(1).default(1),
+  limit: z.coerce.number().min(1).default(10),
   sortBy: z.string().default('createdAt').optional(),
   sortOrder: z.enum(['asc', 'desc']).default('desc').optional(),
 });
 
 const CheckTurfAvailabilitySchema = z.object({
   turf: z.string().min(1, 'Turf ID is required'),
-  startTime: z.string().datetime('Invalid start time format'),
-  endTime: z.string().datetime('Invalid end time format'),
+  timeSlots: z.array(TimeSlotSchema).min(1, 'At least one time slot is required'),
   excludeBookingId: z.string().optional(),
 });
 

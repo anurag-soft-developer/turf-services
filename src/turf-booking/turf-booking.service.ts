@@ -5,8 +5,8 @@ import {
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, PopulateOptions, QueryFilter } from 'mongoose';
+import { InjectModel, Schema } from '@nestjs/mongoose';
+import { Model, PopulateOptions, QueryFilter, SchemaTypes } from 'mongoose';
 import {
   TurfBooking,
   TurfBookingDocument,
@@ -53,17 +53,13 @@ export class TurfBookingService {
     createBookingDto: CreateTurfBookingDto,
     userId: string,
   ): Promise<TurfBookingDocument> {
-    const {
-      turf,
-      startTime: startTimeStr,
-      endTime: endTimeStr,
-      playerCount,
-      notes,
-    } = createBookingDto;
+    const { turf, timeSlots, playerCount, notes } = createBookingDto;
 
-    // Convert string dates to Date objects
-    const startTime = new Date(startTimeStr);
-    const endTime = new Date(endTimeStr);
+    // Convert time slots to Date objects
+    const processedTimeSlots = timeSlots.map((slot) => ({
+      startTime: new Date(slot.startTime),
+      endTime: new Date(slot.endTime),
+    }));
 
     // Check if turf exists and is available
     const turfDoc = await this.turfModel.findById(turf);
@@ -75,29 +71,52 @@ export class TurfBookingService {
       throw new BadRequestException('Turf is not available for booking');
     }
 
-    // Validate booking time constraints
-    await this.validateBookingTime(startTime, endTime, turf, turfDoc);
+    // Sort time slots by start time to ensure they don't overlap
+    processedTimeSlots.sort(
+      (a, b) => a.startTime.getTime() - b.startTime.getTime(),
+    );
 
-    // Check for time slot conflicts with strict overlap validation
-    await this.checkTimeSlotAvailability({
-      turf,
-      startTime: startTimeStr,
-      endTime: endTimeStr,
-    });
+    // Validate each time slot and check for overlaps between them
+    for (let i = 0; i < processedTimeSlots.length; i++) {
+      const currentSlot = processedTimeSlots[i];
 
-    // Calculate total amount based on turf pricing
-    const totalAmount = await this.calculateBookingAmount(
+      // Validate individual slot
+      await this.validateBookingTime(
+        currentSlot.startTime,
+        currentSlot.endTime,
+        turf,
+        turfDoc,
+      );
+
+      // Check for overlaps with other slots in the same booking
+      if (i > 0) {
+        const previousSlot = processedTimeSlots[i - 1];
+        if (currentSlot.startTime < previousSlot.endTime) {
+          throw new BadRequestException(
+            `Time slots cannot overlap. Slot starting at ${currentSlot.startTime.toISOString()} overlaps with previous slot ending at ${previousSlot.endTime.toISOString()}`,
+          );
+        }
+      }
+
+      // Check for conflicts with existing bookings
+      await this.checkSingleTimeSlotAvailability({
+        turf,
+        startTime: currentSlot.startTime.toISOString(),
+        endTime: currentSlot.endTime.toISOString(),
+      });
+    }
+
+    // Calculate total amount for all time slots
+    const totalAmount = await this.calculateMultiSlotBookingAmount(
       turfDoc,
-      startTime,
-      endTime,
+      processedTimeSlots,
     );
 
     // Create the booking
     const booking = new this.turfBookingModel({
       turf,
       bookedBy: userId,
-      startTime,
-      endTime,
+      timeSlots: processedTimeSlots,
       playerCount,
       notes,
       totalAmount,
@@ -115,6 +134,7 @@ export class TurfBookingService {
     updateBookingDto: UpdateTurfBookingDto & {
       cancelledAt?: Date;
       confirmedAt?: Date;
+      totalAmount?: number;
     },
     userId: string,
   ): Promise<TurfBookingDocument> {
@@ -125,11 +145,76 @@ export class TurfBookingService {
 
     // Check if user is the booker or turf owner
     const turf = await this.turfModel.findById(booking.turf);
-    const isBooker = booking.bookedBy === userId;
-    const isTurfOwner = turf?.postedBy === userId;
+    const isBooker = booking.bookedBy.toString() === userId;
+    const isTurfOwner = turf?.postedBy.toString() === userId;
 
     if (!isBooker && !isTurfOwner) {
       throw new ForbiddenException('You can only update your own bookings');
+    }
+
+    // Handle timeSlots updates if provided
+    if (updateBookingDto.timeSlots) {
+      if (booking.status !== TurfBookingStatus.PENDING) {
+        throw new BadRequestException(
+          'Cannot modify time slots of non-pending bookings',
+        );
+      }
+
+      const processedTimeSlots = updateBookingDto.timeSlots.map((slot) => ({
+        startTime: new Date(slot.startTime),
+        endTime: new Date(slot.endTime),
+      }));
+
+      // Sort time slots by start time
+      processedTimeSlots.sort(
+        (a, b) => a.startTime.getTime() - b.startTime.getTime(),
+      );
+
+      // Validate each time slot and check for overlaps
+      for (let i = 0; i < processedTimeSlots.length; i++) {
+        const currentSlot = processedTimeSlots[i];
+
+        // Validate individual slot
+        await this.validateBookingTime(
+          currentSlot.startTime,
+          currentSlot.endTime,
+          booking.turf.toString(),
+          turf!,
+        );
+
+        // Check for overlaps with other slots in the same booking
+        if (i > 0) {
+          const previousSlot = processedTimeSlots[i - 1];
+          if (currentSlot.startTime < previousSlot.endTime) {
+            throw new BadRequestException(
+              `Time slots cannot overlap. Slot starting at ${currentSlot.startTime.toISOString()} overlaps with previous slot ending at ${previousSlot.endTime.toISOString()}`,
+            );
+          }
+        }
+
+        // Check for conflicts with existing bookings (excluding this booking)
+        await this.checkSingleTimeSlotAvailability({
+          turf: booking.turf.toString(),
+          startTime: currentSlot.startTime.toISOString(),
+          endTime: currentSlot.endTime.toISOString(),
+          excludeBookingId: bookingId,
+        });
+      }
+
+      // Recalculate total amount
+      const newTotalAmount = await this.calculateMultiSlotBookingAmount(
+        turf!,
+        processedTimeSlots,
+      );
+
+      updateBookingDto = {
+        ...updateBookingDto,
+        timeSlots: processedTimeSlots as unknown as {
+          startTime: string;
+          endTime: string;
+        }[],
+        totalAmount: newTotalAmount,
+      };
     }
 
     // Handle status updates
@@ -156,43 +241,70 @@ export class TurfBookingService {
   async checkTimeSlotAvailability(
     checkAvailabilityDto: CheckTurfAvailabilityDto,
   ): Promise<boolean> {
+    const { turf, timeSlots, excludeBookingId } = checkAvailabilityDto;
+
+    // Convert time slots to Date objects
+    const processedTimeSlots = timeSlots.map((slot) => ({
+      startTime: new Date(slot.startTime),
+      endTime: new Date(slot.endTime),
+    }));
+
+    // Check availability for each time slot
+    for (const slot of processedTimeSlots) {
+      await this.checkSingleTimeSlotAvailability({
+        turf,
+        startTime: slot.startTime.toISOString(),
+        endTime: slot.endTime.toISOString(),
+        excludeBookingId,
+      });
+    }
+
+    return true;
+  }
+
+  private async checkSingleTimeSlotAvailability(checkDto: {
+    turf: string;
+    startTime: string;
+    endTime: string;
+    excludeBookingId?: string | null;
+  }): Promise<boolean> {
     const {
       turf,
       startTime: startTimeStr,
       endTime: endTimeStr,
       excludeBookingId,
-    } = checkAvailabilityDto;
+    } = checkDto;
 
     // Convert string dates to Date objects
     const startTime = new Date(startTimeStr);
     const endTime = new Date(endTimeStr);
 
-    // Build query for overlap detection
+    // Build query for overlap detection with timeSlots array
     const overlapQuery: QueryFilter<TurfBookingDocument> = {
       turf,
       status: { $in: [TurfBookingStatus.PENDING, TurfBookingStatus.CONFIRMED] },
-      $or: [
-        // New booking starts during existing booking
-        {
-          startTime: { $lte: startTime },
-          endTime: { $gt: startTime },
+      timeSlots: {
+        $elemMatch: {
+          $or: [
+            {
+              startTime: { $lte: startTime },
+              endTime: { $gt: startTime },
+            },
+            {
+              startTime: { $lt: endTime },
+              endTime: { $gte: endTime },
+            },
+            {
+              startTime: { $gte: startTime },
+              endTime: { $lte: endTime },
+            },
+            {
+              startTime: { $lte: startTime },
+              endTime: { $gte: endTime },
+            },
+          ],
         },
-        // New booking ends during existing booking
-        {
-          startTime: { $lt: endTime },
-          endTime: { $gte: endTime },
-        },
-        // New booking completely contains existing booking
-        {
-          startTime: { $gte: startTime },
-          endTime: { $lte: endTime },
-        },
-        // Existing booking completely contains new booking
-        {
-          startTime: { $lte: startTime },
-          endTime: { $gte: endTime },
-        },
-      ],
+      },
     };
 
     // Exclude specific booking if provided (for updates)
@@ -204,12 +316,46 @@ export class TurfBookingService {
       await this.turfBookingModel.findOne(overlapQuery);
 
     if (conflictingBooking) {
+      // Find which specific time slot is conflicting
+      const conflictingSlot = conflictingBooking.timeSlots.find((slot) => {
+        const slotStart = new Date(slot.startTime);
+        const slotEnd = new Date(slot.endTime);
+        return (
+          (slotStart <= startTime && slotEnd > startTime) ||
+          (slotStart < endTime && slotEnd >= endTime) ||
+          (slotStart >= startTime && slotEnd <= endTime) ||
+          (slotStart <= startTime && slotEnd >= endTime)
+        );
+      });
+
+      const conflictDetails = conflictingSlot
+        ? `from ${new Date(conflictingSlot.startTime).toISOString()} to ${new Date(conflictingSlot.endTime).toISOString()}`
+        : 'with existing booking';
+
       throw new ConflictException(
-        `Time slot conflicts with existing booking from ${conflictingBooking.startTime.toISOString()} to ${conflictingBooking.endTime.toISOString()}`,
+        `Time slot conflicts with existing booking ${conflictDetails}`,
       );
     }
 
     return true;
+  }
+
+  private async calculateMultiSlotBookingAmount(
+    turf: TurfDocument,
+    timeSlots: { startTime: Date; endTime: Date }[],
+  ): Promise<number> {
+    let totalAmount = 0;
+
+    for (const slot of timeSlots) {
+      const slotAmount = await this.calculateBookingAmount(
+        turf,
+        slot.startTime,
+        slot.endTime,
+      );
+      totalAmount += slotAmount;
+    }
+
+    return Math.round(totalAmount * 100) / 100; // Round to 2 decimal places
   }
 
   async findAll(
@@ -235,11 +381,33 @@ export class TurfBookingService {
     if (status) filter.status = status;
     if (paymentStatus) filter.paymentStatus = paymentStatus;
 
-    // Date range filtering
+    // Date range filtering - check if any time slot overlaps with the date range
     if (startDate || endDate) {
-      filter.startTime = {};
-      if (startDate) filter.startTime.$gte = new Date(startDate);
-      if (endDate) filter.startTime.$lte = new Date(endDate);
+      const dateFilter: any = {};
+      if (startDate && endDate) {
+        // Booking has at least one slot that overlaps with the date range
+        dateFilter['timeSlots'] = {
+          $elemMatch: {
+            startTime: { $lte: new Date(endDate) },
+            endTime: { $gte: new Date(startDate) },
+          },
+        };
+      } else if (startDate) {
+        // Booking has at least one slot that starts on or after the start date
+        dateFilter['timeSlots'] = {
+          $elemMatch: {
+            endTime: { $gte: new Date(startDate) },
+          },
+        };
+      } else if (endDate) {
+        // Booking has at least one slot that ends on or before the end date
+        dateFilter['timeSlots'] = {
+          $elemMatch: {
+            startTime: { $lte: new Date(endDate) },
+          },
+        };
+      }
+      Object.assign(filter, dateFilter);
     }
 
     const sortDirection = sortOrder === 'asc' ? 1 : -1;
@@ -255,7 +423,7 @@ export class TurfBookingService {
         .exec(),
       this.turfBookingModel.countDocuments(filter),
     ]);
-
+    
     return {
       data: bookings,
       totalDocuments: total,
@@ -274,21 +442,21 @@ export class TurfBookingService {
 
   async findUserBookings(
     userId: string,
-    filterDto: Partial<TurfBookingFilterDto>,
+    filterDto: TurfBookingFilterDto,
   ): Promise<PaginatedResult<TurfBookingDocument>> {
     return this.findAll({ ...filterDto, bookedBy: userId });
   }
 
   async findTurfBookings(
     turfId: string,
-    filterDto: Partial<TurfBookingFilterDto>,
+    filterDto: TurfBookingFilterDto,
   ): Promise<PaginatedResult<TurfBookingDocument>> {
     return this.findAll({ ...filterDto, turf: turfId });
   }
 
   async findTurfOwnerBookings(
     ownerId: string,
-    filterDto: Partial<TurfBookingFilterDto>,
+    filterDto: TurfBookingFilterDto,
   ): Promise<PaginatedResult<TurfBookingDocument>> {
     // Find all turfs owned by the user
     const ownedTurfs = await this.turfModel
@@ -304,43 +472,64 @@ export class TurfBookingService {
       turf: { $in: turfIds },
     };
 
-    // Apply additional filters
-    if (filterDto.status) filter.status = filterDto.status;
-    if (filterDto.paymentStatus) filter.paymentStatus = filterDto.paymentStatus;
-    if (filterDto.startDate || filterDto.endDate) {
-      filter.startTime = {};
-      if (filterDto.startDate)
-        filter.startTime.$gte = new Date(filterDto.startDate);
-      if (filterDto.endDate)
-        filter.startTime.$lte = new Date(filterDto.endDate);
-    }
+    Object.assign(filter, filterDto);
+    return this.findAll({ ...filterDto });
+    // // Apply additional filters
+    // if (filterDto.status) filter.status = filterDto.status;
+    // if (filterDto.paymentStatus) filter.paymentStatus = filterDto.paymentStatus;
+    // if (filterDto.startDate || filterDto.endDate) {
+    //   const dateFilter: any = {};
+    //   if (filterDto.startDate && filterDto.endDate) {
+    //     // Booking has at least one slot that overlaps with the date range
+    //     dateFilter['timeSlots'] = {
+    //       $elemMatch: {
+    //         startTime: { $lte: new Date(filterDto.endDate) },
+    //         endTime: { $gte: new Date(filterDto.startDate) },
+    //       },
+    //     };
+    //   } else if (filterDto.startDate) {
+    //     // Booking has at least one slot that starts on or after the start date
+    //     dateFilter['timeSlots'] = {
+    //       $elemMatch: {
+    //         endTime: { $gte: new Date(filterDto.startDate) },
+    //       },
+    //     };
+    //   } else if (filterDto.endDate) {
+    //     // Booking has at least one slot that ends on or before the end date
+    //     dateFilter['timeSlots'] = {
+    //       $elemMatch: {
+    //         startTime: { $lte: new Date(filterDto.endDate) },
+    //       },
+    //     };
+    //   }
+    //   Object.assign(filter, dateFilter);
+    // }
 
-    const page = filterDto.page || 1;
-    const limit = filterDto.limit || 10;
-    const sortBy = filterDto.sortBy || 'createdAt';
-    const sortOrder = filterDto.sortOrder || 'desc';
+    // const page = filterDto.page || 1;
+    // const limit = filterDto.limit || 10;
+    // const sortBy = filterDto.sortBy || 'createdAt';
+    // const sortOrder = filterDto.sortOrder || 'desc';
 
-    const sortDirection = sortOrder === 'asc' ? 1 : -1;
-    const skip = (page - 1) * limit;
+    // const sortDirection = sortOrder === 'asc' ? 1 : -1;
+    // const skip = (page - 1) * limit;
 
-    const [bookings, total] = await Promise.all([
-      this.turfBookingModel
-        .find(filter)
-        .populate(TurfBookingService.populateOptions)
-        .sort({ [sortBy]: sortDirection })
-        .skip(skip)
-        .limit(limit)
-        .exec(),
-      this.turfBookingModel.countDocuments(filter),
-    ]);
-
-    return {
-      data: bookings,
-      totalDocuments: total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-    };
+    // const [bookings, total] = await Promise.all([
+    //   this.turfBookingModel
+    //     .find(filter)
+    //     .populate(TurfBookingService.populateOptions)
+    //     .sort({ [sortBy]: sortDirection })
+    //     .skip(skip)
+    //     .limit(limit)
+    //     .exec(),
+    //   this.turfBookingModel.countDocuments(filter),
+    // ]);
+    // return {
+    //   data: bookings,
+    //   totalDocuments: total,
+    //   page,
+    //   limit,
+    //   totalPages: Math.ceil(total / limit),
+    // };
   }
 
   async deleteBooking(id: string, userId: string): Promise<void> {
@@ -351,8 +540,8 @@ export class TurfBookingService {
 
     // Only allow deletion by the booker or turf owner
     const turf = await this.turfModel.findById(booking.turf);
-    const isBooker = booking.bookedBy === userId;
-    const isTurfOwner = turf?.postedBy === userId;
+    const isBooker = booking.bookedBy.toString() === userId;
+    const isTurfOwner = turf?.postedBy.toString() === userId;
 
     if (!isBooker && !isTurfOwner) {
       throw new ForbiddenException('You can only delete your own bookings');

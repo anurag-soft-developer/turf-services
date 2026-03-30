@@ -47,10 +47,10 @@ export class TurfBookingController {
     return result;
   }
 
-  @Get('my-bookings')
+  @Get('player-bookings')
   async findUserBookings(
     @CurrentUser('_id') userId: string,
-    @Query() filterDto: Partial<TurfBookingFilterDto>,
+    @Query() filterDto: TurfBookingFilterDto,
   ) {
     const result = await this.turfBookingService.findUserBookings(
       userId,
@@ -60,10 +60,10 @@ export class TurfBookingController {
     return result;
   }
 
-  @Get('my-turf-bookings')
+  @Get('owner-bookings')
   async findTurfOwnerBookings(
     @CurrentUser('_id') userId: string,
-    @Query() filterDto: Partial<TurfBookingFilterDto>,
+    @Query() filterDto: TurfBookingFilterDto,
   ) {
     const result = await this.turfBookingService.findTurfOwnerBookings(
       userId,
@@ -76,7 +76,7 @@ export class TurfBookingController {
   @Get('turf/:turfId')
   async findTurfBookings(
     @Param('turfId') turfId: string,
-    @Query() filterDto: Partial<TurfBookingFilterDto>,
+    @Query() filterDto: TurfBookingFilterDto,
   ) {
     const result = await this.turfBookingService.findTurfBookings(
       turfId,

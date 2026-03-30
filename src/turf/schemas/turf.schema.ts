@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document } from 'mongoose';
+import { Document, Schema as MongooseSchema,Types } from 'mongoose';
 import {
   ITurf,
   ILocation,
@@ -77,11 +77,11 @@ export class Turf extends Document implements TurfDocument {
   name!: string;
 
   @Prop({
-    type: String,
+    type: MongooseSchema.Types.ObjectId,
     required: true,
     ref: User.name,
   })
-  postedBy!: string;
+  postedBy!: Types.ObjectId;
 
   @Prop({
     type: String,

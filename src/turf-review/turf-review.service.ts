@@ -5,7 +5,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, PopulateOptions, QueryFilter } from 'mongoose';
+import { Model, PopulateOptions, QueryFilter, Types } from 'mongoose';
 import { TurfReview, TurfReviewDocument } from './schemas/turf-review.schema';
 import {
   Turf,
@@ -97,7 +97,7 @@ export class TurfReviewService {
     }
 
     // Only allow the reviewer to update their own review
-    if (review.reviewedBy !== userId) {
+    if (review.reviewedBy.toString() !== userId) {
       throw new ForbiddenException('You can only update your own reviews');
     }
 
@@ -111,7 +111,7 @@ export class TurfReviewService {
 
     // Update turf's average rating if rating changed
     if (updateReviewDto.rating !== undefined) {
-      await this.updateTurfRatingStats(review.turf);
+      await this.updateTurfRatingStats(review.turf.toString());
     }
 
     return updatedReview;
@@ -201,7 +201,7 @@ export class TurfReviewService {
 
   async findUserReviews(
     userId: string,
-    filterDto: Partial<TurfReviewFilterDto>,
+    filterDto: TurfReviewFilterDto,
   ) {
     const result = await this.findAll({ ...filterDto, reviewedBy: userId });
     return result;
@@ -209,7 +209,7 @@ export class TurfReviewService {
 
   async findTurfReviews(
     turfId: string,
-    filterDto: Partial<TurfReviewFilterDto>,
+    filterDto: TurfReviewFilterDto,
   ) {
     const result = await this.findAll({ ...filterDto, turf: turfId });
     return result;
@@ -274,7 +274,7 @@ export class TurfReviewService {
 
     review.isModerated = moderateDto.isModerated;
     review.moderatedAt = new Date();
-    review.moderatedBy = moderatorId;
+    review.moderatedBy = new Types.ObjectId(moderatorId);
 
     return await (
       await review.save()
@@ -288,11 +288,11 @@ export class TurfReviewService {
     }
 
     // Only allow the reviewer to delete their own review
-    if (review.reviewedBy !== userId) {
+    if (review.reviewedBy.toString() !== userId) {
       throw new ForbiddenException('You can only delete your own reviews');
     }
 
-    const turfId = review.turf;
+    const turfId = review.turf.toString();
     await this.turfReviewModel.findByIdAndDelete(id);
 
     // Update turf's rating stats after deletion
@@ -305,7 +305,7 @@ export class TurfReviewService {
     ratingDistribution: { [key: number]: number };
   }> {
     const stats = await this.turfReviewModel.aggregate([
-      { $match: { turf: turfId, isModerated: false } },
+      { $match: { turf: new Types.ObjectId(turfId), isModerated: false } },
       {
         $group: {
           _id: null,

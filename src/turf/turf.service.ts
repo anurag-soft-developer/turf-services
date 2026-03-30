@@ -4,7 +4,7 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, PipelineStage, PopulateOptions, QueryFilter } from 'mongoose';
+import { Model, PipelineStage, PopulateOptions, QueryFilter, Types } from 'mongoose';
 import { Turf, TurfDocument } from './schemas/turf.schema';
 import { CreateTurfDto, UpdateTurfDto } from './dto/turf.dto';
 import { SearchTurfDto } from './dto/turf.filter.dto';
@@ -138,7 +138,7 @@ export class TurfService {
     const query: QueryFilter<ITurf> = {};
 
     if (postedBy) {
-      query.postedBy = postedBy.toString();
+      query.postedBy = new Types.ObjectId(postedBy);
     }
 
     if (globalSearchText) {

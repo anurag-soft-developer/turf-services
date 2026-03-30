@@ -1,10 +1,14 @@
+import { Types} from 'mongoose';
+export interface ITimeSlot {
+  startTime: Date;
+  endTime: Date;
+}
 
 export interface ITurfBooking {
   _id: string;
-  turf: string; // Turf ID
-  bookedBy: string; // User ID
-  startTime: Date;
-  endTime: Date;
+  turf: Types.ObjectId; // Turf ID
+  bookedBy: Types.ObjectId; // User ID
+  timeSlots: ITimeSlot[]; // Multiple time slots support
   playerCount?: number;
   totalAmount: number;
   status: TurfBookingStatus;

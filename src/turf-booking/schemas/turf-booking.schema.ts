@@ -1,7 +1,8 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document } from 'mongoose';
+import { Document, Schema as MongooseSchema, Types } from 'mongoose';
 import {
   ITurfBooking,
+  ITimeSlot,
   TurfBookingStatus,
   PaymentStatus,
 } from '../interfaces/turf-booking.interface';
@@ -19,24 +20,8 @@ export type TurfBookingDocument = Omit<
     updatedAt: Date;
   };
 
-@Schema({
-  timestamps: true,
-})
-export class TurfBooking extends Document implements TurfBookingDocument {
-  @Prop({
-    type: String,
-    required: true,
-    ref: Turf.name,
-  })
-  turf!: string;
-
-  @Prop({
-    type: String,
-    required: true,
-    ref: User.name,
-  })
-  bookedBy!: string;
-
+@Schema()
+export class TimeSlot implements ITimeSlot {
   @Prop({
     type: Date,
     required: true,
@@ -48,6 +33,37 @@ export class TurfBooking extends Document implements TurfBookingDocument {
     required: true,
   })
   endTime!: Date;
+}
+
+@Schema({
+  timestamps: true,
+})
+export class TurfBooking extends Document implements TurfBookingDocument {
+  @Prop({
+    type: MongooseSchema.Types.ObjectId,
+    required: true,
+    ref: Turf.name,
+  })
+  turf!: Types.ObjectId;   
+
+  @Prop({
+    type: MongooseSchema.Types.ObjectId,
+    required: true,
+    ref: User.name,
+  })
+  bookedBy!: Types.ObjectId;
+
+  @Prop({
+    type: [TimeSlot],
+    required: true,
+    validate: {
+      validator: function(slots: ITimeSlot[]) {
+        return slots && slots.length > 0;
+      },
+      message: 'At least one time slot is required'
+    },
+  })
+  timeSlots!: ITimeSlot[];
 
   @Prop({
     type: Number,
@@ -120,19 +136,26 @@ export class TurfBooking extends Document implements TurfBookingDocument {
 
 export const TurfBookingSchema = SchemaFactory.createForClass(TurfBooking);
 
-// Compound index to efficiently check for time overlaps
+// Compound index for efficient queries by turf and status
 TurfBookingSchema.index({
   turf: 1,
-  startTime: 1,
-  endTime: 1,
   status: 1,
+  createdAt: -1,
 });
 
 // Index for user bookings
 TurfBookingSchema.index({ bookedBy: 1, createdAt: -1 });
 
-// Index for turf owner to see their turf bookings
+// Index for turf owner to see their turf bookings  
 TurfBookingSchema.index({ turf: 1, createdAt: -1 });
+
+// Index on timeSlots for efficient overlap detection
+TurfBookingSchema.index({
+  turf: 1,
+  'timeSlots.startTime': 1,
+  'timeSlots.endTime': 1,
+  status: 1,
+});
 
 // // Pre-save validation to ensure endTime is after startTime
 // TurfBookingSchema.pre('save', function (next,) {

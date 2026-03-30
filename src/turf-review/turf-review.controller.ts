@@ -54,7 +54,7 @@ export class TurfReviewController {
   @Get('my-reviews')
   async findUserReviews(
     @CurrentUser('_id') userId: string,
-    @Query() filterDto: Partial<TurfReviewFilterDto>,
+    @Query() filterDto: TurfReviewFilterDto,
   ) {
     const result = await this.turfReviewService.findUserReviews(
       userId,
@@ -68,7 +68,7 @@ export class TurfReviewController {
   @Public()
   async findTurfReviews(
     @Param('turfId') turfId: string,
-    @Query() filterDto: Partial<TurfReviewFilterDto>,
+    @Query() filterDto: TurfReviewFilterDto,
   ) {
     const result = await this.turfReviewService.findTurfReviews(
       turfId,
