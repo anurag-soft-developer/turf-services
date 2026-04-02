@@ -1,4 +1,4 @@
-import { createZodDto } from 'nestjs-zod';
+import { createZodDto, type ZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 import { date } from '../../core/dto';
 
@@ -52,9 +52,16 @@ const ModerateReviewSchema = z.object({
   reason: z.string().trim().max(500, 'Moderation reason must be at most 500 characters').optional(),
 });
 
-export class CreateTurfReviewDto extends createZodDto(CreateTurfReviewSchema) {}
-export class UpdateTurfReviewDto extends createZodDto(UpdateTurfReviewSchema) {}
-export class TurfReviewFilterDto extends createZodDto(TurfReviewFilterSchema) {}
-export class VoteReviewDto extends createZodDto(VoteReviewSchema) {}
-export class ReportReviewDto extends createZodDto(ReportReviewSchema) {}
-export class ModerateReviewDto extends createZodDto(ModerateReviewSchema) {}
+const CreateTurfReviewDtoBase: ZodDto<typeof CreateTurfReviewSchema> = createZodDto(CreateTurfReviewSchema);
+const UpdateTurfReviewDtoBase: ZodDto<typeof UpdateTurfReviewSchema> = createZodDto(UpdateTurfReviewSchema);
+const TurfReviewFilterDtoBase: ZodDto<typeof TurfReviewFilterSchema> = createZodDto(TurfReviewFilterSchema);
+const VoteReviewDtoBase: ZodDto<typeof VoteReviewSchema> = createZodDto(VoteReviewSchema);
+const ReportReviewDtoBase: ZodDto<typeof ReportReviewSchema> = createZodDto(ReportReviewSchema);
+const ModerateReviewDtoBase: ZodDto<typeof ModerateReviewSchema> = createZodDto(ModerateReviewSchema);
+
+export class CreateTurfReviewDto extends CreateTurfReviewDtoBase {}
+export class UpdateTurfReviewDto extends UpdateTurfReviewDtoBase {}
+export class TurfReviewFilterDto extends TurfReviewFilterDtoBase {}
+export class VoteReviewDto extends VoteReviewDtoBase {}
+export class ReportReviewDto extends ReportReviewDtoBase {}
+export class ModerateReviewDto extends ModerateReviewDtoBase {}

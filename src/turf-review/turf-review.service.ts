@@ -58,13 +58,15 @@ export class TurfReviewService {
     }
 
     // Check if user already reviewed this turf
-    const existingReview = await this.turfReviewModel.findOne({
+    const existingReview = await this.turfReviewModel.countDocuments({
       turf,
       reviewedBy: userId,
     });
 
-    if (existingReview) {
-      throw new ConflictException('You have already reviewed this turf');
+    if (existingReview >= 5) {
+      throw new ConflictException(
+        'You have already reviewed this turf 5 times',
+      );
     }
 
     // TODO: Check if user has a verified booking for this turf
@@ -199,18 +201,12 @@ export class TurfReviewService {
       .exec();
   }
 
-  async findUserReviews(
-    userId: string,
-    filterDto: TurfReviewFilterDto,
-  ) {
+  async findUserReviews(userId: string, filterDto: TurfReviewFilterDto) {
     const result = await this.findAll({ ...filterDto, reviewedBy: userId });
     return result;
   }
 
-  async findTurfReviews(
-    turfId: string,
-    filterDto: TurfReviewFilterDto,
-  ) {
+  async findTurfReviews(turfId: string, filterDto: TurfReviewFilterDto) {
     const result = await this.findAll({ ...filterDto, turf: turfId });
     return result;
   }
@@ -288,7 +284,7 @@ export class TurfReviewService {
     }
 
     // Only allow the reviewer to delete their own review
-    if (review.reviewedBy.toString() !== userId) {
+    if (review.reviewedBy.toString() !== userId.toString()) {
       throw new ForbiddenException('You can only delete your own reviews');
     }
 

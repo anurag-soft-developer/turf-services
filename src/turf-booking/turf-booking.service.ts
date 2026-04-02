@@ -5,8 +5,8 @@ import {
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
-import { InjectModel, Schema } from '@nestjs/mongoose';
-import { Model, PopulateOptions, QueryFilter, SchemaTypes } from 'mongoose';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model, PopulateOptions, QueryFilter } from 'mongoose';
 import {
   TurfBooking,
   TurfBookingDocument,
