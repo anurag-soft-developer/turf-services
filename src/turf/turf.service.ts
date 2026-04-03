@@ -4,7 +4,8 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, PipelineStage, PopulateOptions, QueryFilter, Types } from 'mongoose';
+import type { QueryFilter } from 'mongoose';
+import { Model, PipelineStage, PopulateOptions, Types } from 'mongoose';
 import { Turf, TurfDocument } from './schemas/turf.schema';
 import { CreateTurfDto, UpdateTurfDto } from './dto/turf.dto';
 import { SearchTurfDto } from './dto/turf.filter.dto';
@@ -134,8 +135,9 @@ export class TurfService {
       sort,
     } = searchDto;
 
-    // Build the query
-    const query: QueryFilter<ITurf> = {};
+    // PipelineStage.Match['$match'] is QueryFilter<any>; QueryFilter<unknown> is the same loose branch without `any`.
+    // Intersect with QueryFilter<ITurf> for path completion (postedBy, nested paths, etc.).
+    const query: QueryFilter<ITurf> & QueryFilter<unknown> = {};
 
     if (postedBy) {
       query.postedBy = new Types.ObjectId(postedBy);

@@ -119,12 +119,13 @@ export class LocalMatchService {
       visibility,
       status,
       sportTypes,
-      nearbyLat,
-      nearbyLng,
-      nearbyRadiusKm = 10,
+      location,
       page = 1,
       limit = 10,
     } = filter;
+    const nearbyLat = location?.nearbyLat;
+    const nearbyLng = location?.nearbyLng;
+    const nearbyRadiusKm = location?.nearbyRadiusKm ?? 10;
 
     const uid = new Types.ObjectId(userId);
     const accessOr = [

@@ -96,18 +96,17 @@ const UpdateLocalMatchSchema = localMatchBaseSchema
     path: ['joinMode'],
   });
 
-const LocalMatchFilterSchema = z
-  .object({
-    visibility: visibilitySchema.optional(),
-    status: localMatchStatusSchema.optional(),
-    sportTypes: z
-      .string()
-      .optional()
-      .transform((s) => (s ? s.split(',').map((x) => x.trim()) : undefined)),
-    page: z.coerce.number().min(1).default(1),
-    limit: z.coerce.number().min(1).max(50).default(10),
-  })
-  .extend(nearbyLocationQuerySchema.shape);
+const LocalMatchFilterSchema = z.object({
+  visibility: visibilitySchema.optional(),
+  status: localMatchStatusSchema.optional(),
+  sportTypes: z
+    .string()
+    .optional()
+    .transform((s) => (s ? s.split(',').map((x) => x.trim()) : undefined)),
+  page: z.coerce.number().min(1).default(1),
+  limit: z.coerce.number().min(1).max(50).default(10),
+  location: nearbyLocationQuerySchema.optional(),
+});
 
 const PromoteHostSchema = z.object({
   userId: z.string().min(1),
