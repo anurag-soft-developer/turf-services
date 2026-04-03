@@ -13,7 +13,7 @@ import {
   ConnectionStatus,
 } from './schemas/connection.schema';
 import { ConnectionFilterDto, SendConnectionRequestDto } from './dto/connection.dto';
-import { PaginatedResult } from '../common/interfaces/common';
+import { PaginatedResult } from '../core/interfaces/common';
 import { userSelectFields } from '../users/schemas/user.schema';
 
 const REJECTED_TTL_MS = 24 * 60 * 60 * 1000;

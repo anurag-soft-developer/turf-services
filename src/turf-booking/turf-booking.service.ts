@@ -26,7 +26,7 @@ import {
   TurfBookingStatus,
   PaymentStatus,
 } from './interfaces/turf-booking.interface';
-import { PaginatedResult } from '../common/interfaces/common';
+import { PaginatedResult } from '../core/interfaces/common';
 import { userSelectFields } from '../users/schemas/user.schema';
 
 @Injectable()

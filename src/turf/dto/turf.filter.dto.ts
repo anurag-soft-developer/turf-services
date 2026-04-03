@@ -1,17 +1,6 @@
 import { z } from 'zod';
-import { createZodDto } from 'nestjs-zod';
-
-// Location Filter Schema
-export const LocationFilterSchema = z.object({
-  lat: z.number().min(-90).max(90).optional(),
-  lng: z.number().min(-180).max(180).optional(),
-  radius: z.number().min(1).max(100).default(10),
-}).transform((data) => ({
-  ...data,
-  lat: data.lat ? Number(data.lat) : undefined,
-  lng: data.lng ? Number(data.lng) : undefined,
-  radius: data.radius ? Number(data.radius) : 10,
-}));
+import { createZodDto, type ZodDto } from 'nestjs-zod';
+import { nearbyLocationQuerySchema } from '../../core/dto';
 
 // Pricing Filter Schema
 export const PricingFilterSchema = z.object({
@@ -37,7 +26,7 @@ export const SearchTurfSchema = z.object({
     z.string().transform((val) => val.split(',').map(v => v.trim())),
     z.array(z.string())
   ]).optional(),
-  location: LocationFilterSchema.optional(),
+  location: nearbyLocationQuerySchema.optional(),
   pricing: PricingFilterSchema.optional(),
   isAvailable: z.union([
     z.boolean(),
@@ -52,5 +41,7 @@ export const SearchTurfSchema = z.object({
   sort: z.string().optional(),
 });
 
-// DTO Classes using nestjs-zod
-export class SearchTurfDto extends createZodDto(SearchTurfSchema) {}
+const SearchTurfDtoBase: ZodDto<typeof SearchTurfSchema> =
+  createZodDto(SearchTurfSchema);
+
+export class SearchTurfDto extends SearchTurfDtoBase {}

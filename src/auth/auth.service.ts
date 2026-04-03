@@ -25,9 +25,9 @@ import {
 } from '../users/schemas/user.schema';
 import { IAuthResponse } from './interfaces/auth.interface';
 import { GoogleProfile } from './strategies/google.strategy';
-import { EmailService } from '../common/services/email.service';
+import { EmailService } from '../core/services/email.service';
 import type { CookieOptions, Response } from 'express';
-import { config } from '../config/env.config';
+import { config } from '../core/config/env.config';
 
 @Injectable()
 export class AuthService {

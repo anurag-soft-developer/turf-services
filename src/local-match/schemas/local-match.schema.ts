@@ -2,10 +2,12 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema, Types } from 'mongoose';
 import { User } from '../../users/schemas/user.schema';
 import { Turf } from '../../turf/schemas/turf.schema';
+import {
+  GeoLocation,
+  GeoLocationSchema,
+} from '../../core/schemas/geo-location.schema';
 
 export type LocalMatchDocument = LocalMatch & Document;
-
-export type GeoPoint = { type: 'Point'; coordinates: [number, number] };
 
 export enum LocalMatchVisibility {
   PUBLIC = 'public',
@@ -30,33 +32,6 @@ export enum JoinRequestStatus {
   ACCEPTED = 'accepted',
   REJECTED = 'rejected',
 }
-
-export const GeoPointSchema = new MongooseSchema(
-  {
-    type: {
-      type: String,
-      enum: ['Point'],
-      required: true,
-    },
-    coordinates: {
-      type: [Number],
-      required: true,
-    },
-  },
-  { _id: false },
-);
-
-@Schema({ _id: false })
-export class LocalMatchLocation {
-  @Prop({ required: true, trim: true })
-  address!: string;
-
-  @Prop({ type: GeoPointSchema, required: true })
-  coordinates!: GeoPoint;
-}
-
-export const LocalMatchLocationSchema =
-  SchemaFactory.createForClass(LocalMatchLocation);
 
 @Schema({ _id: true })
 export class JoinRequestEntry {
@@ -133,8 +108,8 @@ export class LocalMatch {
   })
   joinMode!: LocalMatchJoinMode;
 
-  @Prop({ type: LocalMatchLocationSchema, required: true })
-  location!: LocalMatchLocation;
+  @Prop({ type: GeoLocationSchema, required: true })
+  location!: GeoLocation;
 
   @Prop({
     type: MongooseSchema.Types.ObjectId,

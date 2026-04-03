@@ -1,6 +1,6 @@
 import { createZodDto, type ZodDto } from 'nestjs-zod';
 import { z } from 'zod';
-import { date } from '../../core/dto';
+import { date, nearbyLocationQuerySchema } from '../../core/dto';
 
 const visibilitySchema = z.enum(['public', 'private']);
 const joinModeSchema = z.enum(['open', 'approval']);
@@ -96,19 +96,18 @@ const UpdateLocalMatchSchema = localMatchBaseSchema
     path: ['joinMode'],
   });
 
-const LocalMatchFilterSchema = z.object({
-  visibility: visibilitySchema.optional(),
-  status: localMatchStatusSchema.optional(),
-  sportTypes: z
-    .string()
-    .optional()
-    .transform((s) => (s ? s.split(',').map((x) => x.trim()) : undefined)),
-  nearbyLat: z.coerce.number().gte(-90).lte(90).optional(),
-  nearbyLng: z.coerce.number().gte(-180).lte(180).optional(),
-  nearbyRadiusKm: z.coerce.number().min(0.1).max(500).default(10).optional(),
-  page: z.coerce.number().min(1).default(1),
-  limit: z.coerce.number().min(1).max(50).default(10),
-});
+const LocalMatchFilterSchema = z
+  .object({
+    visibility: visibilitySchema.optional(),
+    status: localMatchStatusSchema.optional(),
+    sportTypes: z
+      .string()
+      .optional()
+      .transform((s) => (s ? s.split(',').map((x) => x.trim()) : undefined)),
+    page: z.coerce.number().min(1).default(1),
+    limit: z.coerce.number().min(1).max(50).default(10),
+  })
+  .extend(nearbyLocationQuerySchema.shape);
 
 const PromoteHostSchema = z.object({
   userId: z.string().min(1),

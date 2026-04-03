@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { render } from '@react-email/components';
 import * as nodemailer from 'nodemailer';
-import { VerificationEmail } from '../../templates/email/verification-email';
-import { PasswordResetEmail } from '../../templates/email/password-reset-email';
-import { config } from '../../config/env.config';
+import { VerificationEmail } from '../templates/email/verification-email';
+import { PasswordResetEmail } from '../templates/email/password-reset-email';
+import { config } from '../config/env.config';
 
 interface SendVerificationEmailOptions {
   to: string;

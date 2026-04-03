@@ -2,7 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
 import morgan from 'morgan';
 import { AppModule } from './app.module';
-import { config } from './config/env.config';
+import { config } from './core/config/env.config';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 async function bootstrap() {

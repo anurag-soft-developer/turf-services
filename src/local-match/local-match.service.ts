@@ -8,16 +8,18 @@ import {
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, PipelineStage, Types } from 'mongoose';
 import {
-  GeoPoint,
   JoinRequestEntry,
   JoinRequestStatus,
   LocalMatch,
   LocalMatchDocument,
   LocalMatchJoinMode,
-  LocalMatchLocation,
   LocalMatchStatus,
   LocalMatchVisibility,
 } from './schemas/local-match.schema';
+import {
+  GeoLocation,
+  GeoPoint,
+} from '../core/schemas/geo-location.schema';
 import { TurfDocument, turfSelectFields } from '../turf/schemas/turf.schema';
 import { TurfService } from '../turf/turf.service';
 import {
@@ -28,7 +30,7 @@ import {
 } from './dto/local-match.dto';
 import omitEmpty from 'omit-empty';
 import { ConnectionsService } from '../connections/connections.service';
-import { PaginatedResult } from '../common/interfaces/common';
+import { PaginatedResult } from '../core/interfaces/common';
 import { userSelectFields } from '../users/schemas/user.schema';
 
 @Injectable()
@@ -63,7 +65,7 @@ export class LocalMatchService {
       ...fromDto
     } = dto;
 
-    let resolvedLocation = location as LocalMatchLocation | undefined;
+    let resolvedLocation = location as GeoLocation | undefined;
     let turfRef: Types.ObjectId | undefined;
     if (turfId) {
       turfRef = new Types.ObjectId(turfId);
@@ -569,17 +571,21 @@ export class LocalMatchService {
     return match.joinRequests.find((r) => r._id?.toString() === requestId);
   }
 
-  private localMatchLocationFromTurf(turf: TurfDocument): LocalMatchLocation {
-    const lat = turf.location.coordinates?.lat;
-    const lng = turf.location.coordinates?.lng;
-    if (lat === undefined || lng === undefined) {
+  private localMatchLocationFromTurf(turf: TurfDocument): GeoLocation {
+    const geo = turf.location.coordinates;
+    if (
+      !geo ||
+      geo.type !== 'Point' ||
+      !Array.isArray(geo.coordinates) ||
+      geo.coordinates.length !== 2
+    ) {
       throw new BadRequestException(
-        'Selected turf has no coordinates; set them on the turf or send an explicit location',
+        'Turf location is invalid',
       );
     }
     return {
       address: turf.location.address,
-      coordinates: { type: 'Point', coordinates: [lng, lat] },
+      coordinates: geo,
     };
   }
 

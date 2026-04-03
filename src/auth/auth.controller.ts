@@ -32,7 +32,7 @@ import { CurrentUser } from './decorators/current-user.decorator';
 import type { IUser } from '../users/interfaces/user.interface';
 import { IAuthResponse } from './interfaces/auth.interface';
 import { GoogleMobileStrategy } from './strategies/google.strategy';
-import { config } from '../config/env.config';
+import { config } from '../core/config/env.config';
 
 @Controller('auth')
 export class AuthController {

@@ -9,7 +9,7 @@ import { Turf, TurfDocument } from './schemas/turf.schema';
 import { CreateTurfDto, UpdateTurfDto } from './dto/turf.dto';
 import { SearchTurfDto } from './dto/turf.filter.dto';
 import { ITurf } from './interfaces/turf.interface';
-import { PaginatedResult } from '../common/interfaces/common';
+import { PaginatedResult } from '../core/interfaces/common';
 import { userSelectFields } from '../users/schemas/user.schema';
 
 @Injectable()
@@ -183,15 +183,18 @@ export class TurfService {
 
     // Location-based search (using geospatial query)
     let geoNearStage: PipelineStage | null = null;
-    if (location?.lat && location?.lng) {
+    if (
+      location?.nearbyLat !== undefined &&
+      location?.nearbyLng !== undefined
+    ) {
       geoNearStage = {
         $geoNear: {
           near: {
             type: 'Point',
-            coordinates: [location.lng, location.lat], // MongoDB expects [longitude, latitude]
+            coordinates: [location.nearbyLng, location.nearbyLat],
           },
           distanceField: 'distance',
-          maxDistance: (location.radius || 10) * 1000, // Convert km to meters
+          maxDistance: (location.nearbyRadiusKm ?? 10) * 1000,
           spherical: true,
           query: query, // Apply other filters here
         },

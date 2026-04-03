@@ -20,7 +20,7 @@ import {
   ReportReviewDto,
   ModerateReviewDto,
 } from './dto/turf-review.dto';
-import { PaginatedResult } from '../common/interfaces/common';
+import { PaginatedResult } from '../core/interfaces/common';
 import { userSelectFields } from '../users/schemas/user.schema';
 
 @Injectable()

@@ -7,7 +7,7 @@ import {
 } from 'passport-google-oauth20';
 import { OAuth2Client } from 'google-auth-library';
 import { AuthService } from '../auth.service';
-import { config } from '../../config/env.config';
+import { config } from '../../core/config/env.config';
 
 @Injectable()
 export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {

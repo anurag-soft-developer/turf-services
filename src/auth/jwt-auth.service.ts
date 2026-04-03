@@ -3,7 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import type { IJwtPayload } from './interfaces/auth.interface';
 import type { IUser } from '../users/interfaces/user.interface';
 import { UserDocument } from '../users/schemas/user.schema';
-import { config } from '../config/env.config';
+import { config } from '../core/config/env.config';
 import type { StringValue } from 'ms';
 
 @Injectable()

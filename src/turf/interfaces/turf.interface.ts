@@ -1,11 +1,9 @@
 import { Types } from 'mongoose';
+import type { GeoPoint } from '../../core/schemas/geo-location.schema';
 
 export interface ILocation {
   address: string;
-  coordinates: {
-    lat?: number;
-    lng?: number;
-  };
+  coordinates: GeoPoint;
 }
 
 export interface IDimensions {

@@ -7,8 +7,8 @@ import { AuthService } from './auth.service';
 import { JwtAuthService } from './jwt-auth.service';
 
 import { UsersModule } from '../users/users.module';
-import { config } from '../config/env.config';
-import { EmailService } from '../common/services/email.service';
+import { config } from '../core/config/env.config';
+import { EmailService } from '../core/services/email.service';
 import type { StringValue } from 'ms';
 import { LocalStrategy } from './strategies/local.strategy';
 import { JwtStrategy } from './strategies/jwt.strategy';

@@ -2,12 +2,15 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema,Types } from 'mongoose';
 import {
   ITurf,
-  ILocation,
   IDimensions,
   IPricing,
   IOperatingHours,
 } from '../interfaces/turf.interface';
 import { User } from '../../users/schemas/user.schema';
+import {
+  GeoLocation,
+  GeoLocationSchema,
+} from '../../core/schemas/geo-location.schema';
 
 export type TurfDocument = Omit<ITurf, '_id' | 'createdAt' | 'updatedAt'> & {
   createdAt: Date;
@@ -15,25 +18,6 @@ export type TurfDocument = Omit<ITurf, '_id' | 'createdAt' | 'updatedAt'> & {
 } & Document;
 
 export const turfSelectFields: string = '_id name location images pricing postedBy';
-
-@Schema()
-export class Location implements ILocation {
-  @Prop({ required: true })
-  address!: string;
-
-  @Prop({
-    type: {
-      lat: Number,
-      lng: Number,
-    },
-    required: false,
-    _id: false,
-  })
-  coordinates!: {
-    lat?: number;
-    lng?: number;
-  };
-}
 
 @Schema()
 export class Dimensions implements IDimensions {
@@ -90,10 +74,10 @@ export class Turf extends Document implements TurfDocument {
   description!: string;
 
   @Prop({
-    type: Location,
+    type: GeoLocationSchema,
     required: true,
   })
-  location!: Location;
+  location!: GeoLocation;
 
   @Prop({
     type: [String],

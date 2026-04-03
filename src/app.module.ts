@@ -15,7 +15,7 @@ import { ConnectionsModule } from './connections/connections.module';
 import { LocalMatchModule } from './local-match/local-match.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { ConfigModule } from '@nestjs/config';
-import { config } from './config/env.config';
+import { config } from './core/config/env.config';
 
 @Module({
   imports: [

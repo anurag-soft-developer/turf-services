@@ -1,16 +1,19 @@
 import { z } from 'zod';
-import { createZodDto } from 'nestjs-zod';
+import { createZodDto, type ZodDto } from 'nestjs-zod';
 
-// Coordinates Schema
-export const CoordinatesSchema = z.object({
-  lat: z.number().min(-90).max(90).optional(),
-  lng: z.number().min(-180).max(180).optional(),
+/** GeoJSON Point: coordinates are [longitude, latitude]. */
+const GeoPointSchema = z.object({
+  type: z.literal('Point'),
+  coordinates: z.tuple([
+    z.number().gte(-180).lte(180),
+    z.number().gte(-90).lte(90),
+  ]),
 });
 
-// Location Schema
+// Location Schema (aligned with LocalMatchLocation)
 export const LocationSchema = z.object({
   address: z.string().min(1, 'Address is required'),
-  coordinates: CoordinatesSchema.optional(),
+  coordinates: GeoPointSchema,
 });
 
 // Dimensions Schema
@@ -54,6 +57,10 @@ export const CreateTurfSchema = z.object({
 // Update Turf Schema (partial version of CreateTurfSchema)
 export const UpdateTurfSchema = CreateTurfSchema.partial();
 
-// DTO Classes using nestjs-zod
-export class CreateTurfDto extends createZodDto(CreateTurfSchema) {}
-export class UpdateTurfDto extends createZodDto(UpdateTurfSchema) {}
+const CreateTurfDtoBase: ZodDto<typeof CreateTurfSchema> =
+  createZodDto(CreateTurfSchema);
+const UpdateTurfDtoBase: ZodDto<typeof UpdateTurfSchema> =
+  createZodDto(UpdateTurfSchema);
+
+export class CreateTurfDto extends CreateTurfDtoBase {}
+export class UpdateTurfDto extends UpdateTurfDtoBase {}
