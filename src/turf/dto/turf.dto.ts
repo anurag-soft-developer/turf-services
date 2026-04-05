@@ -1,20 +1,6 @@
 import { z } from 'zod';
 import { createZodDto, type ZodDto } from 'nestjs-zod';
-
-/** GeoJSON Point: coordinates are [longitude, latitude]. */
-const GeoPointSchema = z.object({
-  type: z.literal('Point'),
-  coordinates: z.tuple([
-    z.number().gte(-180).lte(180),
-    z.number().gte(-90).lte(90),
-  ]),
-});
-
-// Location Schema (aligned with LocalMatchLocation)
-export const LocationSchema = z.object({
-  address: z.string().min(1, 'Address is required'),
-  coordinates: GeoPointSchema,
-});
+import { geoLocationSchema } from '../../core/dto';
 
 // Dimensions Schema
 export const DimensionsSchema = z.object({
@@ -43,7 +29,7 @@ export const OperatingHoursSchema = z.object({
 export const CreateTurfSchema = z.object({
   name: z.string().min(1, 'Name is required'),
   description: z.string().min(1, 'Description is required'),
-  location: LocationSchema,
+  location: geoLocationSchema,
   images: z.array(z.string()).optional(),
   amenities: z.array(z.string()).optional(),
   dimensions: DimensionsSchema.optional(),

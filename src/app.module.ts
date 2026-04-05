@@ -12,7 +12,8 @@ import { TurfBookingModule } from './turf-booking/turf-booking.module';
 import { TurfReviewModule } from './turf-review/turf-review.module';
 import { AppMetadataModule } from './app-metadata/app-metadata.module';
 import { ConnectionsModule } from './connections/connections.module';
-import { LocalMatchModule } from './local-match/local-match.module';
+import { TeamModule } from './team/team.module';
+import { PostModule } from './post/post.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { ConfigModule } from '@nestjs/config';
 import { config } from './core/config/env.config';
@@ -28,7 +29,8 @@ import { config } from './core/config/env.config';
     TurfReviewModule,
     AppMetadataModule,
     ConnectionsModule,
-    LocalMatchModule,
+    TeamModule,
+    PostModule,
   ],
   controllers: [AppController],
   providers: [

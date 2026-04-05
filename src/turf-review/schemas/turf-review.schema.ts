@@ -132,7 +132,7 @@ export class TurfReview extends Document implements TurfReviewDocument {
 export const TurfReviewSchema = SchemaFactory.createForClass(TurfReview);
 
 // Compound index to prevent duplicate reviews from same user for same turf
-TurfReviewSchema.index({ turf: 1, reviewedBy: 1 }, { unique: true });
+// TurfReviewSchema.index({ turf: 1, reviewedBy: 1 }, { unique: true });
 
 // Index for turf reviews with rating filtering
 TurfReviewSchema.index({ turf: 1, rating: 1, createdAt: -1 });
