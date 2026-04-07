@@ -11,6 +11,7 @@ export enum TeamMemberStatus {
   RESIGNED = 'resigned',
   REMOVED = 'removed',
   REJECTED = 'rejected',
+  SUSPENDED = 'suspended',
 }
 
 /** Captain / vice-captain; distinct from on-field position. */
@@ -74,6 +75,18 @@ export class TeamMember {
   })
   lineupCategory!: LineupCategory;
 
+  @Prop({ type: Number, min: 1, max: 99 })
+  jerseyNumber?: number;
+
+  @Prop({ type: String, trim: true, maxlength: 50 })
+  nickname?: string;
+
+  @Prop({ type: Boolean, default: false })
+  isVerified!: boolean;
+
+  @Prop({ type: Date })
+  suspendedUntil?: Date;
+
   @Prop({ type: Date })
   joinedAt?: Date;
 
@@ -92,15 +105,24 @@ export class TeamMember {
 
 export const TeamMemberSchema = SchemaFactory.createForClass(TeamMember);
 
-/** At most one pending or active stint per user per team; full history via resigned/removed rows. */
+/** At most one pending, active, or suspended stint per user per team. */
 TeamMemberSchema.index(
   { team: 1, user: 1 },
   {
     unique: true,
     partialFilterExpression: {
-      status: { $in: ['pending', 'active'] },
+      status: { $in: ['pending', 'active', 'suspended'] },
     },
   },
 );
 TeamMemberSchema.index({ team: 1, status: 1 });
 TeamMemberSchema.index({ user: 1, createdAt: -1 });
+/** Enforce unique jersey numbers within a team among active members. */
+TeamMemberSchema.index(
+  { team: 1, jerseyNumber: 1 },
+  {
+    unique: true,
+    sparse: true,
+    partialFilterExpression: { status: 'active' },
+  },
+);

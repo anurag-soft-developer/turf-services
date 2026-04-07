@@ -14,6 +14,8 @@ import {
   TeamDocument,
   TeamStatus,
   TeamVisibility,
+  SPORT_ROSTER_CONFIG,
+  SportType,
 } from './schemas/team.schema';
 import { GeoLocation, GeoPoint } from '../core/schemas/geo-location.schema';
 import {
@@ -86,6 +88,8 @@ export class TeamService {
       visibility,
       status,
       sportType,
+      genderCategory,
+      lookingForMembers,
       page = 1,
       limit = 10,
       location,
@@ -116,6 +120,12 @@ export class TeamService {
     }
     if (sportType) {
       baseMatch.sportType = sportType;
+    }
+    if (genderCategory) {
+      baseMatch.genderCategory = genderCategory;
+    }
+    if (lookingForMembers !== undefined) {
+      baseMatch.lookingForMembers = lookingForMembers;
     }
 
     const skip = (page - 1) * limit;

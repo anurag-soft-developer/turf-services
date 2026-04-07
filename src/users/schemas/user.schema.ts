@@ -1,7 +1,9 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document } from 'mongoose';
+import { Document, Schema as MongooseSchema } from 'mongoose';
 import type { IUser, IOAuthStrategy } from '../interfaces/user.interface';
 import { UserRole } from '../../auth/decorators/roles.decorator';
+import type { PlayerSportEntry } from '../../core/sports/sport-stats';
+import type { EarnedBadge } from '../../core/badges/badges';
 
 export type UserDocument = Omit<
   IUser,
@@ -138,6 +140,40 @@ export class User extends Document implements UserDocument {
     type: Date,
   })
   lastLogin?: Date;
+
+  /**
+   * Career statistics per sport, accumulated across all teams.
+   * One entry per sport the player has participated in.
+   * `stats` is Mixed — shape is determined by `sportType`.
+   */
+  @Prop({
+    type: [
+      {
+        sportType: { type: String, required: true },
+        stats: { type: MongooseSchema.Types.Mixed, default: {} },
+      },
+    ],
+    _id: false,
+    default: [],
+  })
+  playerSportStats!: PlayerSportEntry[];
+
+  /**
+   * Badges earned by the player across all sports.
+   * Each badge carries `sportType` to identify the sport it was earned in.
+   */
+  @Prop({
+    type: [
+      {
+        badgeId: { type: String, required: true },
+        earnedAt: { type: Date, required: true },
+        sportType: { type: String },
+      },
+    ],
+    _id: false,
+    default: [],
+  })
+  badges!: EarnedBadge[];
 
   @Prop({
     type: Date,

@@ -14,6 +14,7 @@ import {
 import { TeamMemberService } from './team-member.service';
 import {
   MyMembershipsFilterDto,
+  SuspendTeamMemberDto,
   TeamMemberFilterDto,
   UpdateTeamMemberDto,
 } from './dto/team-member.dto';
@@ -111,6 +112,34 @@ export class TeamMemberController {
     await this.teamMemberService.removeMember(
       teamId,
       targetUserId,
+      userId.toString(),
+    );
+  }
+
+  @Post(':membershipId/suspend')
+  async suspend(
+    @Param('teamId') teamId: string,
+    @Param('membershipId') membershipId: string,
+    @Body() dto: SuspendTeamMemberDto,
+    @CurrentUser('_id') userId: Types.ObjectId,
+  ) {
+    return this.teamMemberService.suspend(
+      teamId,
+      membershipId,
+      userId.toString(),
+      dto,
+    );
+  }
+
+  @Post(':membershipId/unsuspend')
+  async unsuspend(
+    @Param('teamId') teamId: string,
+    @Param('membershipId') membershipId: string,
+    @CurrentUser('_id') userId: Types.ObjectId,
+  ) {
+    return this.teamMemberService.unsuspend(
+      teamId,
+      membershipId,
       userId.toString(),
     );
   }

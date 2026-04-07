@@ -1,3 +1,6 @@
+import type { PlayerSportEntry } from '../../core/sports/sport-stats';
+import type { EarnedBadge } from '../../core/badges/badges';
+
 export interface IOAuthStrategy {
   provider: 'google' | 'facebook' | 'github' | 'twitter' | 'linkedin';
   id: string;
@@ -27,4 +30,6 @@ export interface IUser extends Profile {
   oAuthStrategies?: IOAuthStrategy[];
   otp?: string;
   otpExpiry?: Date;
+  playerSportStats?: PlayerSportEntry[];
+  badges?: EarnedBadge[];
 }

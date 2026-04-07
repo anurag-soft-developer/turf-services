@@ -22,11 +22,16 @@ import {
   TeamJoinMode,
   TeamStatus,
   TeamVisibility,
+  SPORT_ROSTER_CONFIG,
+  SportType,
 } from '../team/schemas/team.schema';
 import { ConnectionsService } from '../connections/connections.service';
 import { PaginatedResult } from '../core/interfaces/common';
 import { userSelectFields } from '../users/schemas/user.schema';
-import { UpdateTeamMemberDto } from './dto/team-member.dto';
+import {
+  SuspendTeamMemberDto,
+  UpdateTeamMemberDto,
+} from './dto/team-member.dto';
 
 @Injectable()
 export class TeamMemberService {
@@ -356,6 +361,66 @@ export class TeamMemberService {
       }
     }
 
+    if (dto.jerseyNumber !== undefined) {
+      m.jerseyNumber = dto.jerseyNumber === null ? undefined : dto.jerseyNumber;
+    }
+
+    if (dto.nickname !== undefined) {
+      m.nickname = dto.nickname === null ? undefined : dto.nickname;
+    }
+
+    if (dto.isVerified !== undefined) {
+      m.isVerified = dto.isVerified;
+    }
+
+    await m.save();
+    return (await m.populate(
+      TeamMemberService.populate,
+    )) as TeamMemberDocument;
+  }
+
+  async suspend(
+    teamId: string,
+    membershipId: string,
+    ownerUserId: string,
+    dto: SuspendTeamMemberDto,
+  ): Promise<TeamMemberDocument> {
+    const team = await this.teamService.requireTeam(teamId);
+    this.teamService.assertOwner(team, ownerUserId);
+
+    const m = await this.requireMembership(membershipId, teamId);
+    if (m.status !== TeamMemberStatus.ACTIVE) {
+      throw new BadRequestException('Only active members can be suspended');
+    }
+
+    if (m.user.toString() === team.createdBy.toString()) {
+      throw new ForbiddenException('Cannot suspend the team creator');
+    }
+
+    m.status = TeamMemberStatus.SUSPENDED;
+    m.suspendedUntil = dto.suspendedUntil;
+    m.leadershipRole = undefined;
+    await m.save();
+    return (await m.populate(
+      TeamMemberService.populate,
+    )) as TeamMemberDocument;
+  }
+
+  async unsuspend(
+    teamId: string,
+    membershipId: string,
+    ownerUserId: string,
+  ): Promise<TeamMemberDocument> {
+    const team = await this.teamService.requireTeam(teamId);
+    this.teamService.assertOwner(team, ownerUserId);
+
+    const m = await this.requireMembership(membershipId, teamId);
+    if (m.status !== TeamMemberStatus.SUSPENDED) {
+      throw new BadRequestException('Member is not suspended');
+    }
+
+    m.status = TeamMemberStatus.ACTIVE;
+    m.suspendedUntil = undefined;
     await m.save();
     return (await m.populate(
       TeamMemberService.populate,
@@ -399,10 +464,12 @@ export class TeamMemberService {
 
   private async assertRosterHasRoom(
     teamId: string,
-    team: { maxRosterSize: number },
+    team: { sportType: string },
   ): Promise<void> {
+    const config = SPORT_ROSTER_CONFIG[team.sportType as SportType];
+    const max = config?.max ?? 500;
     const n = await this.countActiveMembers(teamId);
-    if (n >= team.maxRosterSize) {
+    if (n >= max) {
       throw new ConflictException('Team roster is full');
     }
   }
@@ -414,11 +481,17 @@ export class TeamMemberService {
     const existing = await this.teamMemberModel.findOne({
       team: new Types.ObjectId(teamId),
       user: new Types.ObjectId(userId),
-      status: { $in: [TeamMemberStatus.PENDING, TeamMemberStatus.ACTIVE] },
+      status: {
+        $in: [
+          TeamMemberStatus.PENDING,
+          TeamMemberStatus.ACTIVE,
+          TeamMemberStatus.SUSPENDED,
+        ],
+      },
     });
     if (existing) {
       throw new ConflictException(
-        'You already have an active or pending membership for this team',
+        'You already have an active, pending, or suspended membership for this team',
       );
     }
   }
