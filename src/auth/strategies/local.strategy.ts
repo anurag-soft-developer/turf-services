@@ -15,6 +15,9 @@ export class LocalStrategy extends PassportStrategy(Strategy) {
   async validate(email: string, password: string) {
     try {
       const result = await this.authService.login({ email, password });
+      if (!('user' in result)) {
+        throw new UnauthorizedException('OTP verification required');
+      }
       return result.user;
     } catch (error) {
       throw new UnauthorizedException('Invalid credentials');

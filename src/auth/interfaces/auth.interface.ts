@@ -14,3 +14,9 @@ export interface IAuthResponse {
   accessToken: string;
   refreshToken: string;
 }
+
+export interface IAuthOtpChallengeResponse {
+  message: string;
+  requiresOtp: true;
+  email: string;
+}

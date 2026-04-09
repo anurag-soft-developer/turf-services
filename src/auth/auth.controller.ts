@@ -13,32 +13,32 @@ import {
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { AuthService } from './auth.service';
-import { UsersService } from '../users/users.service';
 import {
   RegisterDto,
   LoginDto,
   ChangePasswordDto,
-  UpdateProfileDto,
   SendVerificationEmailDto,
   VerifyEmailDto,
   ForgotPasswordDto,
   ResetPasswordDto,
   GoogleMobileAuthDto,
+  VerifyLoginOtpDto,
+  UpdateTwoFactorDto,
 } from './dto/auth.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { GoogleAuthGuard } from './guards/google-auth.guard';
 import { Public } from './decorators/public.decorator';
 import { CurrentUser } from './decorators/current-user.decorator';
-import type { IUser } from '../users/interfaces/user.interface';
-import { IAuthResponse } from './interfaces/auth.interface';
+import type { IUser, Profile } from '../users/interfaces/user.interface';
+import { IAuthOtpChallengeResponse, IAuthResponse } from './interfaces/auth.interface';
 import { GoogleMobileStrategy } from './strategies/google.strategy';
 import { config } from '../core/config/env.config';
+import { UsersService } from '../users/users.service';
 
 @Controller('auth')
 export class AuthController {
   constructor(
     private authService: AuthService,
-    private usersService: UsersService,
     private googleMobileStrategy: GoogleMobileStrategy,
   ) {}
 
@@ -66,16 +66,34 @@ export class AuthController {
   async login(
     @Body() loginDto: LoginDto,
     @Res({ passthrough: true }) res: Response,
-  ): Promise<IAuthResponse> {
+  ): Promise<IAuthResponse | IAuthOtpChallengeResponse> {
     const authResult = await this.authService.login(loginDto);
 
-    // Set HTTP-only cookies
+    if ('accessToken' in authResult && 'refreshToken' in authResult) {
+      // Set HTTP-only cookies
+      this.authService.setCookies(
+        res,
+        authResult.accessToken,
+        authResult.refreshToken,
+      );
+    }
+
+    return authResult;
+  }
+
+  @Public()
+  @Post('login/verify-otp')
+  @HttpCode(HttpStatus.OK)
+  async verifyLoginOtp(
+    @Body() verifyLoginOtpDto: VerifyLoginOtpDto,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<IAuthResponse> {
+    const authResult = await this.authService.verifyLoginOtp(verifyLoginOtpDto);
     this.authService.setCookies(
       res,
       authResult.accessToken,
       authResult.refreshToken,
     );
-
     return authResult;
   }
 
@@ -152,29 +170,12 @@ export class AuthController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Get('profile')
-  async getProfile(@CurrentUser() user: IUser) {
-    return this.authService.sanitizeProfile(user);
-  }
-
-  @UseGuards(JwtAuthGuard)
   @Get('status')
   async getAuthStatus(@CurrentUser() user: IUser) {
     return {
       isAuthenticated: true,
-      user: this.authService.sanitizeProfile(user),
+      user: UsersService.sanitizeProfile(user),
     };
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @Patch('profile')
-  async updateProfile(
-    @CurrentUser() user: IUser,
-    @Body() updateProfileDto: UpdateProfileDto,
-  ): Promise<IUser> {
-    return (
-      await this.usersService.updateProfile(user._id, updateProfileDto)
-    ).toObject();
   }
 
   @UseGuards(JwtAuthGuard)
@@ -186,6 +187,33 @@ export class AuthController {
   ): Promise<{ message: string }> {
     await this.authService.changePassword(user._id, changePasswordDto);
     return { message: 'Password changed successfully' };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('change-password/send-otp')
+  @HttpCode(HttpStatus.OK)
+  async sendChangePasswordOtp(
+    @CurrentUser() user: IUser,
+  ): Promise<{ message: string }> {
+    return this.authService.sendChangePasswordOtp(user._id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('2fa-setting/send-otp')
+  @HttpCode(HttpStatus.OK)
+  async sendTwoFactorOtp(
+    @CurrentUser() user: IUser,
+  ): Promise<{ message: string }> {
+    return this.authService.sendTwoFactorOtp(user._id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Patch('2fa-setting')
+  async updateTwoFactor(
+    @CurrentUser() user: IUser,
+    @Body() updateTwoFactorDto: UpdateTwoFactorDto,
+  ): Promise<Profile> {
+    return await this.authService.updateTwoFactor(user._id, updateTwoFactorDto);
   }
 
   @Public()

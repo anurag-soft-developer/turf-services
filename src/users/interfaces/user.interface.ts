@@ -19,17 +19,32 @@ export interface Profile {
   isActive?: boolean;
   isVerified?: boolean;
   isEmailVerified?: boolean;
+  twoFactorEnabled?: boolean;
+  emailNotificationsEnabled?: boolean;
+  smsNotificationsEnabled?: boolean;
+  playerSportStats?: PlayerSportEntry[];
+  badges?: EarnedBadge[];
+  isPasswordExists?: boolean;
   phone?: string;
   lastLogin?: string;
   createdAt: string;
   updatedAt: string;
 }
 
+export interface PublicProfile extends Pick<
+  Profile,
+  | '_id'
+  | 'fullName'
+  | 'avatar'
+  | 'bio'
+  | 'isVerified'
+  | 'playerSportStats'
+  | 'badges'
+> {}
+
 export interface IUser extends Profile {
   password?: string;
   oAuthStrategies?: IOAuthStrategy[];
   otp?: string;
   otpExpiry?: Date;
-  playerSportStats?: PlayerSportEntry[];
-  badges?: EarnedBadge[];
 }

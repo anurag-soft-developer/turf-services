@@ -1,2 +1,1 @@
-export { VerificationEmail } from './email/verification-email';
-export { PasswordResetEmail } from './email/password-reset-email';
+export { OtpEmailTemplate } from './email/otp-email';

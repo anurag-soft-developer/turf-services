@@ -15,6 +15,9 @@ import {
   VerifyEmailDto,
   ForgotPasswordDto,
   ResetPasswordDto,
+  VerifyLoginOtpDto,
+  UpdateTwoFactorDto,
+  UpdateNotificationSettingsDto,
 } from './dto/auth.dto';
 import type { IUser, Profile } from '../users/interfaces/user.interface';
 import ms from 'ms';
@@ -23,7 +26,10 @@ import {
   OtpKeys,
   UserDocument,
 } from '../users/schemas/user.schema';
-import { IAuthResponse } from './interfaces/auth.interface';
+import {
+  IAuthOtpChallengeResponse,
+  IAuthResponse,
+} from './interfaces/auth.interface';
 import { GoogleProfile } from './strategies/google.strategy';
 import { EmailService } from '../core/services/email.service';
 import type { CookieOptions, Response } from 'express';
@@ -53,13 +59,15 @@ export class AuthService {
     await this.usersService.updateLastLogin(user._id.toString());
 
     return {
-      user: this.sanitizeProfile(user),
+      user: UsersService.sanitizeProfile(user),
       accessToken,
       refreshToken,
     };
   }
 
-  async login(loginDto: LoginDto): Promise<IAuthResponse> {
+  async login(
+    loginDto: LoginDto,
+  ): Promise<IAuthResponse | IAuthOtpChallengeResponse> {
     const user = await this.usersService.findByEmailWithPassword(
       loginDto.email,
     );
@@ -87,13 +95,72 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
+    if (user.twoFactorEnabled) {
+      const { otpWithKey, otpDisplay } = this.generateOTP(OtpKeys.LOGIN_2FA);
+      const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
+
+      await this.usersService.updateOTP(user._id.toString(), otpWithKey, otpExpiry);
+      await this.emailService.sendOtpEmail({
+        to: user.email,
+        userFullName: user.fullName || 'User',
+        otpCode: otpDisplay,
+        subject: 'Your Login OTP Code',
+        title: 'Login Verification',
+        instructionText:
+          'Use the following one-time password (OTP) to complete your login.',
+      });
+
+      return {
+        message: 'OTP sent to your registered email',
+        requiresOtp: true,
+        email: user.email,
+      };
+    }
+
     const accessToken = this.jwtAuthService.generateAccessToken(user);
     const refreshToken = this.jwtAuthService.generateRefreshToken(user);
 
     await this.usersService.updateLastLogin(user._id.toString());
 
     return {
-      user: this.sanitizeProfile(user),
+      user: UsersService.sanitizeProfile(user),
+      accessToken,
+      refreshToken,
+    };
+  }
+
+  async verifyLoginOtp(verifyLoginOtpDto: VerifyLoginOtpDto): Promise<IAuthResponse> {
+    const user = await this.usersService.findByEmailWithOTP(verifyLoginOtpDto.email);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (!user.isActive) {
+      throw new UnauthorizedException('Account is deactivated');
+    }
+
+    if (!user.otp || !user.otpExpiry) {
+      throw new BadRequestException('No OTP found. Please login again');
+    }
+
+    if (new Date() > user.otpExpiry) {
+      throw new BadRequestException('OTP has expired. Please login again');
+    }
+
+    const { otp: storedOtp, key: storedKey } = this.splitOTPAndKey(user.otp);
+    if (storedKey !== OtpKeys.LOGIN_2FA || storedOtp !== verifyLoginOtpDto.otp) {
+      throw new BadRequestException('Invalid OTP');
+    }
+
+    await this.usersService.clearOTP(user._id.toString());
+
+    const accessToken = this.jwtAuthService.generateAccessToken(user);
+    const refreshToken = this.jwtAuthService.generateRefreshToken(user);
+
+    await this.usersService.updateLastLogin(user._id.toString());
+
+    return {
+      user: UsersService.sanitizeProfile(user),
       accessToken,
       refreshToken,
     };
@@ -130,7 +197,7 @@ export class AuthService {
     await this.usersService.updateLastLogin(user._id.toString());
 
     return {
-      user: this.sanitizeProfile(user),
+      user: UsersService.sanitizeProfile(user),
       accessToken,
       refreshToken,
     };
@@ -154,7 +221,7 @@ export class AuthService {
       const newRefreshToken = this.jwtAuthService.generateRefreshToken(user);
 
       return {
-        user: this.sanitizeProfile(user),
+        user: UsersService.sanitizeProfile(user),
         accessToken: newAccessToken,
         refreshToken: newRefreshToken,
       };
@@ -176,8 +243,29 @@ export class AuthService {
       userBase.email,
     );
 
-    if (!user || !user.password) {
-      throw new BadRequestException('Cannot change password for this account');
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (!user.password) {
+      if (!changePasswordDto.otp) {
+        throw new BadRequestException(
+          'OTP is required to set password for OAuth accounts',
+        );
+      }
+
+      await this.assertValidChangePasswordOtp(
+        userBase.email,
+        changePasswordDto.otp,
+      );
+
+      await this.usersService.changePassword(userId, changePasswordDto.newPassword);
+      await this.usersService.clearOTP(userId);
+      return;
+    }
+
+    if (!changePasswordDto.currentPassword) {
+      throw new BadRequestException('Current password is required');
     }
 
     const isValidPassword = await this.usersService.validatePassword(
@@ -189,10 +277,114 @@ export class AuthService {
       throw new UnauthorizedException('Current password is incorrect');
     }
 
+    if (user.twoFactorEnabled) {
+      if (!changePasswordDto.otp) {
+        throw new BadRequestException(
+          'OTP is required to change your password while two-factor authentication is enabled. Request a code using the password change OTP flow.',
+        );
+      }
+
+      await this.assertValidChangePasswordOtp(
+        userBase.email,
+        changePasswordDto.otp,
+      );
+    }
+
     await this.usersService.changePassword(
       userId,
       changePasswordDto.newPassword,
     );
+
+    if (user.password && user.twoFactorEnabled) {
+      await this.usersService.clearOTP(userId);
+    }
+  }
+
+  async sendChangePasswordOtp(userId: string): Promise<{ message: string }> {
+    const user = await this.usersService.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const { otpWithKey, otpDisplay } = this.generateOTP(OtpKeys.CHANGE_PASSWORD);
+    const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
+    await this.usersService.updateOTP(user._id.toString(), otpWithKey, otpExpiry);
+
+    await this.emailService.sendOtpEmail({
+      to: user.email,
+      userFullName: user.fullName || 'User',
+      otpCode: otpDisplay,
+      subject: 'Password Change OTP',
+      title: 'Password Change Verification',
+      instructionText:
+        'Use the following one-time password (OTP) to continue changing your password.',
+    });
+
+    return { message: 'Password change OTP sent to your email' };
+  }
+
+  async updateTwoFactor(
+    userId: string,
+    updateTwoFactorDto: UpdateTwoFactorDto,
+  ): Promise<Profile> {
+    const userBase = await this.usersService.findById(userId);
+    if (!userBase) {
+      throw new NotFoundException('User not found');
+    }
+
+    const userWithOtp = await this.usersService.findByEmailWithOTP(userBase.email);
+    if (!userWithOtp || !userWithOtp.otp || !userWithOtp.otpExpiry) {
+      throw new BadRequestException('No 2FA OTP found. Please request a new one');
+    }
+
+    if (new Date() > userWithOtp.otpExpiry) {
+      throw new BadRequestException('2FA OTP has expired. Please request a new one');
+    }
+
+    const { otp: storedOtp, key: storedKey } = this.splitOTPAndKey(userWithOtp.otp);
+    if (storedKey !== OtpKeys.UPDATE_2FA || storedOtp !== updateTwoFactorDto.otp) {
+      throw new BadRequestException('Invalid OTP for 2FA update');
+    }
+
+    const user = await this.usersService.updateById(userId, {
+      twoFactorEnabled: updateTwoFactorDto.enabled,
+    });
+    await this.usersService.clearOTP(userId);
+    return UsersService.sanitizeProfile(user);
+  }
+
+  async sendTwoFactorOtp(userId: string): Promise<{ message: string }> {
+    const user = await this.usersService.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const { otpWithKey, otpDisplay } = this.generateOTP(OtpKeys.UPDATE_2FA);
+    const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
+    await this.usersService.updateOTP(user._id.toString(), otpWithKey, otpExpiry);
+
+    await this.emailService.sendOtpEmail({
+      to: user.email,
+      userFullName: user.fullName || 'User',
+      otpCode: otpDisplay,
+      subject: '2FA Settings OTP',
+      title: '2FA Settings Verification',
+      instructionText:
+        'Use the following one-time password (OTP) to update your 2FA settings.',
+    });
+
+    return { message: '2FA OTP sent to your email' };
+  }
+
+  async updateNotificationSettings(
+    userId: string,
+    updateNotificationSettingsDto: UpdateNotificationSettingsDto,
+  ): Promise<Profile> {
+    const user = await this.usersService.updateById(userId, {
+      emailNotificationsEnabled: updateNotificationSettingsDto.emailNotificationsEnabled,
+      smsNotificationsEnabled: updateNotificationSettingsDto.smsNotificationsEnabled,
+    });
+    return UsersService.sanitizeProfile(user);
   }
 
   async sendVerificationEmail(
@@ -393,6 +585,31 @@ export class AuthService {
     res.clearCookie('refreshToken', clearOptions);
   }
 
+  private async assertValidChangePasswordOtp(
+    email: string,
+    otp: string,
+  ): Promise<void> {
+    const userWithOtp = await this.usersService.findByEmailWithOTP(email);
+    if (!userWithOtp || !userWithOtp.otp || !userWithOtp.otpExpiry) {
+      throw new BadRequestException(
+        'No password change OTP found. Please request a new one',
+      );
+    }
+
+    if (new Date() > userWithOtp.otpExpiry) {
+      throw new BadRequestException(
+        'Password change OTP has expired. Please request a new one',
+      );
+    }
+
+    const { otp: storedOtp, key: storedKey } = this.splitOTPAndKey(
+      userWithOtp.otp,
+    );
+    if (storedKey !== OtpKeys.CHANGE_PASSWORD || storedOtp !== otp) {
+      throw new BadRequestException('Invalid OTP for password change');
+    }
+  }
+
   private generateOTP(key: OtpKeys): {
     otpWithKey: string;
     otpDisplay: string;
@@ -421,25 +638,4 @@ export class AuthService {
     };
   }
 
-  sanitizeProfile(user: IUser | UserDocument): Profile {
-    const createdAt =
-      'createdAt' in user ? user.createdAt.toString() : new Date().toString();
-    const updatedAt =
-      'updatedAt' in user ? user.updatedAt.toString() : new Date().toString();
-    return {
-      _id: user._id.toString(),
-      email: user.email,
-      role: user.role,
-      fullName: user.fullName,
-      avatar: user.avatar,
-      isActive: user.isActive,
-      isVerified: user.isVerified,
-      isEmailVerified: user.isEmailVerified,
-      phone: user.phone,
-      bio: user.bio,
-      lastLogin: user.lastLogin?.toString(),
-      createdAt,
-      updatedAt,
-    };
-  }
 }

@@ -26,6 +26,9 @@ export enum OAuthProvider {
 export enum OtpKeys {
   VERIFY_EMAIL = 'verify_email',
   FORGOT_PASSWORD = 'forgot_password',
+  LOGIN_2FA = 'login_2fa',
+  CHANGE_PASSWORD = 'change_password',
+  UPDATE_2FA = 'update_2fa',
 }
 
 export const userSelectFields: string = '_id fullName avatar email';
@@ -54,7 +57,7 @@ export class User extends Document implements UserDocument {
 
   @Prop({
     type: String,
-    select: false,
+    // select: false,
   })
   password?: string;
 
@@ -113,6 +116,24 @@ export class User extends Document implements UserDocument {
     default: false,
   })
   isEmailVerified?: boolean;
+
+  @Prop({
+    type: Boolean,
+    default: false,
+  })
+  twoFactorEnabled?: boolean;
+
+  @Prop({
+    type: Boolean,
+    default: true,
+  })
+  emailNotificationsEnabled?: boolean;
+
+  @Prop({
+    type: Boolean,
+    default: false,
+  })
+  smsNotificationsEnabled?: boolean;
 
   @Prop({
     type: String,

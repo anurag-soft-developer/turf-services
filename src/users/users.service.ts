@@ -8,8 +8,14 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import * as bcrypt from 'bcryptjs';
 import { OAuthProvider, User, UserDocument } from './schemas/user.schema';
-import type { IUser, IOAuthStrategy } from './interfaces/user.interface';
+import type {
+  IUser,
+  IOAuthStrategy,
+  PublicProfile,
+} from './interfaces/user.interface';
 import { UpdateProfileDto } from '../auth/dto/auth.dto';
+import type { Profile } from './interfaces/user.interface';
+import type { PaginatedResult } from '../core/interfaces/common';
 
 @Injectable()
 export class UsersService {
@@ -243,5 +249,80 @@ export class UsersService {
       otp: undefined,
       otpExpiry: undefined,
     });
+  }
+
+  static sanitizeProfile(user: IUser | UserDocument): Profile {
+    const createdAt =
+      'createdAt' in user ? user.createdAt.toString() : new Date().toString();
+    const updatedAt =
+      'updatedAt' in user ? user.updatedAt.toString() : new Date().toString();
+    const isPasswordExists = 'password' in user && !!user.password?.length;
+    return {
+      _id: user._id.toString(),
+      email: user.email,
+      role: user.role,
+      fullName: user.fullName,
+      bio: user.bio,
+      avatar: user.avatar,
+      isActive: user.isActive,
+      isVerified: user.isVerified,
+      isEmailVerified: user.isEmailVerified,
+      twoFactorEnabled: user.twoFactorEnabled,
+      emailNotificationsEnabled: user.emailNotificationsEnabled,
+      smsNotificationsEnabled: user.smsNotificationsEnabled,
+      phone: user.phone,
+      lastLogin: user.lastLogin?.toString(),
+      isPasswordExists,
+      createdAt,
+      updatedAt,
+    };
+  }
+
+  static sanitizePublicProfile(user: IUser | UserDocument): PublicProfile {
+    const { fullName, avatar, bio, playerSportStats, badges, isVerified } =
+      user;
+    return {
+      _id: user._id.toString(),
+      fullName,
+      avatar,
+      bio,
+      playerSportStats,
+      badges,
+      isVerified,
+    };
+  }
+
+  async searchActivePublicProfiles(
+    query?: string,
+    page: number = 1,
+    limit: number = 10,
+  ): Promise<PaginatedResult<PublicProfile>> {
+    const filter: Record<string, unknown> = { isActive: true };
+
+    if (query) {
+      filter.$or = [
+        { fullName: { $regex: query, $options: 'i' } },
+        { email: { $regex: query, $options: 'i' } },
+      ];
+    }
+
+    const skip = (page - 1) * limit;
+    const [users, total] = await Promise.all([
+      this.userModel
+        .find(filter)
+        .skip(skip)
+        .limit(limit)
+        .sort({ createdAt: -1 })
+        .exec(),
+      this.userModel.countDocuments(filter).exec(),
+    ]);
+
+    return {
+      data: users.map((user) => UsersService.sanitizePublicProfile(user)),
+      totalDocuments: total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit) || 1,
+    };
   }
 }
