@@ -90,6 +90,7 @@ export class TeamService {
       sportType,
       genderCategory,
       lookingForMembers,
+      teamOpenForMatch,
       page = 1,
       limit = 10,
       location,
@@ -126,6 +127,9 @@ export class TeamService {
     }
     if (lookingForMembers !== undefined) {
       baseMatch.lookingForMembers = lookingForMembers;
+    }
+    if (teamOpenForMatch !== undefined) {
+      baseMatch.teamOpenForMatch = teamOpenForMatch;
     }
 
     const skip = (page - 1) * limit;

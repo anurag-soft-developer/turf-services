@@ -90,6 +90,26 @@ export class TeamMemberService {
     return !!found;
   }
 
+  async hasActiveLeadershipMembership(
+    teamId: string,
+    userId: string,
+    leadershipRoles: LeadershipRole[],
+  ): Promise<boolean> {
+    const found = await this.teamMemberModel.findOne({
+      team: new Types.ObjectId(teamId),
+      user: new Types.ObjectId(userId),
+      status: TeamMemberStatus.ACTIVE,
+      leadershipRole: { $in: leadershipRoles },
+    });
+    return !!found;
+  }
+
+  async distinctTeamIdsByMembershipFilter(
+    filter: Record<string, unknown>,
+  ): Promise<Types.ObjectId[]> {
+    return this.teamMemberModel.distinct('team', filter);
+  }
+
   async findManyForTeam(
     teamId: string,
     viewerId: string,

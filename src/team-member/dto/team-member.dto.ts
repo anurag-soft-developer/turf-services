@@ -43,16 +43,11 @@ const MyMembershipsFilterSchema = z.object({
   limit: z.coerce.number().min(1).max(100).default(20),
 });
 
-const UpdateTeamMemberDtoBase: ZodDto<typeof UpdateTeamMemberSchema> =
-  createZodDto(UpdateTeamMemberSchema);
-const SuspendTeamMemberDtoBase: ZodDto<typeof SuspendTeamMemberSchema> =
-  createZodDto(SuspendTeamMemberSchema);
-const TeamMemberFilterDtoBase: ZodDto<typeof TeamMemberFilterSchema> =
-  createZodDto(TeamMemberFilterSchema);
-const MyMembershipsFilterDtoBase: ZodDto<typeof MyMembershipsFilterSchema> =
-  createZodDto(MyMembershipsFilterSchema);
-
-export class UpdateTeamMemberDto extends UpdateTeamMemberDtoBase {}
-export class SuspendTeamMemberDto extends SuspendTeamMemberDtoBase {}
-export class TeamMemberFilterDto extends TeamMemberFilterDtoBase {}
-export class MyMembershipsFilterDto extends MyMembershipsFilterDtoBase {}
+export class UpdateTeamMemberDto extends createZodDto(UpdateTeamMemberSchema) {}
+export class SuspendTeamMemberDto extends createZodDto(
+  SuspendTeamMemberSchema,
+) {}
+export class TeamMemberFilterDto extends createZodDto(TeamMemberFilterSchema) {}
+export class MyMembershipsFilterDto extends createZodDto(
+  MyMembershipsFilterSchema,
+) {}

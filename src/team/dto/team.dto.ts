@@ -49,6 +49,7 @@ const teamBaseSchema = z.object({
   preferredPlayDays: z.array(dayOfWeekSchema).max(7).optional(),
   preferredTimeSlot: preferredTimeSlotSchema.optional(),
   lookingForMembers: z.boolean().optional(),
+  teamOpenForMatch: z.boolean().optional(),
   pinnedNotices: z.array(z.string().trim().min(1).max(500)).max(10).optional(),
 });
 
@@ -103,22 +104,16 @@ const TeamFilterSchema = z.object({
   page: z.coerce.number().min(1).default(1),
   limit: z.coerce.number().min(1).max(50).default(10),
   location: nearbyLocationQuerySchema.optional(),
+  teamOpenForMatch: z.enum(['true', 'false']).transform((v) => v === 'true').optional(),
 });
 
 const PromoteOwnerSchema = z.object({
   userId: z.string().min(1),
 });
 
-const CreateTeamDtoBase: ZodDto<typeof CreateTeamSchema> =
-  createZodDto(CreateTeamSchema);
-const UpdateTeamDtoBase: ZodDto<typeof UpdateTeamSchema> =
-  createZodDto(UpdateTeamSchema);
-const TeamFilterDtoBase: ZodDto<typeof TeamFilterSchema> =
-  createZodDto(TeamFilterSchema);
-const PromoteOwnerDtoBase: ZodDto<typeof PromoteOwnerSchema> =
-  createZodDto(PromoteOwnerSchema);
 
-export class CreateTeamDto extends CreateTeamDtoBase {}
-export class UpdateTeamDto extends UpdateTeamDtoBase {}
-export class TeamFilterDto extends TeamFilterDtoBase {}
-export class PromoteOwnerDto extends PromoteOwnerDtoBase {}
+
+export class CreateTeamDto extends createZodDto(CreateTeamSchema) {}
+export class UpdateTeamDto extends createZodDto(UpdateTeamSchema) {}
+export class TeamFilterDto extends  createZodDto(TeamFilterSchema) {}
+export class PromoteOwnerDto extends  createZodDto(PromoteOwnerSchema) {}

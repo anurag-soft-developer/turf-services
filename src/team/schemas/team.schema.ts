@@ -217,6 +217,9 @@ export class Team {
   @Prop({ type: Boolean, default: false })
   lookingForMembers!: boolean;
 
+  @Prop({ type: Boolean, default: false })
+  teamOpenForMatch!: boolean;
+
   /** Pinned announcements shown on the team page. */
   @Prop({ type: [String], default: [] })
   pinnedNotices!: string[];
@@ -270,4 +273,5 @@ TeamSchema.index({ visibility: 1, status: 1, sportType: 1 });
 TeamSchema.index({ createdBy: 1 });
 TeamSchema.index({ ownerIds: 1 });
 TeamSchema.index({ lookingForMembers: 1, status: 1 });
+TeamSchema.index({ teamOpenForMatch: 1, status: 1, sportType: 1 });
 TeamSchema.index({ tags: 1 });
