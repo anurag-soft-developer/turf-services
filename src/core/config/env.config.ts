@@ -11,6 +11,9 @@ class ConfigValidationError extends Error {
 export function validateConfig() {
   try {
     const config = {
+
+      CHAT_BATCH_INTERNAL_TOKEN: process.env.CHAT_BATCH_INTERNAL_TOKEN!,
+
       // Database
       MONGODB_URI: process.env.MONGODB_URI!,
 

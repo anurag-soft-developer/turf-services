@@ -18,6 +18,7 @@ import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { ConfigModule } from '@nestjs/config';
 import { config } from './core/config/env.config';
 import { MatchmakingModule } from './matchmaking/matchmaking.module';
+import { ChatModule } from './chat/chat.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { MatchmakingModule } from './matchmaking/matchmaking.module';
     TeamModule,
     PostModule,
     MatchmakingModule,
+    ChatModule,
   ],
   controllers: [AppController],
   providers: [
