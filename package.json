@@ -20,7 +20,8 @@
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },
   "dependencies": {
-    "@turf-services/shared": "file:../turf-services-shared",
+    "@aws-sdk/client-s3": "^3.1030.0",
+    "@aws-sdk/s3-request-presigner": "^3.1030.0",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.3",
     "@nestjs/core": "^11.0.1",
@@ -29,6 +30,7 @@
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.0.1",
     "@react-email/components": "^1.0.8",
+    "@turf-services/shared": "file:../turf-services-shared",
     "@types/morgan": "^1.9.10",
     "@types/nodemailer": "^7.0.11",
     "@types/react": "^19.2.14",

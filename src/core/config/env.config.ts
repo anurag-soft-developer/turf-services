@@ -42,6 +42,16 @@ export function validateConfig() {
       SMTP_USER: process.env.SMTP_USER!,
       SMTP_PASS: process.env.SMTP_PASS!,
       SMTP_FROM: process.env.SMTP_FROM!,
+
+      // DigitalOcean Spaces
+      SPACES_REGION: process.env.SPACES_REGION!,
+      SPACES_ENDPOINT: process.env.SPACES_ENDPOINT!,
+      SPACES_BUCKET: process.env.SPACES_BUCKET!,
+      SPACES_ACCESS_KEY_ID: process.env.SPACES_ACCESS_KEY_ID!,
+      SPACES_SECRET_ACCESS_KEY: process.env.SPACES_SECRET_ACCESS_KEY!,
+      SPACES_CDN_BASE_URL: process.env.SPACES_CDN_BASE_URL || '',
+      SPACES_SIGNED_URL_TTL_SECONDS:
+        process.env.SPACES_SIGNED_URL_TTL_SECONDS || '900',
     };
 
     const missingKeys = Object.entries(config)

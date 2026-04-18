@@ -74,16 +74,7 @@ const CreateMediaSchema = z.object({
   caption: z.string().trim().max(500).optional(),
 });
 
-const CreatePostDtoBase: ZodDto<typeof CreatePostSchema> =
-  createZodDto(CreatePostSchema);
-const UpdatePostDtoBase: ZodDto<typeof UpdatePostSchema> =
-  createZodDto(UpdatePostSchema);
-const PostFilterDtoBase: ZodDto<typeof PostFilterSchema> =
-  createZodDto(PostFilterSchema);
-const CreateMediaDtoBase: ZodDto<typeof CreateMediaSchema> =
-  createZodDto(CreateMediaSchema);
-
-export class CreatePostDto extends CreatePostDtoBase {}
-export class UpdatePostDto extends UpdatePostDtoBase {}
-export class PostFilterDto extends PostFilterDtoBase {}
-export class CreateMediaDto extends CreateMediaDtoBase {}
+export class CreatePostDto extends createZodDto(CreatePostSchema) {}
+export class UpdatePostDto extends createZodDto(UpdatePostSchema) {}
+export class PostFilterDto extends createZodDto(PostFilterSchema) {}
+export class CreateMediaDto extends createZodDto(CreateMediaSchema) {}

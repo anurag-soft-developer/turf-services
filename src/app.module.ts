@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { APP_GUARD, APP_PIPE } from '@nestjs/core';
 import { ZodValidationPipe } from 'nestjs-zod';
-
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
@@ -19,6 +18,7 @@ import { ConfigModule } from '@nestjs/config';
 import { config } from './core/config/env.config';
 import { MatchmakingModule } from './matchmaking/matchmaking.module';
 import { ChatModule } from './chat/chat.module';
+import { StorageModule } from './storage/storage.module';
 
 @Module({
   imports: [
@@ -35,6 +35,7 @@ import { ChatModule } from './chat/chat.module';
     PostModule,
     MatchmakingModule,
     ChatModule,
+    StorageModule,
   ],
   controllers: [AppController],
   providers: [
