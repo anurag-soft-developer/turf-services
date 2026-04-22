@@ -5,6 +5,7 @@ import {
   NotFoundException,
   ForbiddenException,
 } from '@nestjs/common';
+import moment from 'moment';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, PopulateOptions, QueryFilter } from 'mongoose';
 import {
@@ -25,6 +26,7 @@ import {
 import {
   TurfBookingStatus,
   PaymentStatus,
+  ITurfTimeSlotListing,
 } from './interfaces/turf-booking.interface';
 import { PaginatedResult } from '../core/interfaces/common';
 import { userSelectFields } from '../users/schemas/user.schema';
@@ -236,6 +238,104 @@ export class TurfBookingService {
     return await (
       await booking.save()
     ).populate(TurfBookingService.populateOptions);
+  }
+
+  /**
+   * Builds 1-hour slots between the turf operating window for the given calendar day
+   * and marks overlap with pending/confirmed bookings.
+   */
+  async getTimeSlotsForDate(
+    turfId: string,
+    dateStr: string,
+  ): Promise<ITurfTimeSlotListing[]> {
+    const turfDoc = await this.turfModel.findById(turfId);
+    if (!turfDoc) {
+      throw new NotFoundException('Turf not found');
+    }
+
+    const dayRef = moment(dateStr).startOf('day').toDate();
+
+    const { operatingHours } = turfDoc;
+    const openTime = new Date(dayRef);
+    const closeTime = new Date(dayRef);
+
+    if (operatingHours?.open && operatingHours?.close) {
+      const [openHour, openMin] = operatingHours.open.split(':').map(Number);
+      const [closeHour, closeMin] = operatingHours.close.split(':').map(Number);
+      openTime.setHours(openHour, openMin, 0, 0);
+      closeTime.setHours(closeHour, closeMin, 0, 0);
+      if (closeTime <= openTime) {
+        closeTime.setDate(closeTime.getDate() + 1);
+      }
+    } else {
+      openTime.setHours(6, 0, 0, 0);
+      closeTime.setHours(23, 0, 0, 0);
+    }
+
+    const HOUR_MS = 60 * 60 * 1000;
+    const slotStarts: Date[] = [];
+    for (
+      let t = openTime.getTime();
+      t + HOUR_MS <= closeTime.getTime();
+      t += HOUR_MS
+    ) {
+      slotStarts.push(new Date(t));
+    }
+
+    const bookings = await this.turfBookingModel
+      .find({
+        turf: turfId,
+        status: {
+          $in: [TurfBookingStatus.PENDING, TurfBookingStatus.CONFIRMED],
+        },
+        timeSlots: {
+          $elemMatch: {
+            startTime: { $lt: closeTime },
+            endTime: { $gt: openTime },
+          },
+        },
+      })
+      .select('timeSlots')
+      .lean()
+      .exec();
+
+    const now = new Date();
+    const result: ITurfTimeSlotListing[] = [];
+
+    for (const slotStart of slotStarts) {
+      const slotEnd = new Date(slotStart.getTime() + HOUR_MS);
+      let isBooked = false;
+      for (const b of bookings) {
+        for (const ts of b.timeSlots) {
+          const bStart = new Date(ts.startTime);
+          const bEnd = new Date(ts.endTime);
+          if (slotStart < bEnd && slotEnd > bStart) {
+            isBooked = true;
+            break;
+          }
+        }
+        if (isBooked) break;
+      }
+
+      const price = this.calculateBookingAmount(
+        turfDoc,
+        slotStart,
+        slotEnd,
+      );
+
+      const isPast = slotEnd <= now;
+      const isAvailable = turfDoc.isAvailable && !isBooked && !isPast;
+
+      result.push({
+        startTime: slotStart.toISOString(),
+        endTime: slotEnd.toISOString(),
+        isAvailable,
+        price,
+        isBooked,
+      });
+    }
+
+    return result;
   }
 
   async checkTimeSlotAvailability(
@@ -641,11 +741,11 @@ export class TurfBookingService {
     }
   }
 
-  private async calculateBookingAmount(
+  private calculateBookingAmount(
     turf: TurfDocument,
     startTime: Date,
     endTime: Date,
-  ): Promise<number> {
+  ): number {
     const durationHours =
       (endTime.getTime() - startTime.getTime()) / (1000 * 60 * 60);
 

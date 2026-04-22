@@ -4,6 +4,15 @@ export interface ITimeSlot {
   endTime: Date;
 }
 
+/** One-hour (or configurable) bookable window for a calendar day listing. */
+export interface ITurfTimeSlotListing {
+  startTime: string;
+  endTime: string;
+  isAvailable: boolean;
+  price: number;
+  isBooked: boolean;
+}
+
 export interface ITurfBooking {
   _id: string;
   turf: Types.ObjectId; // Turf ID

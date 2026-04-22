@@ -17,6 +17,7 @@ import {
   UpdateTurfBookingDto,
   TurfBookingFilterDto,
   CheckTurfAvailabilityDto,
+  TimeSlotsQueryDto,
 } from './dto/turf-booking.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -34,7 +35,7 @@ export class TurfBookingController {
   ) {
     const booking = await this.turfBookingService.createBooking(
       createBookingDto,
-      userId,
+      userId.toString(),
     );
 
     return booking;
@@ -53,7 +54,7 @@ export class TurfBookingController {
     @Query() filterDto: TurfBookingFilterDto,
   ) {
     const result = await this.turfBookingService.findUserBookings(
-      userId,
+      userId.toString(),
       filterDto,
     );
 
@@ -66,11 +67,19 @@ export class TurfBookingController {
     @Query() filterDto: TurfBookingFilterDto,
   ) {
     const result = await this.turfBookingService.findTurfOwnerBookings(
-      userId,
+      userId.toString(),
       filterDto,
     );
 
     return result;
+  }
+
+  @Get('turf/:turfId/time-slots')
+  async getTimeSlots(
+    @Param('turfId') turfId: string,
+    @Query() query: TimeSlotsQueryDto,
+  ) {
+    return this.turfBookingService.getTimeSlotsForDate(turfId, query.date);
   }
 
   @Get('turf/:turfId')
@@ -119,7 +128,7 @@ export class TurfBookingController {
     const booking = await this.turfBookingService.updateBooking(
       id,
       updateBookingDto,
-      userId,
+      userId.toString(),
     );
 
     return booking;

@@ -1,4 +1,4 @@
-import { createZodDto } from 'nestjs-zod';
+import { createZodDto, type ZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 import { TurfBookingStatus, PaymentStatus } from '../interfaces/turf-booking.interface';
 import { date } from '../../core/dto';
@@ -44,7 +44,12 @@ const CheckTurfAvailabilitySchema = z.object({
   excludeBookingId: z.string().optional(),
 });
 
+const TimeSlotsQuerySchema = z.object({
+  date: date,
+});
+
 export class CreateTurfBookingDto extends createZodDto(CreateTurfBookingSchema) {}
 export class UpdateTurfBookingDto extends createZodDto(UpdateTurfBookingSchema) {}
 export class TurfBookingFilterDto extends createZodDto(TurfBookingFilterSchema) {}
 export class CheckTurfAvailabilityDto extends createZodDto(CheckTurfAvailabilitySchema) {}
+export class TimeSlotsQueryDto extends createZodDto(TimeSlotsQuerySchema) {}

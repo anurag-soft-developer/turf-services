@@ -3,7 +3,7 @@ import { createZodDto, type ZodDto } from 'nestjs-zod';
 
 export const date = z
   .string()
-  .refine((val) => !isNaN(Date.parse(val)), 'Invalid start time format');
+  .refine((val) => !isNaN(Date.parse(val)), 'Invalid date time format');
 
 /**
  * GeoJSON Point: coordinates are [longitude, latitude].
