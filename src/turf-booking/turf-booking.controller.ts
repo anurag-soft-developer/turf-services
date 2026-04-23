@@ -13,31 +13,43 @@ import {
 } from '@nestjs/common';
 import { TurfBookingService } from './turf-booking.service';
 import {
-  CreateTurfBookingDto,
   UpdateTurfBookingDto,
   TurfBookingFilterDto,
   CheckTurfAvailabilityDto,
   TimeSlotsQueryDto,
+  CreateBookingOrderDto,
+  VerifyRazorpayPaymentDto,
 } from './dto/turf-booking.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-
 @Controller('turf-bookings')
 @UseGuards(JwtAuthGuard)
 export class TurfBookingController {
   constructor(private readonly turfBookingService: TurfBookingService) {}
 
-  @Post()
+
+  @Post('create-order')
   @HttpCode(HttpStatus.CREATED)
-  async createBooking(
-    @Body() createBookingDto: CreateTurfBookingDto,
+  async createBookingOrder(
+    @Body() createBookingDto: CreateBookingOrderDto,
     @CurrentUser('_id') userId: string,
   ) {
-    const booking = await this.turfBookingService.createBooking(
+    return this.turfBookingService.createBookingOrder(
       createBookingDto,
       userId.toString(),
     );
+  }
 
+  @Post('verify-payment')
+  @HttpCode(HttpStatus.OK)
+  async verifyRazorpayPayment(
+    @Body() verifyDto: VerifyRazorpayPaymentDto,
+    @CurrentUser('_id') userId: string,
+  ) {
+    const booking = await this.turfBookingService.verifyRazorpayPayment(
+      verifyDto,
+      userId.toString(),
+    );
     return booking;
   }
 

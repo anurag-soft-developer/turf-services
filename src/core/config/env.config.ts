@@ -11,7 +11,6 @@ class ConfigValidationError extends Error {
 export function validateConfig() {
   try {
     const config = {
-
       CHAT_BATCH_INTERNAL_TOKEN: process.env.CHAT_BATCH_INTERNAL_TOKEN!,
 
       // Database
@@ -35,6 +34,11 @@ export function validateConfig() {
       FRONTEND_URL: process.env.FRONTEND_URL!,
       APP_NAME: process.env.APP_NAME!,
       APP_VERSION: process.env.APP_VERSION || '1.0.0',
+
+      // Razorpay
+      RAJORPAY_KEY_ID: process.env.RAJORPAY_KEY_ID!,
+      RAJORPAY_KEY_SECRET: process.env.RAJORPAY_KEY_SECRET!,
+      RAJORPAY_WEBHOOK_SECRET: process.env.RAJORPAY_WEBHOOK_SECRET || '',
 
       // Email Configuration
       SMTP_HOST: process.env.SMTP_HOST!,

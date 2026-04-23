@@ -5,6 +5,7 @@ import {
   ITimeSlot,
   TurfBookingStatus,
   PaymentStatus,
+  SlotHoldStatus,
 } from '../interfaces/turf-booking.interface';
 import { User } from '../../users/schemas/user.schema';
 import { Turf } from '../../turf/schemas/turf.schema';
@@ -44,7 +45,7 @@ export class TurfBooking extends Document implements TurfBookingDocument {
     required: true,
     ref: Turf.name,
   })
-  turf!: Types.ObjectId;   
+  turf!: Types.ObjectId;
 
   @Prop({
     type: MongooseSchema.Types.ObjectId,
@@ -57,10 +58,10 @@ export class TurfBooking extends Document implements TurfBookingDocument {
     type: [TimeSlot],
     required: true,
     validate: {
-      validator: function(slots: ITimeSlot[]) {
+      validator: function (slots: ITimeSlot[]) {
         return slots && slots.length > 0;
       },
-      message: 'At least one time slot is required'
+      message: 'At least one time slot is required',
     },
   })
   timeSlots!: ITimeSlot[];
@@ -99,6 +100,49 @@ export class TurfBooking extends Document implements TurfBookingDocument {
 
   @Prop({
     type: String,
+  })
+  razorpayOrderId?: string;
+
+  @Prop({
+    type: String,
+  })
+  invoiceId?: string;
+
+  @Prop({
+    type: Date,
+  })
+  paidAt?: Date;
+
+  @Prop({
+    type: Date,
+  })
+  paymentExpiresAt?: Date;
+
+  @Prop({
+    type: String,
+    enum: Object.values(SlotHoldStatus),
+    default: SlotHoldStatus.ACTIVE,
+  })
+  slotHoldStatus?: SlotHoldStatus;
+
+  @Prop({
+    type: String,
+  })
+  refundId?: string;
+
+  @Prop({
+    type: Date,
+  })
+  refundedAt?: Date;
+
+  @Prop({
+    type: Number,
+    min: 0,
+  })
+  refundAmount?: number;
+
+  @Prop({
+    type: String,
     maxlength: 500,
   })
   notes?: string;
@@ -130,8 +174,6 @@ export class TurfBooking extends Document implements TurfBookingDocument {
     default: Date.now,
   })
   updatedAt!: Date;
-
-
 }
 
 export const TurfBookingSchema = SchemaFactory.createForClass(TurfBooking);
@@ -146,8 +188,12 @@ TurfBookingSchema.index({
 // Index for user bookings
 TurfBookingSchema.index({ bookedBy: 1, createdAt: -1 });
 
-// Index for turf owner to see their turf bookings  
+// Index for turf owner to see their turf bookings
 TurfBookingSchema.index({ turf: 1, createdAt: -1 });
+
+// Index for resolving bookings from payment webhooks
+TurfBookingSchema.index({ razorpayOrderId: 1 });
+TurfBookingSchema.index({ paymentId: 1 });
 
 // Index on timeSlots for efficient overlap detection
 TurfBookingSchema.index({
@@ -157,21 +203,9 @@ TurfBookingSchema.index({
   status: 1,
 });
 
-// // Pre-save validation to ensure endTime is after startTime
-// TurfBookingSchema.pre('save', function (next,) {
-//   if (this.startTime >= this.endTime) {
-//     const error = new Error('End time must be after start time');
-//     return next(error);
-//   }
-
-//   // Ensure booking is not in the past (with 5min buffer)
-//   const now = new Date();
-//   const bufferTime = new Date(now.getTime() + 5 * 60 * 1000); // 5 minutes buffer
-
-//   if (this.startTime < bufferTime) {
-//     const error = new Error('Cannot book a slot in the past');
-//     return next(error);
-//   }
-
-//   next();
-// });
+// Index for expiring pending slot holds
+TurfBookingSchema.index({
+  status: 1,
+  slotHoldStatus: 1,
+  paymentExpiresAt: 1,
+});

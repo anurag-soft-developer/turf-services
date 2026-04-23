@@ -2,11 +2,9 @@ import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { TurfBookingService } from './turf-booking.service';
 import { TurfBookingController } from './turf-booking.controller';
-import {
-  TurfBooking,
-  TurfBookingSchema,
-} from './schemas/turf-booking.schema';
+import { TurfBooking, TurfBookingSchema } from './schemas/turf-booking.schema';
 import { Turf, TurfSchema } from '../turf/schemas/turf.schema';
+import { RajorpayService } from '../core/services/rajorpay/rajorpay.service';
 
 @Module({
   imports: [
@@ -16,7 +14,7 @@ import { Turf, TurfSchema } from '../turf/schemas/turf.schema';
     ]),
   ],
   controllers: [TurfBookingController],
-  providers: [TurfBookingService],
+  providers: [TurfBookingService, RajorpayService],
   exports: [TurfBookingService],
 })
 export class TurfBookingModule {}

@@ -1,4 +1,4 @@
-import { Types} from 'mongoose';
+import { Types } from 'mongoose';
 export interface ITimeSlot {
   startTime: Date;
   endTime: Date;
@@ -23,12 +23,20 @@ export interface ITurfBooking {
   status: TurfBookingStatus;
   paymentStatus: PaymentStatus;
   paymentId?: string;
+  razorpayOrderId?: string;
+  invoiceId?: string;
+  paidAt?: string | Date;
+  paymentExpiresAt?: string | Date;
+  slotHoldStatus?: SlotHoldStatus;
+  refundId?: string;
+  refundedAt?: string | Date;
+  refundAmount?: number;
   notes?: string;
   cancelReason?: string;
-  cancelledAt?: string;
-  confirmedAt?: string;
-  createdAt: string;
-  updatedAt: string;
+  cancelledAt?: string | Date;
+  confirmedAt?: string | Date;
+  createdAt: string | Date;
+  updatedAt: string | Date;
 }
 
 export enum TurfBookingStatus {
@@ -43,4 +51,9 @@ export enum PaymentStatus {
   PAID = 'paid',
   FAILED = 'failed',
   REFUNDED = 'refunded',
+}
+
+export enum SlotHoldStatus {
+  ACTIVE = 'active',
+  RELEASED = 'released',
 }

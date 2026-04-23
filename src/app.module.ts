@@ -19,6 +19,7 @@ import { config } from './core/config/env.config';
 import { MatchmakingModule } from './matchmaking/matchmaking.module';
 import { ChatModule } from './chat/chat.module';
 import { StorageModule } from './storage/storage.module';
+import { WebhookModule } from './webhook/webhook.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { StorageModule } from './storage/storage.module';
     UsersModule,
     TurfModule,
     TurfBookingModule,
+    WebhookModule,
     TurfReviewModule,
     AppMetadataModule,
     ConnectionsModule,

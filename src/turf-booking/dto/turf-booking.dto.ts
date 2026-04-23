@@ -1,6 +1,9 @@
 import { createZodDto, type ZodDto } from 'nestjs-zod';
 import { z } from 'zod';
-import { TurfBookingStatus, PaymentStatus } from '../interfaces/turf-booking.interface';
+import {
+  TurfBookingStatus,
+  PaymentStatus,
+} from '../interfaces/turf-booking.interface';
 import { date } from '../../core/dto';
 
 const TimeSlotSchema = z.object({
@@ -10,13 +13,18 @@ const TimeSlotSchema = z.object({
 
 const CreateTurfBookingSchema = z.object({
   turf: z.string().min(1, 'Turf ID is required'),
-  timeSlots: z.array(TimeSlotSchema).min(1, 'At least one time slot is required'),
+  timeSlots: z
+    .array(TimeSlotSchema)
+    .min(1, 'At least one time slot is required'),
   playerCount: z.number().min(1).max(50).optional(),
   notes: z.string().max(500).optional(),
 });
 
 const UpdateTurfBookingSchema = z.object({
-  timeSlots: z.array(TimeSlotSchema).min(1, 'At least one time slot is required').optional(),
+  timeSlots: z
+    .array(TimeSlotSchema)
+    .min(1, 'At least one time slot is required')
+    .optional(),
   playerCount: z.number().min(1).max(50).optional(),
   notes: z.string().max(500).optional(),
   status: z.enum(TurfBookingStatus).optional(),
@@ -40,7 +48,9 @@ const TurfBookingFilterSchema = z.object({
 
 const CheckTurfAvailabilitySchema = z.object({
   turf: z.string().min(1, 'Turf ID is required'),
-  timeSlots: z.array(TimeSlotSchema).min(1, 'At least one time slot is required'),
+  timeSlots: z
+    .array(TimeSlotSchema)
+    .min(1, 'At least one time slot is required'),
   excludeBookingId: z.string().optional(),
 });
 
@@ -48,8 +58,31 @@ const TimeSlotsQuerySchema = z.object({
   date: date,
 });
 
-export class CreateTurfBookingDto extends createZodDto(CreateTurfBookingSchema) {}
-export class UpdateTurfBookingDto extends createZodDto(UpdateTurfBookingSchema) {}
-export class TurfBookingFilterDto extends createZodDto(TurfBookingFilterSchema) {}
-export class CheckTurfAvailabilityDto extends createZodDto(CheckTurfAvailabilitySchema) {}
+const CreateBookingOrderSchema = CreateTurfBookingSchema;
+
+const VerifyRazorpayPaymentSchema = z.object({
+  bookingId: z.string().min(1, 'Booking ID is required'),
+  razorpay_order_id: z.string().min(1, 'Razorpay order id is required'),
+  razorpay_payment_id: z.string().min(1, 'Razorpay payment id is required'),
+  razorpay_signature: z.string().min(1, 'Razorpay signature is required'),
+});
+
+export class CreateTurfBookingDto extends createZodDto(
+  CreateTurfBookingSchema,
+) {}
+export class UpdateTurfBookingDto extends createZodDto(
+  UpdateTurfBookingSchema,
+) {}
+export class TurfBookingFilterDto extends createZodDto(
+  TurfBookingFilterSchema,
+) {}
+export class CheckTurfAvailabilityDto extends createZodDto(
+  CheckTurfAvailabilitySchema,
+) {}
 export class TimeSlotsQueryDto extends createZodDto(TimeSlotsQuerySchema) {}
+export class CreateBookingOrderDto extends createZodDto(
+  CreateBookingOrderSchema,
+) {}
+export class VerifyRazorpayPaymentDto extends createZodDto(
+  VerifyRazorpayPaymentSchema,
+) {}
