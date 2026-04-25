@@ -38,16 +38,24 @@ export class RajorpayService {
       .update(`${params.razorpayOrderId}|${params.razorpayPaymentId}`)
       .digest('hex');
 
-    return this.safeEqualSignatures(expectedSignature, params.razorpaySignature);
+    return this.safeEqualSignatures(
+      expectedSignature,
+      params.razorpaySignature,
+    );
   }
 
-  verifyWebhookSignature(rawPayload: unknown, signature: string): boolean {
+  verifyWebhookSignature(
+    rawPayload: string | Buffer,
+    signature: string,
+  ): boolean {
     if (!config.RAJORPAY_WEBHOOK_SECRET) {
       throw new BadRequestException('Webhook secret is not configured');
     }
-
-    const expectedSignature = createHmac('sha256', config.RAJORPAY_WEBHOOK_SECRET)
-      .update(JSON.stringify(rawPayload))
+    const expectedSignature = createHmac(
+      'sha256',
+      config.RAJORPAY_WEBHOOK_SECRET,
+    )
+      .update(rawPayload)
       .digest('hex');
     return this.safeEqualSignatures(expectedSignature, signature);
   }

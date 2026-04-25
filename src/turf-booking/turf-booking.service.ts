@@ -403,11 +403,14 @@ export class TurfBookingService {
     }
 
     const HOUR_MS = 60 * 60 * 1000;
+    const slotBufferMins = Math.max(0, Number(turfDoc.slotBufferMins) || 0);
+    const slotBufferMs = slotBufferMins * 60 * 1000;
+    const slotStepMs = HOUR_MS + slotBufferMs;
     const slotStarts: Date[] = [];
     for (
       let t = openTime.getTime();
       t + HOUR_MS <= closeTime.getTime();
-      t += HOUR_MS
+      t += slotStepMs
     ) {
       slotStarts.push(new Date(t));
     }
@@ -432,12 +435,15 @@ export class TurfBookingService {
 
     for (const slotStart of slotStarts) {
       const slotEnd = new Date(slotStart.getTime() + HOUR_MS);
+      const slotBufferedEnd = new Date(slotEnd.getTime() + slotBufferMs);
       let isBooked = false;
       for (const b of bookings) {
         for (const ts of b.timeSlots) {
           const bStart = new Date(ts.startTime);
-          const bEnd = new Date(ts.endTime);
-          if (slotStart < bEnd && slotEnd > bStart) {
+          const bBufferedEnd = new Date(
+            new Date(ts.endTime).getTime() + slotBufferMs,
+          );
+          if (slotStart < bBufferedEnd && slotBufferedEnd > bStart) {
             isBooked = true;
             break;
           }

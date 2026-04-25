@@ -14,15 +14,19 @@ export class RazorpayWebhookService {
 
   async handleRazorpayWebhook(
     webhookPayload: RazorpayWebhookPayloadDto,
+    rawWebhookPayload: string,
     webhookSignature: string | undefined,
   ): Promise<{ processed: boolean; message: string }> {
     await this.turfBookingService.releaseExpiredSlotHolds();
     if (!webhookSignature) {
       throw new BadRequestException('Missing webhook signature');
     }
+    if (!rawWebhookPayload) {
+      throw new BadRequestException('Missing raw webhook payload');
+    }
 
     const isValidSignature = this.rajorpayService.verifyWebhookSignature(
-      webhookPayload,
+      rawWebhookPayload,
       webhookSignature,
     );
     if (!isValidSignature) {

@@ -6,7 +6,7 @@ import { config } from './core/config/env.config';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { rawBody: true });
   const logger = new Logger('Bootstrap');
 
   app.use(helmet());
