@@ -13,7 +13,7 @@ const SendMatchRequestSchema = z.object({
   fromTeamId: z.string().min(1),
   toTeamId: z.string().min(1),
   notes: z.string().trim().max(500).optional(),
-  expiresInMinutes: z.coerce.number().int().min(1).max(1440).default(120),
+  expiresInMinutes: z.coerce.number().int().min(1).optional(),
 });
 
 const ListNegotiationsFilterSchema = z.object({
@@ -90,6 +90,31 @@ const RecordMatchResultSchema = z
     path: ['winnerTeam'],
   });
 
+const UpdateTeamMatchSchema = z
+  .object({
+    turfBookingId: z.union([z.string().min(1), z.null()]).optional(),
+    notes: z.string().trim().max(500).optional(),
+    /** New accepted slot; server creates the proposal and `selectedSlotProposalId`. */
+    slot: z
+      .object({
+        startTime: z.coerce.date(),
+        endTime: z.coerce.date(),
+      })
+      .optional(),
+    /** Turf id for a new accepted proposal; server creates the proposal and `selectedTurfProposalId`. */
+    turfId: z.string().min(1).optional(),
+    /** When set, must be from or to team and the caller must belong to that team. If omitted, caller must belong to exactly one of the two teams (or pass this when they belong to both). */
+    selfAcceptTeamId: z.string().min(1).optional(),
+  })
+  .refine(
+    (d) =>
+      d.turfBookingId !== undefined ||
+      d.notes !== undefined ||
+      d.slot !== undefined ||
+      d.turfId !== undefined,
+    { message: 'Provide at least one field to update' },
+  );
+
 export class SendMatchRequestDto extends createZodDto(SendMatchRequestSchema) {}
 export class ListNegotiationsFilterDto extends createZodDto(
   ListNegotiationsFilterSchema,
@@ -111,3 +136,4 @@ export class CancelNegotiationDto extends createZodDto(
 export class RecordMatchResultDto extends createZodDto(
   RecordMatchResultSchema,
 ) {}
+export class UpdateTeamMatchDto extends createZodDto(UpdateTeamMatchSchema) {}

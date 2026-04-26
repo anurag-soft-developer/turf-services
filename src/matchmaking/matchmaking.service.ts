@@ -6,27 +6,18 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, PopulateOptions, Types } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { PaginatedResult } from '../core/interfaces/common';
-import {
-  Team,
-  TeamDocument,
-  TeamStatus,
-  teamPopulateSelectFields,
-} from '../team/schemas/team.schema';
-import { turfSelectFields } from '../turf/schemas/turf.schema';
+import { Team, TeamDocument } from '../team/schemas/team.schema';
 import { TeamService } from '../team/team.service';
 import { TeamMemberService } from '../team-member/team-member.service';
-import {
-  LeadershipRole,
-  TeamMemberStatus,
-} from '../team-member/schemas/team-member.schema';
 import {
   CancelNegotiationDto,
   DecideSlotProposalDto,
   DecideTurfProposalDto,
   FinalizeScheduleDto,
   ListNegotiationsFilterDto,
+  UpdateTeamMatchDto,
   ProposeScheduleDto,
   RecordMatchResultDto,
   RespondMatchRequestDto,
@@ -39,24 +30,28 @@ import {
   TeamMatchStatus,
   MatchProposalStatus,
 } from './schemas/team-match.schema';
-
-const TERMINAL_PRE_PLAY_STATUSES = [
-  TeamMatchStatus.REJECTED,
-  TeamMatchStatus.EXPIRED,
-  TeamMatchStatus.CANCELLED,
-];
-
-const TERMINAL_ALL_STATUSES = [
-  ...TERMINAL_PRE_PLAY_STATUSES,
-  TeamMatchStatus.COMPLETED,
-  TeamMatchStatus.DRAW,
-];
-
-const teamMatchPopulate: PopulateOptions[] = [
-  { path: 'fromTeam', select: teamPopulateSelectFields },
-  { path: 'toTeam', select: teamPopulateSelectFields },
-  { path: 'proposedTurfs.turfId', select: turfSelectFields },
-];
+import {
+  TEAM_MATCH_POPULATE,
+  TERMINAL_ALL_STATUSES,
+} from './util/matchmaking.constants';
+import {
+  appendSelfAcceptedSlotProposal,
+  appendSelfAcceptedTurfProposal,
+  resolveSelfAcceptTeamId,
+} from './util/matchmaking-staff-selection.helpers';
+import {
+  applyStatusUpdate,
+  assertCanActForTeam,
+  assertMatchAllowsProposalWithdraw,
+  assertSchedulePhaseActionable,
+  assertTeamEligibleForMatching,
+  ensureMatchHasTeam,
+  getActorTeamIds,
+  isSlotProposalWithdrawable,
+  isTurfProposalWithdrawable,
+  populateTeamMatch,
+  requireTeamMatch,
+} from './util/matchmaking.helpers';
 
 @Injectable()
 export class MatchmakingService {
@@ -68,12 +63,6 @@ export class MatchmakingService {
     private readonly teamService: TeamService,
     private readonly teamMemberService: TeamMemberService,
   ) {}
-
-  private async populateTeamMatch(
-    doc: TeamMatchDocument,
-  ): Promise<TeamMatchDocument> {
-    return (await doc.populate(teamMatchPopulate)) as TeamMatchDocument;
-  }
 
   async sendRequest(
     userId: string,
@@ -87,9 +76,14 @@ export class MatchmakingService {
       this.teamService.requireTeam(dto.fromTeamId),
       this.teamService.requireTeam(dto.toTeamId),
     ]);
-    await this.assertCanActForTeam(fromTeam, userId);
-    this.assertTeamEligibleForMatching(fromTeam);
-    this.assertTeamEligibleForMatching(toTeam);
+    await assertCanActForTeam(
+      fromTeam,
+      userId,
+      this.teamService,
+      this.teamMemberService,
+    );
+    assertTeamEligibleForMatching(fromTeam);
+    assertTeamEligibleForMatching(toTeam);
 
     if (fromTeam.sportType !== toTeam.sportType) {
       throw new BadRequestException('Teams must be in the same sport');
@@ -101,7 +95,6 @@ export class MatchmakingService {
       );
     }
 
-    const expiresAt = new Date(Date.now() + dto.expiresInMinutes * 60 * 1000);
     const now = new Date();
     const uid = new Types.ObjectId(userId);
 
@@ -115,9 +108,15 @@ export class MatchmakingService {
         statusUpdatedBy: uid,
         statusUpdatedAt: now,
         notes: dto.notes,
-        expiresAt,
+        ...(dto.expiresInMinutes != null
+          ? {
+              expiresAt: new Date(
+                Date.now() + dto.expiresInMinutes * 60 * 1000,
+              ),
+            }
+          : {}),
       });
-      return this.populateTeamMatch(created);
+      return populateTeamMatch(created);
     } catch {
       throw new ConflictException(
         'An active match request already exists for this team pair',
@@ -129,7 +128,11 @@ export class MatchmakingService {
     userId: string,
     filter: ListNegotiationsFilterDto,
   ): Promise<PaginatedResult<TeamMatchDocument>> {
-    const actorTeamIds = await this.getActorTeamIds(userId);
+    const actorTeamIds = await getActorTeamIds(
+      userId,
+      this.teamModel,
+      this.teamMemberService,
+    );
     if (actorTeamIds.length === 0) {
       return {
         data: [],
@@ -175,7 +178,7 @@ export class MatchmakingService {
     const [data, totalDocuments] = await Promise.all([
       this.teamMatchModel
         .find(q)
-        .populate(teamMatchPopulate)
+        .populate(TEAM_MATCH_POPULATE)
         .sort({ updatedAt: -1 })
         .skip(skip)
         .limit(filter.limit)
@@ -198,11 +201,16 @@ export class MatchmakingService {
     dto: RespondMatchRequestDto,
   ): Promise<TeamMatchDocument> {
     const [match, actorTeam] = await Promise.all([
-      this.requireTeamMatch(matchId),
+      requireTeamMatch(this.teamMatchModel, matchId),
       this.teamService.requireTeam(dto.actorTeamId),
     ]);
-    await this.assertCanActForTeam(actorTeam, userId);
-    this.assertSchedulePhaseActionable(match);
+    await assertCanActForTeam(
+      actorTeam,
+      userId,
+      this.teamService,
+      this.teamMemberService,
+    );
+    assertSchedulePhaseActionable(match);
 
     if (match.status !== TeamMatchStatus.REQUESTED) {
       throw new BadRequestException(
@@ -216,14 +224,14 @@ export class MatchmakingService {
     }
 
     if (dto.action === 'reject') {
-      this.applyStatusUpdate(match, TeamMatchStatus.REJECTED, userId);
+      applyStatusUpdate(match, TeamMatchStatus.REJECTED, userId);
       match.closedAt = new Date();
     } else {
-      this.applyStatusUpdate(match, TeamMatchStatus.ACCEPTED, userId);
+      applyStatusUpdate(match, TeamMatchStatus.ACCEPTED, userId);
     }
 
     await match.save();
-    return this.populateTeamMatch(match);
+    return populateTeamMatch(match);
   }
 
   async proposeSchedule(
@@ -232,22 +240,17 @@ export class MatchmakingService {
     dto: ProposeScheduleDto,
   ): Promise<TeamMatchDocument> {
     const [match, actorTeam] = await Promise.all([
-      this.requireTeamMatch(matchId),
+      requireTeamMatch(this.teamMatchModel, matchId),
       this.teamService.requireTeam(dto.actorTeamId),
     ]);
-    await this.assertCanActForTeam(actorTeam, userId);
-    this.assertSchedulePhaseActionable(match);
-    this.ensureMatchHasTeam(match, actorTeam._id);
-
-    if (
-      ![TeamMatchStatus.ACCEPTED, TeamMatchStatus.NEGOTIATING].includes(
-        match.status,
-      )
-    ) {
-      throw new BadRequestException(
-        'Schedule can be proposed only after the request is accepted',
-      );
-    }
+    await assertCanActForTeam(
+      actorTeam,
+      userId,
+      this.teamService,
+      this.teamMemberService,
+    );
+    assertSchedulePhaseActionable(match);
+    ensureMatchHasTeam(match, actorTeam._id);
 
     const now = new Date();
     if (dto.proposedSlots?.length) {
@@ -281,10 +284,10 @@ export class MatchmakingService {
         });
       }
     }
-    this.applyStatusUpdate(match, TeamMatchStatus.NEGOTIATING, userId);
+    applyStatusUpdate(match, TeamMatchStatus.NEGOTIATING, userId);
     match.notes = dto.notes ?? match.notes;
     await match.save();
-    return this.populateTeamMatch(match);
+    return populateTeamMatch(match);
   }
 
   async decideSlotProposal(
@@ -293,21 +296,26 @@ export class MatchmakingService {
     dto: DecideSlotProposalDto,
   ): Promise<TeamMatchDocument> {
     const [match, actorTeam] = await Promise.all([
-      this.requireTeamMatch(matchId),
+      requireTeamMatch(this.teamMatchModel, matchId),
       this.teamService.requireTeam(dto.actorTeamId),
     ]);
-    await this.assertCanActForTeam(actorTeam, userId);
-    this.ensureMatchHasTeam(match, actorTeam._id);
+    await assertCanActForTeam(
+      actorTeam,
+      userId,
+      this.teamService,
+      this.teamMemberService,
+    );
+    ensureMatchHasTeam(match, actorTeam._id);
 
     if (dto.action === 'withdraw') {
-      this.assertMatchAllowsProposalWithdraw(match);
+      assertMatchAllowsProposalWithdraw(match);
       const proposal = match.proposedSlots.find(
         (p) => p.proposalId.toString() === dto.proposalId,
       );
       if (!proposal) {
         throw new NotFoundException('Slot proposal not found');
       }
-      if (!this.isSlotProposalWithdrawable(match, proposal)) {
+      if (!isSlotProposalWithdrawable(match, proposal)) {
         throw new BadRequestException('Slot proposal cannot be withdrawn');
       }
       proposal.status = MatchProposalStatus.WITHDRAWN;
@@ -317,13 +325,13 @@ export class MatchmakingService {
       proposal.updatedAt = new Date();
       if (match.status === TeamMatchStatus.SCHEDULE_FINALIZED) {
         match.selectedSlotProposalId = undefined;
-        this.applyStatusUpdate(match, TeamMatchStatus.NEGOTIATING, userId);
+        applyStatusUpdate(match, TeamMatchStatus.NEGOTIATING, userId);
       }
       await match.save();
-      return this.populateTeamMatch(match);
+      return populateTeamMatch(match);
     }
 
-    this.assertSchedulePhaseActionable(match);
+    assertSchedulePhaseActionable(match);
     if (match.status !== TeamMatchStatus.NEGOTIATING) {
       throw new BadRequestException(
         'Slot decisions are allowed only while negotiating',
@@ -351,7 +359,7 @@ export class MatchmakingService {
     proposal.reason = dto.reason;
     proposal.updatedAt = new Date();
     await match.save();
-    return this.populateTeamMatch(match);
+    return populateTeamMatch(match);
   }
 
   async decideTurfProposal(
@@ -360,14 +368,19 @@ export class MatchmakingService {
     dto: DecideTurfProposalDto,
   ): Promise<TeamMatchDocument> {
     const [match, actorTeam] = await Promise.all([
-      this.requireTeamMatch(matchId),
+      requireTeamMatch(this.teamMatchModel, matchId),
       this.teamService.requireTeam(dto.actorTeamId),
     ]);
-    await this.assertCanActForTeam(actorTeam, userId);
-    this.ensureMatchHasTeam(match, actorTeam._id);
+    await assertCanActForTeam(
+      actorTeam,
+      userId,
+      this.teamService,
+      this.teamMemberService,
+    );
+    ensureMatchHasTeam(match, actorTeam._id);
 
     if (dto.action === 'withdraw') {
-      this.assertMatchAllowsProposalWithdraw(match);
+      assertMatchAllowsProposalWithdraw(match);
       const proposal = match.proposedTurfs.find(
         (p) => p.proposalId.toString() === dto.proposalId,
       );
@@ -375,7 +388,7 @@ export class MatchmakingService {
         throw new NotFoundException('Turf proposal not found');
       }
 
-      if (!this.isTurfProposalWithdrawable(match, proposal)) {
+      if (!isTurfProposalWithdrawable(match, proposal)) {
         throw new BadRequestException('Turf proposal cannot be withdrawn');
       }
       proposal.status = MatchProposalStatus.WITHDRAWN;
@@ -385,13 +398,13 @@ export class MatchmakingService {
       proposal.updatedAt = new Date();
       if (match.status === TeamMatchStatus.SCHEDULE_FINALIZED) {
         match.selectedTurfProposalId = undefined;
-        this.applyStatusUpdate(match, TeamMatchStatus.NEGOTIATING, userId);
+        applyStatusUpdate(match, TeamMatchStatus.NEGOTIATING, userId);
       }
       await match.save();
-      return this.populateTeamMatch(match);
+      return populateTeamMatch(match);
     }
 
-    this.assertSchedulePhaseActionable(match);
+    assertSchedulePhaseActionable(match);
     if (match.status !== TeamMatchStatus.NEGOTIATING) {
       throw new BadRequestException(
         'Turf decisions are allowed only while negotiating',
@@ -419,7 +432,7 @@ export class MatchmakingService {
     proposal.reason = dto.reason;
     proposal.updatedAt = new Date();
     await match.save();
-    return this.populateTeamMatch(match);
+    return populateTeamMatch(match);
   }
 
   async finalizeSchedule(
@@ -428,12 +441,17 @@ export class MatchmakingService {
     dto: FinalizeScheduleDto,
   ): Promise<TeamMatchDocument> {
     const [match, actorTeam] = await Promise.all([
-      this.requireTeamMatch(matchId),
+      requireTeamMatch(this.teamMatchModel, matchId),
       this.teamService.requireTeam(dto.actorTeamId),
     ]);
-    await this.assertCanActForTeam(actorTeam, userId);
-    this.assertSchedulePhaseActionable(match);
-    this.ensureMatchHasTeam(match, actorTeam._id);
+    await assertCanActForTeam(
+      actorTeam,
+      userId,
+      this.teamService,
+      this.teamMemberService,
+    );
+    assertSchedulePhaseActionable(match);
+    ensureMatchHasTeam(match, actorTeam._id);
 
     if (match.status !== TeamMatchStatus.NEGOTIATING) {
       throw new BadRequestException(
@@ -463,10 +481,10 @@ export class MatchmakingService {
 
     match.selectedSlotProposalId = slotProposal.proposalId;
     match.selectedTurfProposalId = turfProposal.proposalId;
-    this.applyStatusUpdate(match, TeamMatchStatus.SCHEDULE_FINALIZED, userId);
+    applyStatusUpdate(match, TeamMatchStatus.SCHEDULE_FINALIZED, userId);
     match.notes = dto.notes ?? match.notes;
     await match.save();
-    return this.populateTeamMatch(match);
+    return populateTeamMatch(match);
   }
 
   async cancel(
@@ -475,12 +493,17 @@ export class MatchmakingService {
     dto: CancelNegotiationDto,
   ): Promise<TeamMatchDocument> {
     const [match, actorTeam] = await Promise.all([
-      this.requireTeamMatch(matchId),
+      requireTeamMatch(this.teamMatchModel, matchId),
       this.teamService.requireTeam(dto.actorTeamId),
     ]);
-    await this.assertCanActForTeam(actorTeam, userId);
-    this.assertSchedulePhaseActionable(match);
-    this.ensureMatchHasTeam(match, actorTeam._id);
+    await assertCanActForTeam(
+      actorTeam,
+      userId,
+      this.teamService,
+      this.teamMemberService,
+    );
+    assertSchedulePhaseActionable(match);
+    ensureMatchHasTeam(match, actorTeam._id);
 
     if (
       ![
@@ -492,13 +515,13 @@ export class MatchmakingService {
       throw new BadRequestException('This match can no longer be cancelled');
     }
 
-    this.applyStatusUpdate(match, TeamMatchStatus.CANCELLED, userId);
+    applyStatusUpdate(match, TeamMatchStatus.CANCELLED, userId);
     match.closedAt = new Date();
     if (dto.reason) {
       match.notes = dto.reason;
     }
     await match.save();
-    return this.populateTeamMatch(match);
+    return populateTeamMatch(match);
   }
 
   async recordMatchResult(
@@ -507,11 +530,16 @@ export class MatchmakingService {
     dto: RecordMatchResultDto,
   ): Promise<TeamMatchDocument> {
     const [match, actorTeam] = await Promise.all([
-      this.requireTeamMatch(matchId),
+      requireTeamMatch(this.teamMatchModel, matchId),
       this.teamService.requireTeam(dto.actorTeamId),
     ]);
-    await this.assertCanActForTeam(actorTeam, userId);
-    this.ensureMatchHasTeam(match, actorTeam._id);
+    await assertCanActForTeam(
+      actorTeam,
+      userId,
+      this.teamService,
+      this.teamMemberService,
+    );
+    ensureMatchHasTeam(match, actorTeam._id);
 
     if (TERMINAL_ALL_STATUSES.includes(match.status)) {
       throw new BadRequestException('Match is already closed');
@@ -528,10 +556,10 @@ export class MatchmakingService {
     }
 
     if (dto.outcome === 'ongoing') {
-      this.applyStatusUpdate(match, TeamMatchStatus.ONGOING, userId);
+      applyStatusUpdate(match, TeamMatchStatus.ONGOING, userId);
       match.winnerTeam = undefined;
     } else if (dto.outcome === 'draw') {
-      this.applyStatusUpdate(match, TeamMatchStatus.DRAW, userId);
+      applyStatusUpdate(match, TeamMatchStatus.DRAW, userId);
       match.winnerTeam = undefined;
       match.closedAt = new Date();
     } else {
@@ -547,160 +575,84 @@ export class MatchmakingService {
       ) {
         throw new BadRequestException('Winner must be one of the two teams');
       }
-      this.applyStatusUpdate(match, TeamMatchStatus.COMPLETED, userId);
+      applyStatusUpdate(match, TeamMatchStatus.COMPLETED, userId);
       match.winnerTeam = wid;
       match.closedAt = new Date();
     }
 
     await match.save();
-    return this.populateTeamMatch(match);
+    return populateTeamMatch(match);
   }
 
-  private applyStatusUpdate(
-    doc: TeamMatchDocument,
-    status: TeamMatchStatus,
+  /**
+   * Direct field updates. Optional `slot` / `turfId` add new ACCEPTED self-accept proposals
+   * (server generates proposal ids) and set `selectedSlotProposalId` / `selectedTurfProposalId`.
+   * `selfAcceptTeamId` or membership disambiguation applies when `slot` and/or `turfId` are sent.
+   * When both selected ids are set after the update, status becomes `schedule_finalized`
+   * unless the match is already in a terminal pre-play or post-play outcome state.
+   */
+  async update(
+    matchId: string,
     userId: string,
-  ): void {
-    doc.status = status;
-    doc.statusUpdatedBy = new Types.ObjectId(userId);
-    doc.statusUpdatedAt = new Date();
-  }
-
-  private async requireTeamMatch(matchId: string): Promise<TeamMatchDocument> {
-    const doc = await this.teamMatchModel.findById(matchId);
-    if (!doc) {
+    dto: UpdateTeamMatchDto,
+  ): Promise<TeamMatchDocument> {
+    const match = await this.teamMatchModel.findById(matchId);
+    if (!match) {
       throw new NotFoundException('Match not found');
     }
-    if (doc.expiresAt && doc.expiresAt.getTime() < Date.now()) {
-      if (!TERMINAL_ALL_STATUSES.includes(doc.status)) {
-        doc.status = TeamMatchStatus.EXPIRED;
-        doc.closedAt = new Date();
-        doc.statusUpdatedAt = new Date();
-        doc.statusUpdatedBy = undefined;
-        await doc.save();
+
+    if (dto.turfBookingId !== undefined) {
+      match.turfBookingId =
+        dto.turfBookingId === null
+          ? undefined
+          : new Types.ObjectId(dto.turfBookingId);
+    }
+    if (dto.notes !== undefined) {
+      match.notes = dto.notes;
+    }
+
+    const needsSelfTeam = dto.slot !== undefined || dto.turfId !== undefined;
+    const selfTeam = needsSelfTeam
+      ? await resolveSelfAcceptTeamId(
+          match,
+          dto.selfAcceptTeamId,
+          userId,
+          this.teamService,
+          this.teamMemberService,
+        )
+      : undefined;
+
+    if (dto.slot) {
+      appendSelfAcceptedSlotProposal(
+        match,
+        {
+          startTime: new Date(dto.slot.startTime),
+          endTime: new Date(dto.slot.endTime),
+        },
+        selfTeam!,
+      );
+    }
+    if (dto.turfId) {
+      appendSelfAcceptedTurfProposal(match, dto.turfId, selfTeam!);
+    }
+
+    if (match.selectedSlotProposalId && match.selectedTurfProposalId) {
+      const skipFinalize = [
+        TeamMatchStatus.REJECTED,
+        TeamMatchStatus.EXPIRED,
+        TeamMatchStatus.CANCELLED,
+        TeamMatchStatus.COMPLETED,
+        TeamMatchStatus.DRAW,
+        TeamMatchStatus.ONGOING,
+      ].includes(match.status);
+      if (!skipFinalize) {
+        match.status = TeamMatchStatus.SCHEDULE_FINALIZED;
+        match.statusUpdatedAt = new Date();
+        match.statusUpdatedBy = undefined;
       }
     }
-    return doc;
-  }
 
-  private async assertCanActForTeam(
-    team: TeamDocument,
-    userId: string,
-  ): Promise<void> {
-    if (this.teamService.isOwner(team, userId)) {
-      return;
-    }
-    const isLeadership =
-      await this.teamMemberService.hasActiveLeadershipMembership(
-        team._id.toString(),
-        userId,
-        [LeadershipRole.CAPTAIN, LeadershipRole.VICE_CAPTAIN],
-      );
-    if (!isLeadership) {
-      throw new ForbiddenException(
-        'Only owners, captains, or vice captains can perform this action',
-      );
-    }
-  }
-
-  private assertTeamEligibleForMatching(team: TeamDocument): void {
-    if (team.status !== TeamStatus.ACTIVE) {
-      throw new BadRequestException('Only active teams can use matchmaking');
-    }
-  }
-
-  private ensureMatchHasTeam(
-    match: TeamMatchDocument,
-    teamId: Types.ObjectId,
-  ): void {
-    if (
-      match.fromTeam.toString() !== teamId.toString() &&
-      match.toTeam.toString() !== teamId.toString()
-    ) {
-      throw new ForbiddenException('Team is not part of this match');
-    }
-  }
-
-  private assertMatchAllowsProposalWithdraw(match: TeamMatchDocument): void {
-    if (
-      TERMINAL_PRE_PLAY_STATUSES.includes(match.status) ||
-      match.status === TeamMatchStatus.ONGOING ||
-      match.status === TeamMatchStatus.COMPLETED ||
-      match.status === TeamMatchStatus.DRAW
-    ) {
-      throw new BadRequestException(
-        'Proposals cannot be withdrawn for this match state',
-      );
-    }
-  }
-
-  private isSlotProposalWithdrawable(
-    match: TeamMatchDocument,
-    proposal: TeamMatchDocument['proposedSlots'][number],
-  ): boolean {
-    if (proposal.status === MatchProposalStatus.PENDING) {
-      return true;
-    }
-    if (
-      match.status === TeamMatchStatus.SCHEDULE_FINALIZED &&
-      proposal.status === MatchProposalStatus.ACCEPTED &&
-      match.selectedSlotProposalId &&
-      match.selectedSlotProposalId.toString() === proposal.proposalId.toString()
-    ) {
-      return true;
-    }
-    return false;
-  }
-
-  private isTurfProposalWithdrawable(
-    match: TeamMatchDocument,
-    proposal: TeamMatchDocument['proposedTurfs'][number],
-  ): boolean {
-    if (proposal.status === MatchProposalStatus.PENDING) {
-      return true;
-    }
-    if (
-      match.status === TeamMatchStatus.SCHEDULE_FINALIZED &&
-      proposal.status === MatchProposalStatus.ACCEPTED &&
-      match.selectedTurfProposalId &&
-      match.selectedTurfProposalId.toString() === proposal.proposalId.toString()
-    ) {
-      return true;
-    }
-    return false;
-  }
-
-  /** Blocks terminal states for request/schedule negotiation APIs. */
-  private assertSchedulePhaseActionable(match: TeamMatchDocument): void {
-    if (
-      TERMINAL_PRE_PLAY_STATUSES.includes(match.status) ||
-      match.status === TeamMatchStatus.SCHEDULE_FINALIZED ||
-      match.status === TeamMatchStatus.ONGOING ||
-      match.status === TeamMatchStatus.COMPLETED ||
-      match.status === TeamMatchStatus.DRAW
-    ) {
-      throw new BadRequestException(
-        'This match can no longer be updated this way',
-      );
-    }
-  }
-
-  private async getActorTeamIds(userId: string): Promise<Types.ObjectId[]> {
-    const uid = new Types.ObjectId(userId);
-    const [ownedTeams, leadershipTeamIds] = await Promise.all([
-      this.teamModel.distinct('_id', { ownerIds: uid }),
-      this.teamMemberService.distinctTeamIdsByMembershipFilter({
-        user: uid,
-        status: TeamMemberStatus.ACTIVE,
-        leadershipRole: {
-          $in: [LeadershipRole.CAPTAIN, LeadershipRole.VICE_CAPTAIN],
-        },
-      }),
-    ]);
-    const all = new Map<string, Types.ObjectId>();
-    for (const id of [...ownedTeams, ...leadershipTeamIds]) {
-      all.set(id.toString(), id);
-    }
-    return [...all.values()];
+    await match.save();
+    return populateTeamMatch(match);
   }
 }

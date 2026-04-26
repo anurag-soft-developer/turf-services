@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -16,6 +17,7 @@ import {
   DecideTurfProposalDto,
   FinalizeScheduleDto,
   ListNegotiationsFilterDto,
+  UpdateTeamMatchDto,
   ProposeScheduleDto,
   RecordMatchResultDto,
   RespondMatchRequestDto,
@@ -105,5 +107,15 @@ export class MatchmakingController {
     @CurrentUser('_id') userId: Types.ObjectId,
   ) {
     return this.matchmakingService.recordMatchResult(id, userId.toString(), dto);
+  }
+
+  /** Patch booking, notes, optional `slot` / `turfId` (new accepted proposals; ids generated server-side). */
+  @Patch('requests/:id')
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdateTeamMatchDto,
+    @CurrentUser('_id') userId: Types.ObjectId,
+  ) {
+    return this.matchmakingService.update(id, userId.toString(), dto);
   }
 }

@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema, Types } from 'mongoose';
+import { TurfBooking } from '../../turf-booking/schemas/turf-booking.schema';
 import { Team, SportType } from '../../team/schemas/team.schema';
 import { Turf } from '../../turf/schemas/turf.schema';
 import { User } from '../../users/schemas/user.schema';
@@ -46,6 +47,7 @@ export class ProposedSlot {
   slot!: TimeSlotRange;
   proposedByTeamId!: Types.ObjectId;
   status!: MatchProposalStatus;
+  /** For normal flow, the other team accepts; staff `update` may set this equal to `proposedByTeamId`. */
   decidedByTeamId?: Types.ObjectId;
   decidedAt?: Date;
   reason?: string;
@@ -58,6 +60,7 @@ export class ProposedTurf {
   turfId!: Types.ObjectId;
   proposedByTeamId!: Types.ObjectId;
   status!: MatchProposalStatus;
+  /** For normal flow, the other team accepts; staff `update` may set this equal to `proposedByTeamId`. */
   decidedByTeamId?: Types.ObjectId;
   decidedAt?: Date;
   reason?: string;
@@ -190,7 +193,14 @@ export class TeamMatch {
   @Prop({ type: String, trim: true, maxlength: 500 })
   notes?: string;
 
-  @Prop({ type: Date})
+  @Prop({
+    type: MongooseSchema.Types.ObjectId,
+    ref: TurfBooking.name,
+    index: true,
+  })
+  turfBookingId?: Types.ObjectId;
+
+  @Prop({ type: Date })
   expiresAt?: Date;
 
   @Prop({ type: Date })
