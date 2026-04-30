@@ -42,10 +42,7 @@ export const nearbyLocationQuerySchema = z.object({
   .number()
   .min(0.1)
   .max(500)
-  .default(10),
+  .default(100),
 });
 
-const LocationFilterDtoBase: ZodDto<typeof nearbyLocationQuerySchema> =
-  createZodDto(nearbyLocationQuerySchema);
-
-export class LocationFilterDto extends LocationFilterDtoBase {}
+export class LocationFilterDto extends createZodDto(nearbyLocationQuerySchema) {}

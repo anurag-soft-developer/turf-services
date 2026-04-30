@@ -19,6 +19,7 @@ import {
   TimeSlotsQueryDto,
   CreateBookingOrderDto,
   VerifyRazorpayPaymentDto,
+  TurfOwnerBookingStatsQueryDto,
 } from './dto/turf-booking.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -84,6 +85,19 @@ export class TurfBookingController {
     );
 
     return result;
+  }
+
+  @Get('owner-bookings/stats')
+  async getTurfOwnerBookingStats(
+    @CurrentUser('_id') userId: string,
+    @Query() query: TurfOwnerBookingStatsQueryDto,
+  ) {
+    const stats = await this.turfBookingService.getTurfOwnerBookingStats(
+      userId.toString(),
+      query.turfIds,
+    );
+
+    return stats;
   }
 
   @Get('turf/:turfId/time-slots')

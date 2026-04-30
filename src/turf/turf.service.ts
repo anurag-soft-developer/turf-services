@@ -196,7 +196,7 @@ export class TurfService {
             coordinates: [location.nearbyLng, location.nearbyLat],
           },
           distanceField: 'distance',
-          maxDistance: (location.nearbyRadiusKm ?? 10) * 1000,
+          maxDistance: (location.nearbyRadiusKm ?? 100) * 1000,
           spherical: true,
           query: query, // Apply other filters here
         },
@@ -229,8 +229,8 @@ export class TurfService {
     // Add population for postedBy field
     pipeline.push({
       $addFields: {
-        postedByObjectId: { $toObjectId: '$postedBy' }
-      }
+        postedByObjectId: { $toObjectId: '$postedBy' },
+      },
     });
 
     pipeline.push({
@@ -257,15 +257,15 @@ export class TurfService {
           $cond: {
             if: { $gt: [{ $size: '$postedBy' }, 0] },
             then: { $arrayElemAt: ['$postedBy', 0] },
-            else: null
-          }
-        }
-      }
+            else: null,
+          },
+        },
+      },
     });
 
     // Remove the temporary ObjectId field
     pipeline.push({
-      $unset: 'postedByObjectId'
+      $unset: 'postedByObjectId',
     });
 
     // // Add facet for pagination and total count

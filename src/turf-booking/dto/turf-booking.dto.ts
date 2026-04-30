@@ -67,6 +67,20 @@ const VerifyRazorpayPaymentSchema = z.object({
   razorpay_signature: z.string().min(1, 'Razorpay signature is required'),
 });
 
+const TurfOwnerBookingStatsQuerySchema = z.object({
+  turfIds: z
+    .union([
+      z.string().transform((val) =>
+        val
+          .split(',')
+          .map((id) => id.trim())
+          .filter(Boolean),
+      ),
+      z.array(z.string()),
+    ])
+    .optional(),
+});
+
 export class CreateTurfBookingDto extends createZodDto(
   CreateTurfBookingSchema,
 ) {}
@@ -85,4 +99,7 @@ export class CreateBookingOrderDto extends createZodDto(
 ) {}
 export class VerifyRazorpayPaymentDto extends createZodDto(
   VerifyRazorpayPaymentSchema,
+) {}
+export class TurfOwnerBookingStatsQueryDto extends createZodDto(
+  TurfOwnerBookingStatsQuerySchema,
 ) {}

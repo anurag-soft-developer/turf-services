@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import moment from 'moment';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, PopulateOptions, QueryFilter } from 'mongoose';
+import { Model, PopulateOptions, QueryFilter, Types } from 'mongoose';
 import {
   TurfBooking,
   TurfBookingDocument,
@@ -17,6 +17,7 @@ import {
   Turf,
   TurfDocument,
 } from '../turf/schemas/turf.schema';
+import TurfBookingStatsUtility from './utility/turf-booking.stats.utility';
 import {
   CreateTurfBookingDto,
   UpdateTurfBookingDto,
@@ -616,6 +617,303 @@ export class TurfBookingService {
 
     Object.assign(filter, filterDto);
     return this.findAll({ ...filterDto });
+  }
+
+  async getTurfOwnerBookingStats(ownerId: string, turfIds?: string[]) {
+    const ownerTurfIds =
+      await TurfBookingStatsUtility.resolveAndValidateTurfIds(
+        this.turfModel,
+        ownerId,
+        turfIds,
+      );
+
+    const bookingStatusStats: Record<TurfBookingStatus, number> = {
+      [TurfBookingStatus.PENDING]: 0,
+      [TurfBookingStatus.CONFIRMED]: 0,
+      [TurfBookingStatus.CANCELLED]: 0,
+      [TurfBookingStatus.COMPLETED]: 0,
+    };
+
+    if (ownerTurfIds.length === 0) {
+      return {
+        totalBookings: { count: 0 },
+        todaysBookings: {
+          count: 0,
+          trend: '+0%',
+          trendInterval: 'daily' as const,
+        },
+        thisWeekBookings: {
+          count: 0,
+          trend: '+0%',
+          trendInterval: 'weekly' as const,
+        },
+        totalRevenue: {
+          count: 0,
+          trend: '+0%',
+          trendInterval: 'weekly' as const,
+        },
+        completionRate: {
+          count: 0,
+          trend: '+0%',
+          trendInterval: 'weekly' as const,
+        },
+        bookingStatusStats,
+      };
+    }
+
+    const todayStart = moment().startOf('day').toDate();
+    const yesterdayStart = moment().subtract(1, 'day').startOf('day').toDate();
+    const weekStart = moment().startOf('week').toDate();
+    const previousWeekStart = moment()
+      .subtract(1, 'week')
+      .startOf('week')
+      .toDate();
+
+    const groupedStats = await this.turfBookingModel.aggregate<{
+      _id: null;
+      totalBookings: number;
+      todaysBookings: number;
+      yesterdayBookings: number;
+      thisWeekBookings: number;
+      previousWeekBookings: number;
+      totalRevenue: number;
+      thisWeekRevenue: number;
+      previousWeekRevenue: number;
+      thisWeekCompletedBookings: number;
+      previousWeekCompletedBookings: number;
+      pendingBookings: number;
+      confirmedBookings: number;
+      cancelledBookings: number;
+      completedBookings: number;
+    }>([
+      {
+        $match: {
+          turf: { $in: ownerTurfIds as Types.ObjectId[] },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalBookings: { $sum: 1 },
+          todaysBookings: {
+            $sum: {
+              $cond: [{ $gte: ['$createdAt', todayStart] }, 1, 0],
+            },
+          },
+          yesterdayBookings: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $gte: ['$createdAt', yesterdayStart] },
+                    { $lt: ['$createdAt', todayStart] },
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
+          },
+          thisWeekBookings: {
+            $sum: {
+              $cond: [{ $gte: ['$createdAt', weekStart] }, 1, 0],
+            },
+          },
+          previousWeekBookings: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $gte: ['$createdAt', previousWeekStart] },
+                    { $lt: ['$createdAt', weekStart] },
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
+          },
+          totalRevenue: {
+            $sum: {
+              $cond: [
+                { $eq: ['$paymentStatus', PaymentStatus.PAID] },
+                '$totalAmount',
+                0,
+              ],
+            },
+          },
+          thisWeekRevenue: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ['$paymentStatus', PaymentStatus.PAID] },
+                    { $gte: ['$createdAt', weekStart] },
+                  ],
+                },
+                '$totalAmount',
+                0,
+              ],
+            },
+          },
+          previousWeekRevenue: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ['$paymentStatus', PaymentStatus.PAID] },
+                    { $gte: ['$createdAt', previousWeekStart] },
+                    { $lt: ['$createdAt', weekStart] },
+                  ],
+                },
+                '$totalAmount',
+                0,
+              ],
+            },
+          },
+          thisWeekCompletedBookings: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ['$status', TurfBookingStatus.COMPLETED] },
+                    { $gte: ['$createdAt', weekStart] },
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
+          },
+          previousWeekCompletedBookings: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ['$status', TurfBookingStatus.COMPLETED] },
+                    { $gte: ['$createdAt', previousWeekStart] },
+                    { $lt: ['$createdAt', weekStart] },
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
+          },
+          pendingBookings: {
+            $sum: {
+              $cond: [{ $eq: ['$status', TurfBookingStatus.PENDING] }, 1, 0],
+            },
+          },
+          confirmedBookings: {
+            $sum: {
+              $cond: [{ $eq: ['$status', TurfBookingStatus.CONFIRMED] }, 1, 0],
+            },
+          },
+          cancelledBookings: {
+            $sum: {
+              $cond: [{ $eq: ['$status', TurfBookingStatus.CANCELLED] }, 1, 0],
+            },
+          },
+          completedBookings: {
+            $sum: {
+              $cond: [{ $eq: ['$status', TurfBookingStatus.COMPLETED] }, 1, 0],
+            },
+          },
+        },
+      },
+    ]);
+
+    const summary = groupedStats[0];
+    if (!summary) {
+      return {
+        totalBookings: { count: 0 },
+        todaysBookings: {
+          count: 0,
+          trend: '+0%',
+          trendInterval: 'daily' as const,
+        },
+        thisWeekBookings: {
+          count: 0,
+          trend: '+0%',
+          trendInterval: 'weekly' as const,
+        },
+        totalRevenue: {
+          count: 0,
+          trend: '+0%',
+          trendInterval: 'weekly' as const,
+        },
+        completionRate: {
+          count: 0,
+          trend: '+0%',
+          trendInterval: 'weekly' as const,
+        },
+        bookingStatusStats,
+      };
+    }
+
+    bookingStatusStats[TurfBookingStatus.PENDING] = summary.pendingBookings;
+    bookingStatusStats[TurfBookingStatus.CONFIRMED] = summary.confirmedBookings;
+    bookingStatusStats[TurfBookingStatus.CANCELLED] = summary.cancelledBookings;
+    bookingStatusStats[TurfBookingStatus.COMPLETED] = summary.completedBookings;
+
+    const completionRate =
+      summary.totalBookings > 0
+        ? Number(
+            ((summary.completedBookings / summary.totalBookings) * 100).toFixed(
+              2,
+            ),
+          )
+        : 0;
+    const thisWeekCompletionRate =
+      summary.thisWeekBookings > 0
+        ? (summary.thisWeekCompletedBookings / summary.thisWeekBookings) * 100
+        : 0;
+    const previousWeekCompletionRate =
+      summary.previousWeekBookings > 0
+        ? (summary.previousWeekCompletedBookings /
+            summary.previousWeekBookings) *
+          100
+        : 0;
+
+    return {
+      totalBookings: {
+        count: summary.totalBookings,
+      },
+      todaysBookings: {
+        count: summary.todaysBookings,
+        trend: TurfBookingStatsUtility.formatTrendPercentage(
+          summary.todaysBookings,
+          summary.yesterdayBookings,
+        ),
+        trendInterval: 'daily' as const,
+      },
+      thisWeekBookings: {
+        count: summary.thisWeekBookings,
+        trend: TurfBookingStatsUtility.formatTrendPercentage(
+          summary.thisWeekBookings,
+          summary.previousWeekBookings,
+        ),
+        trendInterval: 'weekly' as const,
+      },
+      totalRevenue: {
+        count: summary.totalRevenue,
+        trend: TurfBookingStatsUtility.formatTrendPercentage(
+          summary.thisWeekRevenue,
+          summary.previousWeekRevenue,
+        ),
+        trendInterval: 'weekly' as const,
+      },
+      completionRate: {
+        count: completionRate,
+        trend: TurfBookingStatsUtility.formatTrendPercentage(
+          thisWeekCompletionRate,
+          previousWeekCompletionRate,
+        ),
+        trendInterval: 'weekly' as const,
+      },
+      bookingStatusStats,
+    };
   }
 
   async deleteBooking(id: string, userId: string): Promise<void> {

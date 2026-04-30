@@ -9,6 +9,10 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, { rawBody: true });
   const logger = new Logger('Bootstrap');
 
+  // Use qs-style ("extended") parsing so query params like
+  // location[nearbyLat]=... become query.location.nearbyLat
+  app.getHttpAdapter().getInstance().set('query parser', 'extended');
+
   app.use(helmet());
   app.use(cookieParser());
 

@@ -41,7 +41,5 @@ export const SearchTurfSchema = z.object({
   sort: z.string().optional(),
 });
 
-const SearchTurfDtoBase: ZodDto<typeof SearchTurfSchema> =
-  createZodDto(SearchTurfSchema);
 
-export class SearchTurfDto extends SearchTurfDtoBase {}
+export class SearchTurfDto extends  createZodDto(SearchTurfSchema) {}
