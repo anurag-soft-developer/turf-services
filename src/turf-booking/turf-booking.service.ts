@@ -36,6 +36,11 @@ import { IRajorpayOrder } from '../core/interfaces/rajorpay.interface';
 import { userSelectFields } from '../users/schemas/user.schema';
 import { RajorpayService } from '../core/services/rajorpay/rajorpay.service';
 import { TurfBookingUtility } from './utility/turf-booking.utility';
+import {
+  notifyBookingCancelledParty,
+  notifyOwnerNewPaidBooking,
+} from './utility/turf-booking-notification.utility';
+import { NotificationService } from '../notification/notification.service';
 
 @Injectable()
 export class TurfBookingService {
@@ -56,6 +61,7 @@ export class TurfBookingService {
     @InjectModel(Turf.name)
     private turfModel: Model<TurfDocument>,
     private readonly rajorpayService: RajorpayService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   async createBooking(
@@ -248,9 +254,17 @@ export class TurfBookingService {
       booking._id.toString(),
     );
 
-    return await (
-      await booking.save()
-    ).populate(TurfBookingService.populateOptions);
+    await booking.save();
+
+    await notifyOwnerNewPaidBooking(
+      this.notificationService,
+      this.turfModel,
+      booking,
+    );
+
+    return (await booking.populate(
+      TurfBookingService.populateOptions,
+    )) as TurfBookingDocument;
   }
 
   async updateBooking(
@@ -364,10 +378,34 @@ export class TurfBookingService {
       updateBookingDto.confirmedAt = new Date();
     }
 
+    const becomingCancelled =
+      updateBookingDto.status === TurfBookingStatus.CANCELLED &&
+      booking.status !== TurfBookingStatus.CANCELLED;
+
     Object.assign(booking, updateBookingDto);
-    return await (
-      await booking.save()
-    ).populate(TurfBookingService.populateOptions);
+    await booking.save();
+
+    if (becomingCancelled && turf) {
+      if (isTurfOwner && !isBooker) {
+        await notifyBookingCancelledParty(this.notificationService, {
+          recipientUserId: booking.bookedBy.toString(),
+          bookingId: booking._id.toString(),
+          turfName: turf.name,
+          cancelledBy: 'owner',
+        });
+      } else if (isBooker && !isTurfOwner) {
+        await notifyBookingCancelledParty(this.notificationService, {
+          recipientUserId: turf.postedBy.toString(),
+          bookingId: booking._id.toString(),
+          turfName: turf.name,
+          cancelledBy: 'booker',
+        });
+      }
+    }
+
+    return (await booking.populate(
+      TurfBookingService.populateOptions,
+    )) as TurfBookingDocument;
   }
 
   /**

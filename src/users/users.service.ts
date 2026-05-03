@@ -16,6 +16,8 @@ import type {
 import { UpdateProfileDto } from '../auth/dto/auth.dto';
 import type { Profile } from './interfaces/user.interface';
 import type { PaginatedResult } from '../core/interfaces/common';
+import type { UpdateNotificationSettingsDto } from './dto/users.dto';
+import type { FcmTokenEntryPayload } from './dto/fcm-devices.dto';
 
 @Injectable()
 export class UsersService {
@@ -46,6 +48,12 @@ export class UsersService {
     } catch (error) {
       return null;
     }
+  }
+
+  async findByIdWithNotificationPrefs(
+    id: string,
+  ): Promise<UserDocument | null> {
+    return this.userModel.findById(id).select('+fcmTokens').exec();
   }
 
   async findByEmail(email: string): Promise<UserDocument | null> {
@@ -94,6 +102,68 @@ export class UsersService {
     updateData: UpdateProfileDto,
   ): Promise<UserDocument> {
     return await this.updateById(id, updateData);
+  }
+
+  async updateNotificationSettings(
+    id: string,
+    dto: UpdateNotificationSettingsDto,
+  ): Promise<UserDocument> {
+    const { notificationModules, ...rest } = dto;
+
+    const updates: Partial<IUser> = { ...rest };
+
+    if (notificationModules !== undefined) {
+      const existing = await this.findById(id);
+      if (!existing) {
+        throw new NotFoundException('User not found');
+      }
+      updates.notificationModules = {
+        ...(existing.notificationModules ?? {}),
+        ...notificationModules,
+      };
+    }
+
+    return this.updateById(id, updates);
+  }
+
+  async replaceFcmDevices(
+    id: string,
+    devices: FcmTokenEntryPayload[],
+  ): Promise<UserDocument> {
+    const fcmTokens = devices.map((e) => ({
+      deviceKey: e.deviceKey,
+      token: e.token,
+      platform: e.platform,
+      updatedAt: new Date(),
+    }));
+    return this.updateById(id, { fcmTokens } as Partial<IUser>);
+  }
+
+  async upsertFcmDevice(
+    id: string,
+    device: FcmTokenEntryPayload,
+  ): Promise<UserDocument> {
+    const user = await this.userModel.findById(id).select('+fcmTokens').exec();
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    const list = [...(user.fcmTokens || [])];
+    const idx = list.findIndex((d) => d.deviceKey === device.deviceKey);
+    const entry = {
+      deviceKey: device.deviceKey,
+      token: device.token,
+      platform: device.platform,
+      updatedAt: new Date(),
+    };
+    if (idx >= 0) {
+      list[idx] = entry;
+    } else {
+      if (list.length >= 20) {
+        throw new BadRequestException('Maximum of 20 FCM devices allowed');
+      }
+      list.push(entry);
+    }
+    return this.updateById(id, { fcmTokens: list } as Partial<IUser>);
   }
 
   async changePassword(id: string, newPassword: string): Promise<void> {
@@ -270,6 +340,9 @@ export class UsersService {
       twoFactorEnabled: user.twoFactorEnabled,
       emailNotificationsEnabled: user.emailNotificationsEnabled,
       smsNotificationsEnabled: user.smsNotificationsEnabled,
+      notificationsEnabled: user.notificationsEnabled,
+      notificationModules: user.notificationModules,
+      fcmTokens: user.fcmTokens||[],
       phone: user.phone,
       lastLogin: user.lastLogin?.toString(),
       isPasswordExists,

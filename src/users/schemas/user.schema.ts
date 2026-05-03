@@ -1,6 +1,11 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema } from 'mongoose';
-import type { IUser, IOAuthStrategy } from '../interfaces/user.interface';
+import type {
+  FcmTokenEntry,
+  IUser,
+  IOAuthStrategy,
+} from '../interfaces/user.interface';
+import { type NotificationModule } from '../../notification/schemas/notification.schema';
 import { UserRole } from '../../auth/decorators/roles.decorator';
 import type { PlayerSportEntry } from '../../core/sports/sport-stats';
 import type { EarnedBadge } from '../../core/badges/badges';
@@ -134,6 +139,44 @@ export class User extends Document implements UserDocument {
     default: false,
   })
   smsNotificationsEnabled?: boolean;
+
+  /**
+   * Master switch for push (FCM) and coordinated in-app delivery.
+   * Checked before any device-level notification is sent.
+   */
+  @Prop({
+    type: Boolean,
+    default: true,
+  })
+  notificationsEnabled?: boolean;
+
+  /**
+   * Per–notification-module toggles. Missing key = enabled (opt-out per module).
+   * Keys must be {@link NotificationModule} string values.
+   */
+  @Prop({
+    type: Object,
+    default: {},
+  })
+  notificationModules?: Partial<Record<NotificationModule, boolean>>;
+
+  /**
+   * Registered FCM devices. Tokens are not exposed on public profile responses.
+   */
+  @Prop({
+    type: [
+      {
+        deviceKey: { type: String, required: true },
+        token: { type: String, required: true },
+        platform: { type: String },
+        updatedAt: { type: Date, default: Date.now },
+      },
+    ],
+    _id: false,
+    default: [],
+    select: false,
+  })
+  fcmTokens!: FcmTokenEntry[];
 
   @Prop({
     type: String,

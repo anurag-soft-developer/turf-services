@@ -18,6 +18,7 @@ import { ConfigModule } from '@nestjs/config';
 import { config } from './core/config/env.config';
 import { MatchmakingModule } from './matchmaking/matchmaking.module';
 import { ChatModule } from './chat/chat.module';
+import { NotificationModule } from './notification/notification.module';
 import { StorageModule } from './storage/storage.module';
 import { WebhookModule } from './webhook/webhook.module';
 
@@ -37,6 +38,7 @@ import { WebhookModule } from './webhook/webhook.module';
     PostModule,
     MatchmakingModule,
     ChatModule,
+    NotificationModule,
     StorageModule,
   ],
   controllers: [AppController],

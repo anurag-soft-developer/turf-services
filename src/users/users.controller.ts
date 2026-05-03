@@ -3,8 +3,10 @@ import {
   Body,
   Controller,
   Get,
+  NotFoundException,
   Param,
   Patch,
+  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -15,6 +17,10 @@ import { Public } from '../auth/decorators/public.decorator';
 import { UpdateProfileDto } from '../auth/dto/auth.dto';
 import type { IUser } from './interfaces/user.interface';
 import { UsersService } from './users.service';
+import {
+  ReplaceFcmDevicesDto,
+  UpsertFcmDeviceDto,
+} from './dto/fcm-devices.dto';
 import {
   SearchUsersListDto,
   UpdateNotificationSettingsDto,
@@ -45,12 +51,37 @@ export class UsersController {
     @CurrentUser() user: IUser,
     @Body() updateNotificationSettingsDto: UpdateNotificationSettingsDto,
   ) {
-    const updatedUser = await this.usersService.updateById(
+    const updatedUser = await this.usersService.updateNotificationSettings(
       user._id,
       updateNotificationSettingsDto,
     );
 
     return UsersService.sanitizeProfile(updatedUser);
+  }
+
+  /** Replaces the entire FCM device list (max 20). */
+  @UseGuards(JwtAuthGuard)
+  @Put('fcm-devices')
+  async replaceFcmDevices(
+    @CurrentUser() user: IUser,
+    @Body() dto: ReplaceFcmDevicesDto,
+  ) {
+    const updated = await this.usersService.replaceFcmDevices(
+      user._id,
+      dto.devices,
+    );
+    return UsersService.sanitizeProfile(updated);
+  }
+
+  /** Merges or updates a single FCM device by `deviceKey`. */
+  @UseGuards(JwtAuthGuard)
+  @Patch('fcm-devices')
+  async upsertFcmDevice(
+    @CurrentUser() user: IUser,
+    @Body() dto: UpsertFcmDeviceDto,
+  ) {
+    const updated = await this.usersService.upsertFcmDevice(user._id, dto);
+    return UsersService.sanitizeProfile(updated);
   }
 
   @Public()

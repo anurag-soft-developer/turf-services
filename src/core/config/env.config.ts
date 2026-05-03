@@ -11,8 +11,6 @@ class ConfigValidationError extends Error {
 export function validateConfig() {
   try {
     const config = {
-      CHAT_BATCH_INTERNAL_TOKEN: process.env.CHAT_BATCH_INTERNAL_TOKEN!,
-
       // Database
       MONGODB_URI: process.env.MONGODB_URI!,
 
@@ -56,6 +54,15 @@ export function validateConfig() {
       SPACES_CDN_BASE_URL: process.env.SPACES_CDN_BASE_URL || '',
       SPACES_SIGNED_URL_TTL_SECONDS:
         process.env.SPACES_SIGNED_URL_TTL_SECONDS || '900',
+
+      CHAT_BATCH_INTERNAL_TOKEN: process.env.CHAT_BATCH_INTERNAL_TOKEN!,
+      NOTIFICATION_INTERNAL_TOKEN:
+        process.env.NOTIFICATION_INTERNAL_TOKEN || '',
+      REALTIME_TURF_BASE_URL: process.env.REALTIME_TURF_BASE_URL || '',
+      GOOGLE_APPLICATION_CREDENTIALS:
+        process.env.GOOGLE_APPLICATION_CREDENTIALS || '',
+      FIREBASE_SERVICE_ACCOUNT_JSON:
+        process.env.FIREBASE_SERVICE_ACCOUNT_JSON || '',
     };
 
     const missingKeys = Object.entries(config)

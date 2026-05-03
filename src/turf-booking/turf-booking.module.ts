@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
+import { NotificationModule } from '../notification/notification.module';
 import { TurfBookingService } from './turf-booking.service';
 import { TurfBookingController } from './turf-booking.controller';
 import { TurfBooking, TurfBookingSchema } from './schemas/turf-booking.schema';
@@ -8,6 +9,7 @@ import { RajorpayService } from '../core/services/rajorpay/rajorpay.service';
 
 @Module({
   imports: [
+    NotificationModule,
     MongooseModule.forFeature([
       { name: TurfBooking.name, schema: TurfBookingSchema },
       { name: Turf.name, schema: TurfSchema },
