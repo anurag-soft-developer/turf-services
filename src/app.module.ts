@@ -21,6 +21,7 @@ import { ChatModule } from './chat/chat.module';
 import { NotificationModule } from './notification/notification.module';
 import { StorageModule } from './storage/storage.module';
 import { WebhookModule } from './webhook/webhook.module';
+import { ScoringModule } from './scoring/scoring.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { WebhookModule } from './webhook/webhook.module';
     TeamModule,
     PostModule,
     MatchmakingModule,
+    ScoringModule,
     ChatModule,
     NotificationModule,
     StorageModule,
