@@ -26,6 +26,22 @@ import {
   TERMINAL_PRE_PLAY_STATUSES,
 } from './matchmaking.constants';
 
+/** Blocks squad edits once the match is terminal or cricket scoring has started. */
+export function assertMatchAllowsAnnouncedPlayerEdits(
+  match: TeamMatchDocument,
+): void {
+  if (TERMINAL_ALL_STATUSES.includes(match.status)) {
+    throw new BadRequestException(
+      'Cannot change announced players after this match has ended',
+    );
+  }
+  if (match.cricketState) {
+    throw new BadRequestException(
+      'Cannot change announced players after cricket scoring has started',
+    );
+  }
+}
+
 export async function populateTeamMatch(
   doc: TeamMatchDocument,
   populate: PopulateOptions[] = TEAM_MATCH_POPULATE,
@@ -110,7 +126,8 @@ export function assertMatchAllowsProposalWithdraw(
     TERMINAL_PRE_PLAY_STATUSES.includes(match.status) ||
     match.status === TeamMatchStatus.ONGOING ||
     match.status === TeamMatchStatus.COMPLETED ||
-    match.status === TeamMatchStatus.DRAW
+    match.status === TeamMatchStatus.DRAW ||
+    match.status === TeamMatchStatus.ABANDONED
   ) {
     throw new BadRequestException(
       'Proposals cannot be withdrawn for this match state',
@@ -163,7 +180,8 @@ export function assertSchedulePhaseActionable(
     match.status === TeamMatchStatus.SCHEDULE_FINALIZED ||
     match.status === TeamMatchStatus.ONGOING ||
     match.status === TeamMatchStatus.COMPLETED ||
-    match.status === TeamMatchStatus.DRAW
+    match.status === TeamMatchStatus.DRAW ||
+    match.status === TeamMatchStatus.ABANDONED
   ) {
     throw new BadRequestException(
       'This match can no longer be updated this way',

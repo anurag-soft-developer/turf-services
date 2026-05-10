@@ -51,24 +51,11 @@ const footballEventPayloadSchema = z.discriminatedUnion('kind', [
   }),
 ]);
 
-const CreateFootballSessionSchema = z
-  .object({
-    actorTeamId: objectId,
-    teamMatchId: objectId.optional(),
-    teamOneId: objectId.optional(),
-    teamTwoId: objectId.optional(),
-    period: footballPeriodSchema.default('first_half'),
-    matchMinute: z.coerce.number().int().min(0).max(130).optional(),
-  })
-  .superRefine((data, ctx) => {
-    if (!data.teamMatchId && (!data.teamOneId || !data.teamTwoId)) {
-      ctx.addIssue({
-        code: 'custom',
-        message: 'teamOneId and teamTwoId are required without teamMatchId',
-        path: ['teamOneId'],
-      });
-    }
-  });
+const CreateFootballSessionSchema = z.object({
+  actorTeamId: objectId,
+  period: footballPeriodSchema.default('first_half'),
+  matchMinute: z.coerce.number().int().min(0).max(130).optional(),
+});
 
 const AppendFootballEventSchema = z.object({
   period: footballPeriodSchema,

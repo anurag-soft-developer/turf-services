@@ -1,42 +1,51 @@
 import {
   BadRequestException,
-  ForbiddenException,
   Injectable,
+  NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { assertCanActForTeam } from '../../matchmaking/util/matchmaking.helpers';
 import {
+  CricketState,
   TeamMatch,
   TeamMatchDocument,
+  TeamMatchStatus,
 } from '../../matchmaking/schemas/team-match.schema';
 import { TeamService } from '../../team/team.service';
 import { TeamMemberService } from '../../team-member/team-member.service';
 import { SportType } from '../../team/schemas/team.schema';
 import {
+  assertCanAppendScoringEvents,
   assertTeamMatchSport,
-  assertTeamsAlignWithMatch,
+  bumpMatchStatusToOngoingIfScheduled,
   ensureActorTeamOnMatch,
   requireTeamMatchForScoring,
 } from '../common/scoring.helpers';
+import { ScoringRealtimeDispatcher } from '../common/scoring-realtime-dispatcher.service';
 import {
-  CricketState,
-  ScoringSession,
-  ScoringSessionDocument,
-} from '../common/scoring-session.schema';
-import { ScoringSessionService } from '../common/scoring-session.service';
-import { ScoringSessionStatus } from '../common/scoring.types';
-import {
+  CRICKET_OVER_EVENT_POPULATE,
   CricketBallEvent,
-  CricketBallEventDocument,
+  CricketOverEvent,
+  CricketOverEventDocument,
   CricketWicketKind,
-} from './cricket-ball-event.schema';
+} from './cricket-over-event.schema';
+import { TEAM_MATCH_POPULATE } from '../../matchmaking/util/matchmaking.constants';
 import {
   AppendCricketBallDto,
   CreateCricketSessionDto,
-  ListCricketBallsDto,
 } from './dto/cricket-scoring.dto';
 import { computeCricketPlayerPoints } from './cricket-points.calculator';
+import {
+  assertAnnouncedSquadsForCricket,
+  assertBattingBowlingRoster,
+  assertLeadershipOnMatchTeams,
+  assertUserOnTeam,
+  assertUsersInTeams,
+} from './util/cricket-scoring.asserts';
+
+/** Both teams bat (standard limited-overs). Mirrors [CricketState.inningsSummaries] length. */
+const CRICKET_INNINGS_PER_MATCH = 2;
 
 type OutcomeMapped = {
   runsOffBat: number;
@@ -56,21 +65,20 @@ type OutcomeMapped = {
 @Injectable()
 export class CricketScoringService {
   constructor(
-    @InjectModel(ScoringSession.name)
-    private readonly scoringSessionModel: Model<ScoringSessionDocument>,
-    @InjectModel(CricketBallEvent.name)
-    private readonly ballEventModel: Model<CricketBallEventDocument>,
+    @InjectModel(CricketOverEvent.name)
+    private readonly overEventModel: Model<CricketOverEventDocument>,
     @InjectModel(TeamMatch.name)
     private readonly teamMatchModel: Model<TeamMatchDocument>,
-    private readonly scoringSessionService: ScoringSessionService,
     private readonly teamService: TeamService,
     private readonly teamMemberService: TeamMemberService,
+    private readonly realtimeDispatcher: ScoringRealtimeDispatcher,
   ) {}
 
   async createSession(
     userId: string,
+    teamMatchId: string,
     dto: CreateCricketSessionDto,
-  ): Promise<ScoringSessionDocument> {
+  ): Promise<TeamMatchDocument> {
     const actorTeam = await this.teamService.requireTeam(dto.actorTeamId);
     await assertCanActForTeam(
       actorTeam,
@@ -79,35 +87,20 @@ export class CricketScoringService {
       this.teamMemberService,
     );
 
-    let teamOneId: Types.ObjectId;
-    let teamTwoId: Types.ObjectId;
-    let teamMatchId: Types.ObjectId | undefined;
+    const match = await requireTeamMatchForScoring(
+      this.teamMatchModel,
+      teamMatchId,
+    );
+    assertTeamMatchSport(match, SportType.CRICKET);
+    ensureActorTeamOnMatch(match, new Types.ObjectId(dto.actorTeamId));
+    assertCanAppendScoringEvents(match);
 
-    if (dto.teamMatchId) {
-      const match = await requireTeamMatchForScoring(
-        this.teamMatchModel,
-        dto.teamMatchId,
-      );
-      assertTeamMatchSport(match, SportType.CRICKET);
-      ensureActorTeamOnMatch(match, new Types.ObjectId(dto.actorTeamId));
-      teamOneId = match.fromTeam;
-      teamTwoId = match.toTeam;
-      assertTeamsAlignWithMatch(match, teamOneId, teamTwoId);
-      teamMatchId = match._id;
-    } else {
-      if (!dto.teamOneId || !dto.teamTwoId) {
-        throw new BadRequestException('teamOneId and teamTwoId are required');
-      }
-      teamOneId = new Types.ObjectId(dto.teamOneId);
-      teamTwoId = new Types.ObjectId(dto.teamTwoId);
-      const actorOid = new Types.ObjectId(dto.actorTeamId);
-      if (
-        actorOid.toString() !== teamOneId.toString() &&
-        actorOid.toString() !== teamTwoId.toString()
-      ) {
-        throw new ForbiddenException('Actor team must be one of the two teams');
-      }
+    if (match.cricketState) {
+      throw new BadRequestException('Cricket scoring already initialized');
     }
+
+    const teamOneId = match.fromTeam;
+    const teamTwoId = match.toTeam;
 
     const bat = new Types.ObjectId(dto.battingTeamId);
     const bowl = new Types.ObjectId(dto.bowlingTeamId);
@@ -117,13 +110,15 @@ export class CricketScoringService {
     const bws = bowl.toString();
     if (!((bs === t1 && bws === t2) || (bs === t2 && bws === t1))) {
       throw new BadRequestException(
-        'battingTeamId and bowlingTeamId must be the two session teams',
+        'battingTeamId and bowlingTeamId must be the two teams on the match',
       );
     }
 
-    await this.assertUsersInTeams(dto, bat, bowl);
+    assertAnnouncedSquadsForCricket(match);
 
-    const summaries = Array.from({ length: dto.maxInnings }, () => ({
+    await assertUsersInTeams(this.teamMemberService, dto, bat, bowl);
+
+    const summaries = Array.from({ length: CRICKET_INNINGS_PER_MATCH }, () => ({
       runs: 0,
       wickets: 0,
       legalBalls: 0,
@@ -131,42 +126,50 @@ export class CricketScoringService {
 
     const cricketState: CricketState = {
       maxOvers: dto.maxOvers,
-      maxInnings: dto.maxInnings,
       currentInnings: 1,
       battingTeamId: bat,
       bowlingTeamId: bowl,
-      strikerUserId: new Types.ObjectId(dto.strikerUserId),
-      nonStrikerUserId: new Types.ObjectId(dto.nonStrikerUserId),
-      bowlerUserId: new Types.ObjectId(dto.bowlerUserId),
       inningsSummaries: summaries,
+      ...(dto.strikerUserId
+        ? { strikerUserId: new Types.ObjectId(dto.strikerUserId) }
+        : {}),
+      ...(dto.nonStrikerUserId
+        ? { nonStrikerUserId: new Types.ObjectId(dto.nonStrikerUserId) }
+        : {}),
+      ...(dto.bowlerUserId
+        ? { bowlerUserId: new Types.ObjectId(dto.bowlerUserId) }
+        : {}),
     };
 
-    const doc = new this.scoringSessionModel({
-      sport: SportType.CRICKET,
-      teamMatchId,
-      teamOneId,
-      teamTwoId,
-      status: ScoringSessionStatus.SCHEDULED,
-      cricketState,
-    });
-    return doc.save();
+    match.cricketState = cricketState;
+    return await (await match.save()).populate(TEAM_MATCH_POPULATE);
   }
 
   async appendBall(
     userId: string,
-    sessionId: string,
+    teamMatchId: string,
     dto: AppendCricketBallDto,
-  ): Promise<CricketBallEventDocument> {
-    const session = await this.scoringSessionService.requireSession(sessionId);
-    this.scoringSessionService.assertSport(session, SportType.CRICKET);
-    this.scoringSessionService.assertCanAppendEvents(session);
-    if (!session.cricketState) {
-      throw new BadRequestException('Invalid cricket session');
+  ): Promise<CricketOverEventDocument> {
+    const match = await requireTeamMatchForScoring(
+      this.teamMatchModel,
+      teamMatchId,
+    );
+    assertTeamMatchSport(match, SportType.CRICKET);
+    assertCanAppendScoringEvents(match);
+    if (!match.cricketState) {
+      throw new BadRequestException('Cricket scoring not initialized');
     }
 
-    await this.assertLeadershipOnSessionTeams(userId, session);
+    bumpMatchStatusToOngoingIfScheduled(match);
 
-    const cs = session.cricketState;
+    await assertLeadershipOnMatchTeams(
+      this.teamService,
+      this.teamMemberService,
+      userId,
+      match,
+    );
+
+    const cs = match.cricketState;
     const inningsForThisBall = cs.currentInnings;
     const innIdx = cs.currentInnings - 1;
     const summary = cs.inningsSummaries[innIdx];
@@ -193,7 +196,13 @@ export class CricketScoringService {
       );
     }
 
-    await this.assertBattingBowlingRoster(session, striker, nonStriker, bowler);
+    await assertBattingBowlingRoster(
+      this.teamMemberService,
+      match,
+      striker,
+      nonStriker,
+      bowler,
+    );
 
     const maxLegal = cs.maxOvers * 6;
     if (summary.wickets >= 10) {
@@ -207,12 +216,6 @@ export class CricketScoringService {
         'This legal delivery would exceed overs quota',
       );
     }
-
-    const last = await this.ballEventModel
-      .findOne({ sessionId: session._id })
-      .sort({ sequence: -1 })
-      .lean();
-    const sequence = (last?.sequence ?? 0) + 1;
 
     const legalBefore = summary.legalBalls;
 
@@ -245,7 +248,11 @@ export class CricketScoringService {
     const dismissed = mapped.dismissedUserId;
     if (mapped.isWicket && !willCompleteAllOut && dto.incomingBatsmanUserId) {
       const incoming = new Types.ObjectId(dto.incomingBatsmanUserId);
-      await this.assertUserOnTeam(incoming, cs.battingTeamId);
+      await assertUserOnTeam(
+        this.teamMemberService,
+        incoming,
+        cs.battingTeamId,
+      );
       if (!dismissed) {
         throw new BadRequestException('Dismissed batsman not set for wicket');
       }
@@ -276,7 +283,7 @@ export class CricketScoringService {
     cs.bowlerUserId = bowler;
 
     const inningsDone = summary.wickets >= 10 || summary.legalBalls >= maxLegal;
-    if (inningsDone && cs.currentInnings < cs.maxInnings) {
+    if (inningsDone && cs.currentInnings < cs.inningsSummaries.length) {
       cs.currentInnings += 1;
       const tmp = cs.battingTeamId;
       cs.battingTeamId = cs.bowlingTeamId;
@@ -284,22 +291,17 @@ export class CricketScoringService {
       cs.strikerUserId = undefined;
       cs.nonStrikerUserId = undefined;
       cs.bowlerUserId = undefined;
-      session.status = ScoringSessionStatus.LIVE;
-    } else if (inningsDone && cs.currentInnings >= cs.maxInnings) {
-      session.status = ScoringSessionStatus.COMPLETED;
-    } else {
-      session.status = ScoringSessionStatus.LIVE;
+    } else if (
+      inningsDone &&
+      cs.currentInnings >= cs.inningsSummaries.length
+    ) {
+      match.status = TeamMatchStatus.COMPLETED;
     }
 
-    const event = new this.ballEventModel({
-      sessionId: session._id,
-      sequence,
-      innings: inningsForThisBall,
-      overAfter,
+    const ballPayload: CricketBallEvent = {
       ballInOverAfter,
       strikerUserId: striker,
       nonStrikerUserId: nonStriker,
-      bowlerUserId: bowler,
       runsOffBat: mapped.runsOffBat,
       extrasWide: mapped.extrasWide,
       extrasNoBall: mapped.extrasNoBall,
@@ -312,11 +314,48 @@ export class CricketScoringService {
       totalRunsOnDelivery: mapped.totalRunsOnDelivery,
       isLegalDelivery: mapped.isLegalDelivery,
       wicketsFallen: mapped.wicketsFallen,
+    };
+
+    let overDoc = await this.overEventModel.findOne({
+      teamMatchId: match._id,
+      innings: inningsForThisBall,
+      overAfter,
     });
 
-    await Promise.all([event.save(), session.save()]);
+    if (!overDoc) {
+      const lastOver = await this.overEventModel
+        .findOne({ teamMatchId: match._id })
+        .sort({ sequence: -1 })
+        .lean();
+      const overSequence = (lastOver?.sequence ?? 0) + 1;
+      overDoc = new this.overEventModel({
+        teamMatchId: match._id,
+        bowlerUserId: bowler,
+        sequence: overSequence,
+        innings: inningsForThisBall,
+        overAfter,
+        ballEvents: [ballPayload],
+      });
+    } else {
+      if (overDoc.bowlerUserId.toString() !== bowler.toString()) {
+        throw new BadRequestException(
+          'bowlerUserId must match the bowler for this over',
+        );
+      }
+      overDoc.ballEvents.push(ballPayload);
+    }
 
-    return event;
+    await Promise.all([overDoc.save(), match.save()]);
+
+    await this.realtimeDispatcher.dispatch({
+      sport: 'cricket',
+      teamMatchId: match._id.toString(),
+      actorUserId: userId,
+      action: 'append_ball',
+      data: dto as unknown as Record<string, unknown>,
+    });
+
+    return await overDoc.populate(CRICKET_OVER_EVENT_POPULATE);
   }
 
   private mapOutcome(
@@ -492,113 +531,44 @@ export class CricketScoringService {
     }
   }
 
-  async getSessionView(sessionId: string): Promise<ScoringSessionDocument> {
-    const session = await this.scoringSessionService.requireSession(sessionId);
-    this.scoringSessionService.assertSport(session, SportType.CRICKET);
-    return session;
+  async getSessionView(teamMatchId: string): Promise<TeamMatchDocument> {
+    const match = await requireTeamMatchForScoring(
+      this.teamMatchModel,
+      teamMatchId,
+    );
+    assertTeamMatchSport(match, SportType.CRICKET);
+    return await match.populate(TEAM_MATCH_POPULATE);
   }
 
-  async listBalls(sessionId: string, query: ListCricketBallsDto) {
-    const session = await this.scoringSessionService.requireSession(sessionId);
-    this.scoringSessionService.assertSport(session, SportType.CRICKET);
-    const skip = (query.page - 1) * query.limit;
-    const [items, total] = await Promise.all([
-      this.ballEventModel
-        .find({ sessionId: session._id })
-        .sort({ sequence: 1 })
-        .skip(skip)
-        .limit(query.limit)
-        .lean(),
-      this.ballEventModel.countDocuments({ sessionId: session._id }),
-    ]);
-    return { items, total, page: query.page, limit: query.limit };
+  async listOvers(teamMatchId: string): Promise<CricketOverEventDocument[]> {
+    const match = await requireTeamMatchForScoring(
+      this.teamMatchModel,
+      teamMatchId,
+    );
+    assertTeamMatchSport(match, SportType.CRICKET);
+    return this.overEventModel
+      .find({ teamMatchId: match._id })
+      .sort({ sequence: 1 })
+      .populate(CRICKET_OVER_EVENT_POPULATE)
+      .exec();
   }
 
-  async getPoints(sessionId: string) {
-    const session = await this.scoringSessionService.requireSession(sessionId);
-    this.scoringSessionService.assertSport(session, SportType.CRICKET);
-    const events = await this.ballEventModel
-      .find({ sessionId: session._id })
+  async getPoints(teamMatchId: string) {
+    const match = await requireTeamMatchForScoring(
+      this.teamMatchModel,
+      teamMatchId,
+    );
+    assertTeamMatchSport(match, SportType.CRICKET);
+    const overs = await this.overEventModel
+      .find({ teamMatchId: match._id })
       .sort({ sequence: 1 })
       .lean();
-    return computeCricketPlayerPoints(events as CricketBallEvent[]);
-  }
-
-  private async assertUsersInTeams(
-    dto: CreateCricketSessionDto,
-    battingTeamId: Types.ObjectId,
-    bowlingTeamId: Types.ObjectId,
-  ): Promise<void> {
-    await this.assertUserOnTeam(
-      new Types.ObjectId(dto.strikerUserId),
-      battingTeamId,
-    );
-    await this.assertUserOnTeam(
-      new Types.ObjectId(dto.nonStrikerUserId),
-      battingTeamId,
-    );
-    await this.assertUserOnTeam(
-      new Types.ObjectId(dto.bowlerUserId),
-      bowlingTeamId,
+    return computeCricketPlayerPoints(
+      overs.map((o) => ({
+        bowlerUserId: o.bowlerUserId,
+        ballEvents: o.ballEvents,
+      })),
     );
   }
 
-  private async assertUserOnTeam(
-    userId: Types.ObjectId,
-    teamId: Types.ObjectId,
-  ): Promise<void> {
-    const ok = await this.teamMemberService.hasActiveMembership(
-      teamId.toString(),
-      userId.toString(),
-    );
-    if (!ok) {
-      throw new BadRequestException(
-        `User ${userId.toString()} is not an active member of team ${teamId.toString()}`,
-      );
-    }
-  }
-
-  private async assertBattingBowlingRoster(
-    session: ScoringSessionDocument,
-    striker: Types.ObjectId,
-    nonStriker: Types.ObjectId,
-    bowler: Types.ObjectId,
-  ): Promise<void> {
-    const cs = session.cricketState!;
-    await this.assertUserOnTeam(striker, cs.battingTeamId);
-    await this.assertUserOnTeam(nonStriker, cs.battingTeamId);
-    await this.assertUserOnTeam(bowler, cs.bowlingTeamId);
-  }
-
-  private async assertLeadershipOnSessionTeams(
-    userId: string,
-    session: ScoringSessionDocument,
-  ): Promise<void> {
-    const t1 = await this.teamService.requireTeam(session.teamOneId.toString());
-    const t2 = await this.teamService.requireTeam(session.teamTwoId.toString());
-    const can1 = await this.canLeadershipAct(t1, userId);
-    const can2 = await this.canLeadershipAct(t2, userId);
-    if (!can1 && !can2) {
-      throw new ForbiddenException(
-        'Only owners, captains, or vice captains of a session team can score',
-      );
-    }
-  }
-
-  private async canLeadershipAct(
-    team: Awaited<ReturnType<TeamService['requireTeam']>>,
-    userId: string,
-  ): Promise<boolean> {
-    try {
-      await assertCanActForTeam(
-        team,
-        userId,
-        this.teamService,
-        this.teamMemberService,
-      );
-      return true;
-    } catch {
-      return false;
-    }
-  }
 }

@@ -1,0 +1,149 @@
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Types } from 'mongoose';
+import { assertCanActForTeam } from '../../../matchmaking/util/matchmaking.helpers';
+import { TeamMatchDocument } from '../../../matchmaking/schemas/team-match.schema';
+import { TeamService } from '../../../team/team.service';
+import { TeamMemberService } from '../../../team-member/team-member.service';
+import { CreateCricketSessionDto } from '../dto/cricket-scoring.dto';
+
+export function assertAnnouncedSquadsForCricket(
+  match: TeamMatchDocument,
+): void {
+  const players = match.announcedPlayers ?? [];
+  if (players.length === 0) {
+    throw new BadRequestException(
+      'Announced playing squads are required before starting cricket scoring',
+    );
+  }
+
+  const t1 = match.fromTeam.toString();
+  const t2 = match.toTeam.toString();
+
+  for (const p of players) {
+    const tid = p.teamId.toString();
+    if (tid !== t1 && tid !== t2) {
+      throw new BadRequestException(
+        'Each announced player teamId must be one of the two teams on this match',
+      );
+    }
+  }
+
+  const playing = players.filter((p) => !p.is_substitute);
+  const countFor = (tid: string) =>
+    playing.filter((p) => p.teamId.toString() === tid).length;
+
+  const n1 = countFor(t1);
+  const n2 = countFor(t2);
+  const minPlayers = 6;
+  if (n1 < minPlayers || n2 < minPlayers) {
+    throw new BadRequestException(
+      `Each team must have at least ${minPlayers} playing (non-substitute) announced players (fromTeam: ${n1}, toTeam: ${n2})`,
+    );
+  }
+
+  const allIds = players.map((p) => p.userId.toString());
+  if (new Set(allIds).size !== allIds.length) {
+    throw new BadRequestException(
+      'Duplicate userId in announced players (includes the same player on both teams)',
+    );
+  }
+}
+
+export async function assertUserOnTeam(
+  teamMemberService: TeamMemberService,
+  userId: Types.ObjectId,
+  teamId: Types.ObjectId,
+): Promise<void> {
+  const ok = await teamMemberService.hasActiveMembership(
+    teamId.toString(),
+    userId.toString(),
+  );
+  if (!ok) {
+    throw new BadRequestException(
+      `User ${userId.toString()} is not an active member of team ${teamId.toString()}`,
+    );
+  }
+}
+
+export async function assertUsersInTeams(
+  teamMemberService: TeamMemberService,
+  dto: CreateCricketSessionDto,
+  battingTeamId: Types.ObjectId,
+  bowlingTeamId: Types.ObjectId,
+): Promise<void> {
+  if (dto.strikerUserId) {
+    await assertUserOnTeam(
+      teamMemberService,
+      new Types.ObjectId(dto.strikerUserId),
+      battingTeamId,
+    );
+  }
+  if (dto.nonStrikerUserId) {
+    await assertUserOnTeam(
+      teamMemberService,
+      new Types.ObjectId(dto.nonStrikerUserId),
+      battingTeamId,
+    );
+  }
+  if (dto.bowlerUserId) {
+    await assertUserOnTeam(
+      teamMemberService,
+      new Types.ObjectId(dto.bowlerUserId),
+      bowlingTeamId,
+    );
+  }
+}
+
+export async function assertBattingBowlingRoster(
+  teamMemberService: TeamMemberService,
+  match: TeamMatchDocument,
+  striker: Types.ObjectId,
+  nonStriker: Types.ObjectId,
+  bowler: Types.ObjectId,
+): Promise<void> {
+  const cs = match.cricketState!;
+  await assertUserOnTeam(teamMemberService, striker, cs.battingTeamId);
+  await assertUserOnTeam(teamMemberService, nonStriker, cs.battingTeamId);
+  await assertUserOnTeam(teamMemberService, bowler, cs.bowlingTeamId);
+}
+
+export async function assertLeadershipOnMatchTeams(
+  teamService: TeamService,
+  teamMemberService: TeamMemberService,
+  userId: string,
+  match: TeamMatchDocument,
+): Promise<void> {
+  const t1 = await teamService.requireTeam(match.fromTeam.toString());
+  const t2 = await teamService.requireTeam(match.toTeam.toString());
+  const can1 = await canLeadershipAct(
+    teamService,
+    teamMemberService,
+    t1,
+    userId,
+  );
+  const can2 = await canLeadershipAct(
+    teamService,
+    teamMemberService,
+    t2,
+    userId,
+  );
+  if (!can1 && !can2) {
+    throw new ForbiddenException(
+      'Only owners, captains, or vice captains of a match team can score',
+    );
+  }
+}
+
+async function canLeadershipAct(
+  teamService: TeamService,
+  teamMemberService: TeamMemberService,
+  team: Awaited<ReturnType<TeamService['requireTeam']>>,
+  userId: string,
+): Promise<boolean> {
+  try {
+    await assertCanActForTeam(team, userId, teamService, teamMemberService);
+    return true;
+  } catch {
+    return false;
+  }
+}

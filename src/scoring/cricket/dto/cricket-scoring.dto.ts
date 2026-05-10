@@ -55,32 +55,15 @@ const cricketOutcomeSchema = z.discriminatedUnion('kind', [
   }),
 ]);
 
-const CreateCricketSessionSchema = z
-  .object({
-    actorTeamId: objectId,
-    teamMatchId: objectId.optional(),
-    teamOneId: objectId.optional(),
-    teamTwoId: objectId.optional(),
-    battingTeamId: objectId,
-    bowlingTeamId: objectId,
-    maxOvers: z.coerce.number().int().min(1).max(120).default(20),
-    maxInnings: z.coerce.number().int().min(1).max(2).default(1),
-    strikerUserId: objectId,
-    nonStrikerUserId: objectId,
-    bowlerUserId: objectId,
-  })
-  .superRefine((data, ctx) => {
-    if (data.teamMatchId) {
-      return;
-    }
-    if (!data.teamOneId || !data.teamTwoId) {
-      ctx.addIssue({
-        code: 'custom',
-        message: 'teamOneId and teamTwoId are required without teamMatchId',
-        path: ['teamOneId'],
-      });
-    }
-  });
+const CreateCricketSessionSchema = z.object({
+  actorTeamId: objectId,
+  battingTeamId: objectId,
+  bowlingTeamId: objectId,
+  maxOvers: z.coerce.number().int().min(1).max(120).default(20),
+  strikerUserId: objectId.optional(),
+  nonStrikerUserId: objectId.optional(),
+  bowlerUserId: objectId.optional(),
+});
 
 const AppendCricketBallSchema = z.object({
   strikerUserId: objectId,
@@ -91,15 +74,9 @@ const AppendCricketBallSchema = z.object({
   incomingBatsmanUserId: objectId.optional(),
 });
 
-const ListCricketBallsSchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(50),
-});
-
 export class CreateCricketSessionDto extends createZodDto(
   CreateCricketSessionSchema,
 ) {}
 export class AppendCricketBallDto extends createZodDto(
   AppendCricketBallSchema,
 ) {}
-export class ListCricketBallsDto extends createZodDto(ListCricketBallsSchema) {}

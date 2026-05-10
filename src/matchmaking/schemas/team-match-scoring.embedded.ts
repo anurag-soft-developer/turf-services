@@ -1,11 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Schema as MongooseSchema, Types } from 'mongoose';
-import { TeamMatch } from '../../matchmaking/schemas/team-match.schema';
-import { Team, SportType } from '../../team/schemas/team.schema';
+import { Schema as MongooseSchema, Types } from 'mongoose';
+import { Team } from '../../team/schemas/team.schema';
 import { User } from '../../users/schemas/user.schema';
-import { ScoringSessionStatus } from './scoring.types';
-
-export type ScoringSessionDocument = ScoringSession & Document;
 
 const CricketInningsSummarySchema = new MongooseSchema(
   {
@@ -27,9 +23,6 @@ export class CricketInningsSummary {
 export class CricketState {
   @Prop({ type: Number, required: true, min: 1, max: 120 })
   maxOvers!: number;
-
-  @Prop({ type: Number, default: 1, min: 1, max: 2 })
-  maxInnings!: number;
 
   @Prop({ type: Number, default: 1, min: 1, max: 2 })
   currentInnings!: number;
@@ -94,64 +87,3 @@ export class FootballState {
 }
 
 export const FootballStateSchema = SchemaFactory.createForClass(FootballState);
-
-@Schema({
-  timestamps: true,
-  collection: 'scoring-sessions',
-})
-export class ScoringSession {
-  @Prop({
-    type: String,
-    enum: Object.values(SportType),
-    required: true,
-    index: true,
-  })
-  sport!: SportType;
-
-  @Prop({
-    type: MongooseSchema.Types.ObjectId,
-    ref: TeamMatch.name,
-    index: true,
-  })
-  teamMatchId?: Types.ObjectId;
-
-  @Prop({
-    type: MongooseSchema.Types.ObjectId,
-    ref: Team.name,
-    required: true,
-    index: true,
-  })
-  teamOneId!: Types.ObjectId;
-
-  @Prop({
-    type: MongooseSchema.Types.ObjectId,
-    ref: Team.name,
-    required: true,
-    index: true,
-  })
-  teamTwoId!: Types.ObjectId;
-
-  @Prop({
-    type: String,
-    enum: Object.values(ScoringSessionStatus),
-    default: ScoringSessionStatus.SCHEDULED,
-    index: true,
-  })
-  status!: ScoringSessionStatus;
-
-  @Prop({ type: CricketStateSchema, required: false })
-  cricketState?: CricketState;
-
-  @Prop({ type: FootballStateSchema, required: false })
-  footballState?: FootballState;
-
-  createdAt!: Date;
-  updatedAt!: Date;
-}
-
-export const ScoringSessionSchema =
-  SchemaFactory.createForClass(ScoringSession);
-
-ScoringSessionSchema.index({ teamMatchId: 1, sport: 1 });
-ScoringSessionSchema.index({ teamOneId: 1, createdAt: -1 });
-ScoringSessionSchema.index({ teamTwoId: 1, createdAt: -1 });

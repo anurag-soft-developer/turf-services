@@ -1,11 +1,9 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema, Types } from 'mongoose';
+import { TeamMatch } from '../../matchmaking/schemas/team-match.schema';
 import { Team } from '../../team/schemas/team.schema';
 import { User } from '../../users/schemas/user.schema';
-import {
-  FootballPeriod,
-  ScoringSession,
-} from '../common/scoring-session.schema';
+import { FootballPeriod } from '../../matchmaking/schemas/team-match.schema';
 
 export type FootballMatchEventDocument = FootballMatchEvent & Document;
 
@@ -26,11 +24,11 @@ export enum FootballEventKind {
 export class FootballMatchEvent {
   @Prop({
     type: MongooseSchema.Types.ObjectId,
-    ref: ScoringSession.name,
+    ref: TeamMatch.name,
     required: true,
     index: true,
   })
-  sessionId!: Types.ObjectId;
+  teamMatchId!: Types.ObjectId;
 
   @Prop({ type: Number, required: true, min: 1 })
   sequence!: number;
@@ -80,5 +78,5 @@ export class FootballMatchEvent {
 export const FootballMatchEventSchema =
   SchemaFactory.createForClass(FootballMatchEvent);
 
-FootballMatchEventSchema.index({ sessionId: 1, sequence: 1 }, { unique: true });
-FootballMatchEventSchema.index({ sessionId: 1, createdAt: 1 });
+FootballMatchEventSchema.index({ teamMatchId: 1, sequence: 1 }, { unique: true });
+FootballMatchEventSchema.index({ teamMatchId: 1, createdAt: 1 });

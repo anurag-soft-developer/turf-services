@@ -195,6 +195,28 @@ export class MatchmakingService {
     };
   }
 
+  /** Populated team match if the user may act for `fromTeam` or `toTeam`. */
+  async getTeamMatchById(
+    matchId: string,
+    userId: string,
+  ): Promise<TeamMatchDocument> {
+    const match = await requireTeamMatch(this.teamMatchModel, matchId);
+    const actorTeamIds = await getActorTeamIds(
+      userId,
+      this.teamModel,
+      this.teamMemberService,
+    );
+    const from = match.fromTeam.toString();
+    const to = match.toTeam.toString();
+    const allowed = actorTeamIds.some(
+      (id) => id.toString() === from || id.toString() === to,
+    );
+    if (!allowed) {
+      throw new ForbiddenException('You cannot access this match');
+    }
+    return populateTeamMatch(match);
+  }
+
   async respond(
     matchId: string,
     userId: string,
@@ -643,6 +665,7 @@ export class MatchmakingService {
         TeamMatchStatus.CANCELLED,
         TeamMatchStatus.COMPLETED,
         TeamMatchStatus.DRAW,
+        TeamMatchStatus.ABANDONED,
         TeamMatchStatus.ONGOING,
       ].includes(match.status);
       if (!skipFinalize) {

@@ -4,8 +4,32 @@ import { TurfBooking } from '../../turf-booking/schemas/turf-booking.schema';
 import { Team, SportType } from '../../team/schemas/team.schema';
 import { Turf } from '../../turf/schemas/turf.schema';
 import { User } from '../../users/schemas/user.schema';
+import {
+  AnnouncedPlayer,
+  AnnouncedPlayerSchema,
+} from '../announcedPlayers/announced-players.schema';
+import {
+  CricketState,
+  CricketStateSchema,
+  FootballState,
+  FootballStateSchema,
+} from './team-match-scoring.embedded';
 
 export type TeamMatchDocument = TeamMatch & Document;
+
+export {
+  AnnouncedPlayer,
+  AnnouncedPlayerRole,
+  AnnouncedPlayerSchema,
+} from '../announcedPlayers/announced-players.schema';
+
+export {
+  CricketState,
+  CricketStateSchema,
+  FootballPeriod,
+  FootballState,
+  FootballStateSchema,
+} from './team-match-scoring.embedded';
 
 /** How the match record was created (e.g. feed challenge). */
 export enum TeamMatchSource {
@@ -27,6 +51,7 @@ export enum TeamMatchStatus {
   ONGOING = 'ongoing',
   COMPLETED = 'completed',
   DRAW = 'draw',
+  ABANDONED = 'abandoned',
 }
 
 export enum MatchProposalStatus {
@@ -205,6 +230,16 @@ export class TeamMatch {
 
   @Prop({ type: Date })
   closedAt?: Date;
+
+  /** Playing XI + substitutes announced for the fixture (e.g. cricket). */
+  @Prop({ type: [AnnouncedPlayerSchema], default: [] })
+  announcedPlayers!: AnnouncedPlayer[];
+
+  @Prop({ type: CricketStateSchema, required: false })
+  cricketState?: CricketState;
+
+  @Prop({ type: FootballStateSchema, required: false })
+  footballState?: FootballState;
 
   createdAt!: Date;
   updatedAt!: Date;

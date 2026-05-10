@@ -5,6 +5,9 @@
 		},
 		{
 			"path": "../realtime-turf-services"
+		},
+		{
+			"path": "../../Flutter/flutter_application_1"
 		}
 	],
 	"settings": {}

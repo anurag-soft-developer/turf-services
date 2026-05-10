@@ -24,42 +24,47 @@ export class FootballScoringController {
     private readonly footballScoringService: FootballScoringService,
   ) {}
 
-  @Post('sessions')
+  @Post('matches/:teamMatchId/session')
   async createSession(
+    @Param('teamMatchId') teamMatchId: string,
     @Body() dto: CreateFootballSessionDto,
     @CurrentUser('_id') userId: Types.ObjectId,
   ) {
-    return this.footballScoringService.createSession(userId.toString(), dto);
+    return this.footballScoringService.createSession(
+      userId.toString(),
+      teamMatchId,
+      dto,
+    );
   }
 
-  @Post('sessions/:sessionId/events')
+  @Post('matches/:teamMatchId/events')
   async appendEvent(
-    @Param('sessionId') sessionId: string,
+    @Param('teamMatchId') teamMatchId: string,
     @Body() dto: AppendFootballEventDto,
     @CurrentUser('_id') userId: Types.ObjectId,
   ) {
     return this.footballScoringService.appendEvent(
       userId.toString(),
-      sessionId,
+      teamMatchId,
       dto,
     );
   }
 
-  @Get('sessions/:sessionId')
-  async getSession(@Param('sessionId') sessionId: string) {
-    return this.footballScoringService.getSessionView(sessionId);
+  @Get('matches/:teamMatchId')
+  async getSession(@Param('teamMatchId') teamMatchId: string) {
+    return this.footballScoringService.getSessionView(teamMatchId);
   }
 
-  @Get('sessions/:sessionId/events')
+  @Get('matches/:teamMatchId/events')
   async listEvents(
-    @Param('sessionId') sessionId: string,
+    @Param('teamMatchId') teamMatchId: string,
     @Query() query: ListFootballEventsDto,
   ) {
-    return this.footballScoringService.listEvents(sessionId, query);
+    return this.footballScoringService.listEvents(teamMatchId, query);
   }
 
-  @Get('sessions/:sessionId/points')
-  async getPoints(@Param('sessionId') sessionId: string) {
-    return this.footballScoringService.getPoints(sessionId);
+  @Get('matches/:teamMatchId/points')
+  async getPoints(@Param('teamMatchId') teamMatchId: string) {
+    return this.footballScoringService.getPoints(teamMatchId);
   }
 }

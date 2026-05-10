@@ -6,15 +6,11 @@ import {
 } from '../matchmaking/schemas/team-match.schema';
 import { TeamModule } from '../team/team.module';
 import { TeamMemberModule } from '../team-member/team-member.module';
+import { ScoringRealtimeDispatcher } from './common/scoring-realtime-dispatcher.service';
 import {
-  ScoringSession,
-  ScoringSessionSchema,
-} from './common/scoring-session.schema';
-import { ScoringSessionService } from './common/scoring-session.service';
-import {
-  CricketBallEvent,
-  CricketBallEventSchema,
-} from './cricket/cricket-ball-event.schema';
+  CricketOverEvent,
+  CricketOverEventSchema,
+} from './cricket/cricket-over-event.schema';
 import { CricketScoringService } from './cricket/cricket-scoring.service';
 import { CricketScoringController } from './cricket/cricket-scoring.controller';
 import {
@@ -27,8 +23,7 @@ import { FootballScoringController } from './football/football-scoring.controlle
 @Module({
   imports: [
     MongooseModule.forFeature([
-      { name: ScoringSession.name, schema: ScoringSessionSchema },
-      { name: CricketBallEvent.name, schema: CricketBallEventSchema },
+      { name: CricketOverEvent.name, schema: CricketOverEventSchema },
       { name: FootballMatchEvent.name, schema: FootballMatchEventSchema },
       { name: TeamMatch.name, schema: TeamMatchSchema },
     ]),
@@ -37,14 +32,10 @@ import { FootballScoringController } from './football/football-scoring.controlle
   ],
   controllers: [CricketScoringController, FootballScoringController],
   providers: [
-    ScoringSessionService,
+    ScoringRealtimeDispatcher,
     CricketScoringService,
     FootballScoringService,
   ],
-  exports: [
-    ScoringSessionService,
-    CricketScoringService,
-    FootballScoringService,
-  ],
+  exports: [CricketScoringService, FootballScoringService],
 })
 export class ScoringModule {}

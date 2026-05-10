@@ -1,6 +1,7 @@
 import { PopulateOptions } from 'mongoose';
 import { teamPopulateSelectFields } from '../../team/schemas/team.schema';
 import { turfSelectFields } from '../../turf/schemas/turf.schema';
+import { userSelectFields } from '../../users/schemas/user.schema';
 import { TeamMatchStatus } from '../schemas/team-match.schema';
 
 export const TERMINAL_PRE_PLAY_STATUSES = [
@@ -13,6 +14,7 @@ export const TERMINAL_ALL_STATUSES = [
   ...TERMINAL_PRE_PLAY_STATUSES,
   TeamMatchStatus.COMPLETED,
   TeamMatchStatus.DRAW,
+  TeamMatchStatus.ABANDONED,
 ];
 
 /** Fields returned when populating `turfBookingId` on a team match. */
@@ -24,4 +26,9 @@ export const TEAM_MATCH_POPULATE: PopulateOptions[] = [
   { path: 'toTeam', select: teamPopulateSelectFields },
   { path: 'proposedTurfs.turfId', select: turfSelectFields },
   { path: 'turfBookingId', select: turfBookingPopulateSelectFields },
+  { path: 'cricketState.battingTeamId', select: teamPopulateSelectFields },
+  { path: 'cricketState.bowlingTeamId', select: teamPopulateSelectFields },
+  { path: 'cricketState.strikerUserId', select: userSelectFields },
+  { path: 'cricketState.nonStrikerUserId', select: userSelectFields },
+  { path: 'cricketState.bowlerUserId', select: userSelectFields },
 ];

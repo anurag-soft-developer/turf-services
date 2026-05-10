@@ -46,6 +46,14 @@ export class MatchmakingController {
     return this.matchmakingService.listRequests(userId.toString(), dto);
   }
 
+  @Get('requests/:id')
+  async getRequestById(
+    @Param('id') id: string,
+    @CurrentUser('_id') userId: Types.ObjectId,
+  ) {
+    return this.matchmakingService.getTeamMatchById(id, userId.toString());
+  }
+
   @Post('requests/:id/respond')
   async respond(
     @Param('id') id: string,
