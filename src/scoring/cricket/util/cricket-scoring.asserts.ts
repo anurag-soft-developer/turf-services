@@ -107,6 +107,42 @@ export async function assertBattingBowlingRoster(
   await assertUserOnTeam(teamMemberService, bowler, cs.bowlingTeamId);
 }
 
+/** Striker / non-striker / bowler must each appear in the playing (non-substitute) announced XI for their team. */
+export function assertAnnouncedPlayingLineup(
+  match: TeamMatchDocument,
+  battingTeamId: Types.ObjectId,
+  bowlingTeamId: Types.ObjectId,
+  striker: Types.ObjectId,
+  nonStriker: Types.ObjectId,
+  bowler: Types.ObjectId,
+): void {
+  const players = match.announcedPlayers ?? [];
+
+  const assertOnTeam = (
+    label: string,
+    userId: Types.ObjectId,
+    teamId: Types.ObjectId,
+  ): void => {
+    const uid = userId.toString();
+    const tid = teamId.toString();
+    const ok = players.some(
+      (p) =>
+        p.userId.toString() === uid &&
+        p.teamId.toString() === tid &&
+        !p.is_substitute,
+    );
+    if (!ok) {
+      throw new BadRequestException(
+        `${label} is not in the announced playing XI for that team`,
+      );
+    }
+  };
+
+  assertOnTeam('Striker', striker, battingTeamId);
+  assertOnTeam('Non-striker', nonStriker, battingTeamId);
+  assertOnTeam('Bowler', bowler, bowlingTeamId);
+}
+
 export async function assertLeadershipOnMatchTeams(
   teamService: TeamService,
   teamMemberService: TeamMemberService,

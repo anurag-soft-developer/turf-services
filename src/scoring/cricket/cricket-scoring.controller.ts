@@ -1,15 +1,21 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
+  Patch,
   Post,
   UseGuards,
 } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
-import { AppendCricketBallDto, CreateCricketSessionDto } from './dto/cricket-scoring.dto';
+import {
+  AppendCricketBallDto,
+  CreateCricketSessionDto,
+  UpdateCricketStateDto,
+} from './dto/cricket-scoring.dto';
 import { CricketScoringService } from './cricket-scoring.service';
 
 @Controller('scoring/cricket')
@@ -43,9 +49,44 @@ export class CricketScoringController {
     );
   }
 
+  @Post('matches/:teamMatchId/inning/change')
+  async changeInning(
+    @Param('teamMatchId') teamMatchId: string,
+    @CurrentUser('_id') userId: Types.ObjectId,
+  ) {
+    return this.cricketScoringService.changeInning(
+      userId.toString(),
+      teamMatchId,
+    );
+  }
+
+  @Delete('matches/:teamMatchId/balls/last')
+  async undoLastBall(
+    @Param('teamMatchId') teamMatchId: string,
+    @CurrentUser('_id') userId: Types.ObjectId,
+  ) {
+    return this.cricketScoringService.undoLastBall(
+      userId.toString(),
+      teamMatchId,
+    );
+  }
+
   @Get('matches/:teamMatchId')
   async getSession(@Param('teamMatchId') teamMatchId: string) {
     return this.cricketScoringService.getSessionView(teamMatchId);
+  }
+
+  @Patch('matches/:teamMatchId/state')
+  async updateState(
+    @Param('teamMatchId') teamMatchId: string,
+    @Body() dto: UpdateCricketStateDto,
+    @CurrentUser('_id') userId: Types.ObjectId,
+  ) {
+    return this.cricketScoringService.updateCricketState(
+      userId.toString(),
+      teamMatchId,
+      dto,
+    );
   }
 
   @Get('matches/:teamMatchId/overs')

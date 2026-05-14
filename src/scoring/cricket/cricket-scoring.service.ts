@@ -34,9 +34,11 @@ import { TEAM_MATCH_POPULATE } from '../../matchmaking/util/matchmaking.constant
 import {
   AppendCricketBallDto,
   CreateCricketSessionDto,
+  UpdateCricketStateDto,
 } from './dto/cricket-scoring.dto';
 import { computeCricketPlayerPoints } from './cricket-points.calculator';
 import {
+  assertAnnouncedPlayingLineup,
   assertAnnouncedSquadsForCricket,
   assertBattingBowlingRoster,
   assertLeadershipOnMatchTeams,
@@ -205,11 +207,8 @@ export class CricketScoringService {
     );
 
     const maxLegal = cs.maxOvers * 6;
-    if (summary.wickets >= 10) {
-      throw new BadRequestException('Innings is complete (all out)');
-    }
-    if (summary.legalBalls >= maxLegal) {
-      throw new BadRequestException('Overs quota completed for this innings');
+    if (this.isInningsComplete(cs, innIdx, maxLegal)) {
+      throw new BadRequestException('change inning');
     }
     if (mapped.isLegalDelivery && summary.legalBalls + 1 > maxLegal) {
       throw new BadRequestException(
@@ -282,22 +281,6 @@ export class CricketScoringService {
 
     cs.bowlerUserId = bowler;
 
-    const inningsDone = summary.wickets >= 10 || summary.legalBalls >= maxLegal;
-    if (inningsDone && cs.currentInnings < cs.inningsSummaries.length) {
-      cs.currentInnings += 1;
-      const tmp = cs.battingTeamId;
-      cs.battingTeamId = cs.bowlingTeamId;
-      cs.bowlingTeamId = tmp;
-      cs.strikerUserId = undefined;
-      cs.nonStrikerUserId = undefined;
-      cs.bowlerUserId = undefined;
-    } else if (
-      inningsDone &&
-      cs.currentInnings >= cs.inningsSummaries.length
-    ) {
-      match.status = TeamMatchStatus.COMPLETED;
-    }
-
     const ballPayload: CricketBallEvent = {
       ballInOverAfter,
       strikerUserId: striker,
@@ -356,6 +339,195 @@ export class CricketScoringService {
     });
 
     return await overDoc.populate(CRICKET_OVER_EVENT_POPULATE);
+  }
+
+  async changeInning(
+    userId: string,
+    teamMatchId: string,
+  ): Promise<TeamMatchDocument> {
+    const match = await requireTeamMatchForScoring(
+      this.teamMatchModel,
+      teamMatchId,
+    );
+    assertTeamMatchSport(match, SportType.CRICKET);
+    assertCanAppendScoringEvents(match);
+    if (!match.cricketState) {
+      throw new BadRequestException('Cricket scoring not initialized');
+    }
+
+    await assertLeadershipOnMatchTeams(
+      this.teamService,
+      this.teamMemberService,
+      userId,
+      match,
+    );
+
+    const cs = match.cricketState;
+    const innIdx = cs.currentInnings - 1;
+    const summary = cs.inningsSummaries[innIdx];
+    if (!summary) {
+      throw new BadRequestException('Invalid innings');
+    }
+
+    const maxLegal = cs.maxOvers * 6;
+    if (!this.isInningsComplete(cs, innIdx, maxLegal)) {
+      throw new BadRequestException('Current innings is not complete');
+    }
+
+    if (cs.currentInnings < cs.inningsSummaries.length) {
+      cs.currentInnings += 1;
+      const tmp = cs.battingTeamId;
+      cs.battingTeamId = cs.bowlingTeamId;
+      cs.bowlingTeamId = tmp;
+      cs.strikerUserId = undefined;
+      cs.nonStrikerUserId = undefined;
+      cs.bowlerUserId = undefined;
+    } else {
+      match.status = TeamMatchStatus.COMPLETED;
+    }
+
+    await match.save();
+
+    await this.realtimeDispatcher.dispatch({
+      sport: 'cricket',
+      teamMatchId: match._id.toString(),
+      actorUserId: userId,
+      action: 'append_event',
+      data: { kind: 'cricket_change_inning' },
+    });
+
+    return await match.populate(TEAM_MATCH_POPULATE);
+  }
+
+  async undoLastBall(
+    userId: string,
+    teamMatchId: string,
+  ): Promise<CricketOverEventDocument | null> {
+    const match = await requireTeamMatchForScoring(
+      this.teamMatchModel,
+      teamMatchId,
+    );
+    assertTeamMatchSport(match, SportType.CRICKET);
+    if (!match.cricketState) {
+      throw new BadRequestException('Cricket scoring not initialized');
+    }
+
+    await assertLeadershipOnMatchTeams(
+      this.teamService,
+      this.teamMemberService,
+      userId,
+      match,
+    );
+
+    const overDoc = await this.overEventModel
+      .findOne({
+        teamMatchId: match._id,
+        'ballEvents.0': { $exists: true },
+      })
+      .sort({ sequence: -1 });
+
+    if (!overDoc || overDoc.ballEvents.length === 0) {
+      throw new BadRequestException('No ball to undo');
+    }
+
+    const removedBall = overDoc.ballEvents[overDoc.ballEvents.length - 1];
+    overDoc.ballEvents.pop();
+
+    this.revertMatchStateFromBall(match, overDoc, removedBall);
+
+    if (match.status === TeamMatchStatus.COMPLETED) {
+      match.status = TeamMatchStatus.ONGOING;
+    }
+
+    let savedOver: CricketOverEventDocument | null = overDoc;
+    if (overDoc.ballEvents.length === 0) {
+      await overDoc.deleteOne();
+      savedOver = null;
+    } else {
+      await overDoc.save();
+    }
+
+    await match.save();
+
+    await this.realtimeDispatcher.dispatch({
+      sport: 'cricket',
+      teamMatchId: match._id.toString(),
+      actorUserId: userId,
+      action: 'undo_ball',
+      data: {
+        overId: overDoc._id.toString(),
+        removedBall,
+      },
+    });
+
+    if (!savedOver) {
+      return null;
+    }
+
+    return await savedOver.populate(CRICKET_OVER_EVENT_POPULATE);
+  }
+
+  private isInningsComplete(
+    cs: CricketState,
+    innIdx: number,
+    maxLegal: number,
+  ): boolean {
+    const summary = cs.inningsSummaries[innIdx];
+    if (!summary) {
+      return false;
+    }
+
+    if (summary.wickets >= 10 || summary.legalBalls >= maxLegal) {
+      return true;
+    }
+
+    if (innIdx > 0) {
+      const firstInningsRuns = cs.inningsSummaries[0]?.runs ?? 0;
+      if (summary.runs > firstInningsRuns) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private revertMatchStateFromBall(
+    match: TeamMatchDocument,
+    overDoc: CricketOverEventDocument,
+    removedBall: CricketBallEvent,
+  ): void {
+    const cs = match.cricketState;
+    if (!cs) {
+      throw new BadRequestException('Cricket scoring not initialized');
+    }
+
+    if (cs.currentInnings > overDoc.innings) {
+      cs.currentInnings -= 1;
+      const tmp = cs.battingTeamId;
+      cs.battingTeamId = cs.bowlingTeamId;
+      cs.bowlingTeamId = tmp;
+    }
+
+    const summary = cs.inningsSummaries[overDoc.innings - 1];
+    if (!summary) {
+      throw new BadRequestException('Invalid innings');
+    }
+
+    summary.runs -= removedBall.totalRunsOnDelivery;
+    if (removedBall.isLegalDelivery) {
+      summary.legalBalls -= 1;
+    }
+    if (removedBall.isWicket) {
+      summary.wickets -= removedBall.wicketsFallen;
+    }
+
+    if (summary.runs < 0 || summary.legalBalls < 0 || summary.wickets < 0) {
+      throw new BadRequestException('Cannot undo this ball');
+    }
+
+    cs.strikerUserId = removedBall.strikerUserId;
+    cs.nonStrikerUserId = removedBall.nonStrikerUserId;
+    cs.bowlerUserId = overDoc.bowlerUserId;
   }
 
   private mapOutcome(
@@ -569,6 +741,137 @@ export class CricketScoringService {
         ballEvents: o.ballEvents,
       })),
     );
+  }
+
+  /** Updates striker / non-striker / bowler on [CricketState] (manual lineup edit). */
+  async updateCricketState(
+    userId: string,
+    teamMatchId: string,
+    dto: UpdateCricketStateDto,
+  ): Promise<TeamMatchDocument> {
+    const match = await requireTeamMatchForScoring(
+      this.teamMatchModel,
+      teamMatchId,
+    );
+    assertTeamMatchSport(match, SportType.CRICKET);
+    assertCanAppendScoringEvents(match);
+    if (!match.cricketState) {
+      throw new BadRequestException('Cricket scoring not initialized');
+    }
+
+    await assertLeadershipOnMatchTeams(
+      this.teamService,
+      this.teamMemberService,
+      userId,
+      match,
+    );
+
+    const actorTeam = await this.teamService.requireTeam(dto.actorTeamId);
+    await assertCanActForTeam(
+      actorTeam,
+      userId,
+      this.teamService,
+      this.teamMemberService,
+    );
+    ensureActorTeamOnMatch(match, new Types.ObjectId(dto.actorTeamId));
+
+    const cs = match.cricketState;
+    const nextStriker =
+      dto.strikerUserId !== undefined
+        ? new Types.ObjectId(dto.strikerUserId)
+        : cs.strikerUserId;
+    const nextNonStriker =
+      dto.nonStrikerUserId !== undefined
+        ? new Types.ObjectId(dto.nonStrikerUserId)
+        : cs.nonStrikerUserId;
+    const nextBowler =
+      dto.bowlerUserId !== undefined
+        ? new Types.ObjectId(dto.bowlerUserId)
+        : cs.bowlerUserId;
+
+    if (!nextStriker || !nextNonStriker || !nextBowler) {
+      throw new BadRequestException(
+        'Striker, non-striker and bowler must all be set (include missing IDs in the request)',
+      );
+    }
+
+    if (nextStriker.toString() === nextNonStriker.toString()) {
+      throw new BadRequestException(
+        'Striker and non-striker must be different players',
+      );
+    }
+
+    await assertBattingBowlingRoster(
+      this.teamMemberService,
+      match,
+      nextStriker,
+      nextNonStriker,
+      nextBowler,
+    );
+    assertAnnouncedPlayingLineup(
+      match,
+      cs.battingTeamId,
+      cs.bowlingTeamId,
+      nextStriker,
+      nextNonStriker,
+      nextBowler,
+    );
+
+    const dismissed = await this.dismissedBatsmenUserIds(
+      match._id as Types.ObjectId,
+      cs.currentInnings,
+    );
+    for (const uid of [nextStriker, nextNonStriker]) {
+      if (dismissed.has(uid.toString())) {
+        throw new BadRequestException(
+          'Cannot assign an out batsman as striker or non-striker',
+        );
+      }
+    }
+
+    cs.strikerUserId = nextStriker;
+    cs.nonStrikerUserId = nextNonStriker;
+    cs.bowlerUserId = nextBowler;
+
+    await match.save();
+
+    await this.realtimeDispatcher.dispatch({
+      sport: 'cricket',
+      teamMatchId: match._id.toString(),
+      actorUserId: userId,
+      action: 'append_event',
+      data: {
+        kind: 'cricket_update_lineup',
+        strikerUserId: nextStriker.toString(),
+        nonStrikerUserId: nextNonStriker.toString(),
+        bowlerUserId: nextBowler.toString(),
+      },
+    });
+
+    return await match.populate(TEAM_MATCH_POPULATE);
+  }
+
+  private async dismissedBatsmenUserIds(
+    teamMatchOid: Types.ObjectId,
+    innings: number,
+  ): Promise<Set<string>> {
+    const outs = new Set<string>();
+    const overs = await this.overEventModel
+      .find({ teamMatchId: teamMatchOid, innings })
+      .select({ ballEvents: 1 })
+      .lean();
+    for (const o of overs) {
+      for (const b of o.ballEvents ?? []) {
+        if (
+          b.isWicket &&
+          b.dismissedUserId &&
+          (b.wicketsFallen ?? 0) >= 1
+        ) {
+          outs.add(b.dismissedUserId.toString());
+        }
+      }
+    }
+    return outs;
   }
 
 }

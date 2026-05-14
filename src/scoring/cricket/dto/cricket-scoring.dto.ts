@@ -80,3 +80,22 @@ export class CreateCricketSessionDto extends createZodDto(
 export class AppendCricketBallDto extends createZodDto(
   AppendCricketBallSchema,
 ) {}
+
+const UpdateCricketStateSchema = z
+  .object({
+    actorTeamId: objectId,
+    strikerUserId: objectId.optional(),
+    nonStrikerUserId: objectId.optional(),
+    bowlerUserId: objectId.optional(),
+  })
+  .refine(
+    (v) =>
+      v.strikerUserId !== undefined ||
+      v.nonStrikerUserId !== undefined ||
+      v.bowlerUserId !== undefined,
+    { message: 'Provide at least one of strikerUserId, nonStrikerUserId, bowlerUserId' },
+  );
+
+export class UpdateCricketStateDto extends createZodDto(
+  UpdateCricketStateSchema,
+) {}

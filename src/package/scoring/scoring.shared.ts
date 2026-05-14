@@ -3,7 +3,11 @@ import z from 'zod';
 export const scoringSportSchema = z.enum(['cricket', 'football']);
 export type ScoringSport = z.infer<typeof scoringSportSchema>;
 
-export const scoringActionSchema = z.enum(['append_ball', 'append_event']);
+export const scoringActionSchema = z.enum([
+  'append_ball',
+  'append_event',
+  'undo_ball',
+]);
 export type ScoringAction = z.infer<typeof scoringActionSchema>;
 
 export const scoringUpdatePayloadSchema = z.object({
