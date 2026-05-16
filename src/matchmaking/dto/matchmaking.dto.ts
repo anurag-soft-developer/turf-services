@@ -1,5 +1,6 @@
 import { createZodDto, type ZodDto } from 'nestjs-zod';
 import { z } from 'zod';
+import { TeamMatchStatus } from '../schemas/team-match.schema';
 
 const matchResponseActionSchema = z.enum(['accept', 'reject']);
 const proposalDecisionActionSchema = z.enum(['accept', 'reject', 'withdraw']);
@@ -16,23 +17,60 @@ const SendMatchRequestSchema = z.object({
   expiresInMinutes: z.coerce.number().int().min(1).optional(),
 });
 
+/**
+ * Nest/Express query: `key=a,b` and/or repeated `key=` → trimmed non-empty
+ * strings (used for `teamIds`, `statuses`, etc.).
+ */
+function commaSeparatedQueryToStrings(val: unknown): string[] | undefined {
+  if (val == null || val === '') return undefined;
+  if (Array.isArray(val)) {
+    return val
+      .flatMap((x) =>
+        typeof x === 'string' ? x.split(',').map((s) => s.trim()) : [],
+      )
+      .filter(Boolean);
+  }
+  if (typeof val === 'string') {
+    return val
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+  return undefined;
+}
+
+/** Query: `teamIds=id1,id2` or repeated `teamIds=`. */
+const parseTeamIdsQuery = z.preprocess(
+  commaSeparatedQueryToStrings,
+  z.array(z.string().min(1)).max(50).optional(),
+);
+
+const teamMatchStatusSchema = z.enum(TeamMatchStatus);
+
+/** Query: `statuses=completed,draw` or repeated `statuses=`. */
+const parseStatusesQuery = z.preprocess(
+  commaSeparatedQueryToStrings,
+  z.array(teamMatchStatusSchema).max(15).optional(),
+);
+
 const ListNegotiationsFilterSchema = z.object({
   teamId: z.string().optional(),
+  teamIds: parseTeamIdsQuery,
   type: z.enum(['incoming', 'outgoing', 'all']).default('all'),
-  status: z
-    .enum([
-      'requested',
-      'accepted',
-      'negotiating',
-      'schedule_finalized',
-      'rejected',
-      'expired',
-      'cancelled',
-      'ongoing',
-      'completed',
-      'draw',
-    ])
-    .optional(),
+  status: teamMatchStatusSchema.optional(),
+  statuses: parseStatusesQuery,
+  /** e.g. `createdAt:desc` or `updatedAt:asc,createdAt:desc` */
+  sort: z.string().trim().max(120).optional(),
+  page: z.coerce.number().min(1).default(1),
+  limit: z.coerce.number().min(1).max(50).default(10),
+});
+
+/** Pre-match inbox (received / sent tabs): active challenge flow only. */
+const ListPreMatchInboxFilterSchema = z.object({
+  type: z.enum(['incoming', 'outgoing']),
+  teamId: z.string().optional(),
+  teamIds: parseTeamIdsQuery,
+  sort: z.string().trim().max(120).optional(),
   page: z.coerce.number().min(1).default(1),
   limit: z.coerce.number().min(1).max(50).default(10),
 });
@@ -118,6 +156,9 @@ const UpdateTeamMatchSchema = z
 export class SendMatchRequestDto extends createZodDto(SendMatchRequestSchema) {}
 export class ListNegotiationsFilterDto extends createZodDto(
   ListNegotiationsFilterSchema,
+) {}
+export class ListPreMatchInboxFilterDto extends createZodDto(
+  ListPreMatchInboxFilterSchema,
 ) {}
 export class RespondMatchRequestDto extends createZodDto(
   RespondMatchRequestSchema,

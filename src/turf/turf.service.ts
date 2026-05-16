@@ -12,6 +12,14 @@ import { SearchTurfDto } from './dto/turf.filter.dto';
 import { ITurf } from './interfaces/turf.interface';
 import { PaginatedResult } from '../core/interfaces/common';
 import { userSelectFields } from '../users/schemas/user.schema';
+import { buildMongoSortOptions } from '../core/utils/mongo-sort.util';
+
+const TURF_SEARCH_SORT_FIELD_MAP: Record<string, string> = {
+  price: 'pricing.basePricePerHour',
+  name: 'name',
+  createdAt: 'createdAt',
+  distance: 'distance',
+};
 
 @Injectable()
 export class TurfService {
@@ -221,7 +229,11 @@ export class TurfService {
     }
 
     // Add sorting
-    const sortOptions = this.buildSortOptions(sort);
+    const sortOptions = buildMongoSortOptions(sort, {
+      defaultSort: { createdAt: -1 },
+      fieldMap: TURF_SEARCH_SORT_FIELD_MAP,
+      whenParsedEmpty: 'none',
+    });
     if (Object.keys(sortOptions).length > 0) {
       pipeline.push({ $sort: sortOptions });
     }
@@ -287,40 +299,5 @@ export class TurfService {
       limit,
       totalPages: Math.ceil(metadata.total / limit),
     };
-  }
-
-  private buildSortOptions(sortString?: string): Record<string, 1 | -1> {
-    const sortOptions: Record<string, 1 | -1> = {};
-
-    if (!sortString) {
-      // Default sorting by createdAt desc
-      sortOptions.createdAt = -1;
-      return sortOptions;
-    }
-
-    const sortFields = sortString.split(',');
-
-    for (const field of sortFields) {
-      const [fieldName, order] = field.split(':');
-
-      if (fieldName && order) {
-        // Map field names to actual MongoDB fields
-        const mappedField = this.mapSortField(fieldName);
-        sortOptions[mappedField] = order.toLowerCase() === 'asc' ? 1 : -1;
-      }
-    }
-
-    return sortOptions;
-  }
-
-  private mapSortField(field: string): string {
-    const fieldMap: Record<string, string> = {
-      price: 'pricing.basePricePerHour',
-      name: 'name',
-      createdAt: 'createdAt',
-      distance: 'distance', // For location-based sorting
-    };
-
-    return fieldMap[field] || field;
   }
 }

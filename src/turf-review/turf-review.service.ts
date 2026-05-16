@@ -21,6 +21,7 @@ import {
   ModerateReviewDto,
 } from './dto/turf-review.dto';
 import { PaginatedResult } from '../core/interfaces/common';
+import { buildMongoSortOptions } from '../core/utils/mongo-sort.util';
 import { userSelectFields } from '../users/schemas/user.schema';
 
 @Injectable()
@@ -157,14 +158,21 @@ export class TurfReviewService {
       if (endDate) filter.createdAt.$lte = new Date(endDate);
     }
 
-    const sortDirection = sortOrder === 'asc' ? 1 : -1;
+    const sortSpec = buildMongoSortOptions(
+      sortBy && sortOrder ? `${sortBy}:${sortOrder}` : undefined,
+      {
+        defaultSort: { createdAt: -1 },
+        allowedFields: new Set(['createdAt', 'rating', 'helpfulVotes']),
+        whenParsedEmpty: 'default',
+      },
+    );
     const skip = (page - 1) * limit;
 
     const [reviews, total] = await Promise.all([
       this.turfReviewModel
         .find(filter)
         .populate(TurfReviewService.populateOptions)
-        .sort({ [sortBy]: sortDirection })
+        .sort(sortSpec)
         .skip(skip)
         .limit(limit)
         .exec(),

@@ -17,6 +17,7 @@ import {
   DecideTurfProposalDto,
   FinalizeScheduleDto,
   ListNegotiationsFilterDto,
+  ListPreMatchInboxFilterDto,
   UpdateTeamMatchDto,
   ProposeScheduleDto,
   RecordMatchResultDto,
@@ -39,14 +40,17 @@ import {
   appendSelfAcceptedTurfProposal,
   resolveSelfAcceptTeamId,
 } from './util/matchmaking-staff-selection.helpers';
+import { buildMongoSortOptions } from '../core/utils/mongo-sort.util';
 import {
   applyStatusUpdate,
   assertCanActForTeam,
+  buildPreMatchInboxStatusClause,
   assertMatchAllowsProposalWithdraw,
   assertSchedulePhaseActionable,
   assertTeamEligibleForMatching,
   ensureMatchHasTeam,
   getActorTeamIds,
+  parseScopedTeamIds,
   isSlotProposalWithdrawable,
   isTurfProposalWithdrawable,
   populateTeamMatch,
@@ -144,42 +148,51 @@ export class MatchmakingService {
     }
 
     const q: Record<string, unknown> = {};
-    if (filter.status) {
-      q.status = filter.status;
+
+    const statusStrings: string[] = [];
+    if (filter.statuses?.length) {
+      statusStrings.push(...filter.statuses);
+    } else if (filter.status) {
+      statusStrings.push(filter.status);
+    }
+    const uniqueStatuses = [...new Set(statusStrings)];
+    if (uniqueStatuses.length > 0) {
+      q.status = uniqueStatuses;
     }
 
-    const hasTeamFilter = !!filter.teamId;
+    const uniqueScoped = parseScopedTeamIds(filter);
+
+    const hasTeamFilter = uniqueScoped.length > 0;
     if (hasTeamFilter) {
-      const target = new Types.ObjectId(filter.teamId);
-      if (!actorTeamIds.some((t) => t.equals(target))) {
-        throw new ForbiddenException('You cannot access this team requests');
-      }
       if (filter.type === 'incoming') {
-        q.toTeam = target;
+        q.toTeam = uniqueScoped;
       } else if (filter.type === 'outgoing') {
-        q.fromTeam = target;
+        q.fromTeam = uniqueScoped;
       } else {
-        q.$or = [{ fromTeam: target }, { toTeam: target }];
+        q.$or = [{ fromTeam: uniqueScoped }, { toTeam: uniqueScoped }];
       }
     } else {
       if (filter.type === 'incoming') {
-        q.toTeam = { $in: actorTeamIds };
+        q.toTeam = actorTeamIds;
       } else if (filter.type === 'outgoing') {
-        q.fromTeam = { $in: actorTeamIds };
+        q.fromTeam = actorTeamIds;
       } else {
-        q.$or = [
-          { fromTeam: { $in: actorTeamIds } },
-          { toTeam: { $in: actorTeamIds } },
-        ];
+        q.$or = [{ fromTeam: actorTeamIds }, { toTeam: actorTeamIds }];
       }
     }
+
+    const sortSpec = buildMongoSortOptions(filter.sort, {
+      defaultSort: { updatedAt: -1 },
+      allowedFields: new Set(['createdAt', 'updatedAt']),
+      whenParsedEmpty: 'default',
+    });
 
     const skip = (filter.page - 1) * filter.limit;
     const [data, totalDocuments] = await Promise.all([
       this.teamMatchModel
         .find(q)
         .populate(TEAM_MATCH_POPULATE)
-        .sort({ updatedAt: -1 })
+        .sort(sortSpec)
         .skip(skip)
         .limit(filter.limit)
         .exec(),
@@ -195,25 +208,67 @@ export class MatchmakingService {
     };
   }
 
-  /** Populated team match if the user may act for `fromTeam` or `toTeam`. */
-  async getTeamMatchById(
-    matchId: string,
+  async listInbox(
     userId: string,
-  ): Promise<TeamMatchDocument> {
-    const match = await requireTeamMatch(this.teamMatchModel, matchId);
+    filter: ListPreMatchInboxFilterDto,
+  ): Promise<PaginatedResult<TeamMatchDocument>> {
     const actorTeamIds = await getActorTeamIds(
       userId,
       this.teamModel,
       this.teamMemberService,
     );
-    const from = match.fromTeam.toString();
-    const to = match.toTeam.toString();
-    const allowed = actorTeamIds.some(
-      (id) => id.toString() === from || id.toString() === to,
-    );
-    if (!allowed) {
-      throw new ForbiddenException('You cannot access this match');
+    if (actorTeamIds.length === 0) {
+      return {
+        data: [],
+        totalDocuments: 0,
+        page: filter.page,
+        limit: filter.limit,
+        totalPages: 0,
+      };
     }
+
+    const scopedTeamIds = parseScopedTeamIds(filter);
+    const teamField = filter.type === 'incoming' ? 'toTeam' : 'fromTeam';
+    const teamScope =
+      scopedTeamIds.length > 0
+        ? { [teamField]: scopedTeamIds }
+        : { [teamField]: actorTeamIds };
+
+    const q: Record<string, unknown> = {
+      ...buildPreMatchInboxStatusClause(),
+      ...teamScope,
+    };
+
+    const sortSpec = buildMongoSortOptions(filter.sort, {
+      defaultSort: { createdAt: -1 },
+      allowedFields: new Set(['createdAt', 'updatedAt']),
+      whenParsedEmpty: 'default',
+    });
+
+    const skip = (filter.page - 1) * filter.limit;
+    const [data, totalDocuments] = await Promise.all([
+      this.teamMatchModel
+        .find(q)
+        .populate(TEAM_MATCH_POPULATE)
+        .sort(sortSpec)
+        .skip(skip)
+        .limit(filter.limit)
+        .exec(),
+      this.teamMatchModel.countDocuments(q),
+    ]);
+
+    return {
+      data,
+      totalDocuments,
+      page: filter.page,
+      limit: filter.limit,
+      totalPages: Math.ceil(totalDocuments / filter.limit) || 0,
+    };
+  }
+
+  /** Populated team match by id (read is not restricted to participants). */
+  async getTeamMatchById(matchId: string): Promise<TeamMatchDocument> {
+    const match = await requireTeamMatch(this.teamMatchModel, matchId);
     return populateTeamMatch(match);
   }
 

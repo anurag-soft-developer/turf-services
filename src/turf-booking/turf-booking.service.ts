@@ -32,6 +32,7 @@ import {
   SlotHoldStatus,
 } from './interfaces/turf-booking.interface';
 import { PaginatedResult } from '../core/interfaces/common';
+import { buildMongoSortOptions } from '../core/utils/mongo-sort.util';
 import { IRajorpayOrder } from '../core/interfaces/rajorpay.interface';
 import { userSelectFields } from '../users/schemas/user.schema';
 import { RajorpayService } from '../core/services/rajorpay/rajorpay.service';
@@ -591,14 +592,22 @@ export class TurfBookingService {
       Object.assign(filter, dateFilter);
     }
 
-    const sortDirection = sortOrder === 'asc' ? 1 : -1;
+    const sortSpec = buildMongoSortOptions(
+      sortBy && sortOrder ? `${sortBy}:${sortOrder}` : undefined,
+      {
+        defaultSort: { createdAt: -1 },
+        allowedFields: new Set(['createdAt', 'updatedAt']),
+        whenParsedEmpty: 'default',
+      },
+    );
+
     const skip = (page - 1) * limit;
 
     const [bookings, total] = await Promise.all([
       this.turfBookingModel
         .find(filter)
         .populate(TurfBookingService.populateOptions)
-        .sort({ [sortBy]: sortDirection })
+        .sort(sortSpec)
         .skip(skip)
         .limit(limit)
         .exec(),

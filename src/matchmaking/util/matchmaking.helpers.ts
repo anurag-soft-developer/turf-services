@@ -189,6 +189,63 @@ export function assertSchedulePhaseActionable(
   }
 }
 
+export type ScopedTeamIdsFilter = {
+  teamId?: string;
+  teamIds?: string[];
+};
+
+export function parseScopedTeamIds(
+  filter: ScopedTeamIdsFilter,
+): Types.ObjectId[] {
+  const explicitTeamIdStrings: string[] = [];
+  if (filter.teamIds?.length) {
+    explicitTeamIdStrings.push(...filter.teamIds);
+  } else if (filter.teamId) {
+    explicitTeamIdStrings.push(filter.teamId);
+  }
+
+  const scopedTeamIds: Types.ObjectId[] = [];
+  for (const id of explicitTeamIdStrings) {
+    let oid: Types.ObjectId;
+    try {
+      oid = new Types.ObjectId(id);
+    } catch {
+      throw new BadRequestException('Invalid team id');
+    }
+    scopedTeamIds.push(oid);
+  }
+  return [
+    ...new Map(scopedTeamIds.map((o) => [o.toString(), o])).values(),
+  ];
+}
+
+/** Active challenge inbox: requested (non-expired), accepted, negotiating. */
+export function buildPreMatchInboxStatusClause(
+  now = new Date(),
+): Record<string, unknown> {
+  return {
+    $and: [
+      {
+        status: {
+          $in: [
+            TeamMatchStatus.REQUESTED,
+            TeamMatchStatus.ACCEPTED,
+            TeamMatchStatus.NEGOTIATING,
+          ],
+        },
+      },
+      {
+        $or: [
+          { status: { $ne: TeamMatchStatus.REQUESTED } },
+          { expiresAt: { $exists: false } },
+          { expiresAt: null },
+          { expiresAt: { $gte: now } },
+        ],
+      },
+    ],
+  };
+}
+
 export async function getActorTeamIds(
   userId: string,
   teamModel: Model<TeamDocument>,
@@ -200,9 +257,9 @@ export async function getActorTeamIds(
     teamMemberService.distinctTeamIdsByMembershipFilter({
       user: uid,
       status: TeamMemberStatus.ACTIVE,
-      leadershipRole: {
-        $in: [LeadershipRole.CAPTAIN, LeadershipRole.VICE_CAPTAIN],
-      },
+      // leadershipRole: {
+      //   $in: [LeadershipRole.CAPTAIN, LeadershipRole.VICE_CAPTAIN],
+      // },
     }),
   ]);
   const all = new Map<string, Types.ObjectId>();

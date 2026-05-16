@@ -17,6 +17,7 @@ import {
   DecideTurfProposalDto,
   FinalizeScheduleDto,
   ListNegotiationsFilterDto,
+  ListPreMatchInboxFilterDto,
   UpdateTeamMatchDto,
   ProposeScheduleDto,
   RecordMatchResultDto,
@@ -46,12 +47,17 @@ export class MatchmakingController {
     return this.matchmakingService.listRequests(userId.toString(), dto);
   }
 
-  @Get('requests/:id')
-  async getRequestById(
-    @Param('id') id: string,
+  @Get('inbox')
+  async listInbox(
+    @Query() dto: ListPreMatchInboxFilterDto,
     @CurrentUser('_id') userId: Types.ObjectId,
   ) {
-    return this.matchmakingService.getTeamMatchById(id, userId.toString());
+    return this.matchmakingService.listInbox(userId.toString(), dto);
+  }
+
+  @Get('requests/:id')
+  async getRequestById(@Param('id') id: string) {
+    return this.matchmakingService.getTeamMatchById(id);
   }
 
   @Post('requests/:id/respond')
