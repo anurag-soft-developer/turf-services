@@ -14,6 +14,7 @@ import {
   CricketOverEventSchema,
 } from './cricket/cricket-over-event.schema';
 import { CricketMatchStatsService } from './cricket/cricket-match-stats.service';
+import { CricketRankingPointsService } from './cricket/cricket-ranking-points.service';
 import { CricketScoringService } from './cricket/cricket-scoring.service';
 import { CricketScoringController } from './cricket/cricket-scoring.controller';
 import {
@@ -39,6 +40,7 @@ import { FootballScoringController } from './football/football-scoring.controlle
   providers: [
     ScoringRealtimeDispatcher,
     CricketMatchStatsService,
+    CricketRankingPointsService,
     CricketScoringService,
     FootballScoringService,
   ],

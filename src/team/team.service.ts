@@ -9,6 +9,9 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, PipelineStage, Types } from 'mongoose';
+import { teamLeaderboardStatsFromTeam } from '../core/points/leaderboard-stats.helpers';
+import type { TeamLeaderboardRow } from '../core/points/ranking-points.types';
+import type { PaginatedResult } from '../core/interfaces/common';
 import {
   Team,
   TeamDocument,
@@ -25,7 +28,6 @@ import {
   UpdateTeamDto,
 } from './dto/team.dto';
 import omitEmpty from 'omit-empty';
-import { PaginatedResult } from '../core/interfaces/common';
 import { userSelectFields } from '../users/schemas/user.schema';
 import { TeamMemberService } from '../team-member/team-member.service';
 
@@ -354,5 +356,42 @@ export class TeamService {
 
   isOwner(team: TeamDocument, userId: string): boolean {
     return team.ownerIds.some((o) => o.toString() === userId);
+  }
+
+  async getLeaderboard(
+    sportType: SportType,
+    page: number,
+    limit: number,
+  ): Promise<PaginatedResult<TeamLeaderboardRow>> {
+    const filter = { sportType, status: TeamStatus.ACTIVE };
+    const skip = (page - 1) * limit;
+
+    const [teams, totalDocuments] = await Promise.all([
+      this.teamModel
+        .find(filter)
+        .sort({ rankingPoints: -1, name: 1 })
+        .skip(skip)
+        .limit(limit)
+        .select(
+          'name logo rankingPoints matchesPlayed wins losses draws winRate',
+        )
+        .lean(),
+      this.teamModel.countDocuments(filter),
+    ]);
+
+    return {
+      data: teams.map((t, index) => ({
+        rank: skip + index + 1,
+        id: t._id.toString(),
+        name: t.name,
+        points: t.rankingPoints ?? 0,
+        stats: teamLeaderboardStatsFromTeam(t),
+        ...(t.logo ? { avatar: t.logo } : {}),
+      })),
+      totalDocuments,
+      page,
+      limit,
+      totalPages: Math.ceil(totalDocuments / limit) || 0,
+    };
   }
 }

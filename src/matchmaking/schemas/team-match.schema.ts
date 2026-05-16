@@ -241,6 +241,13 @@ export class TeamMatch {
   @Prop({ type: FootballStateSchema, required: false })
   footballState?: FootballState;
 
+  /** Set when ranking points from this match have been applied to teams/players. */
+  @Prop({ type: Date })
+  rankingPointsAppliedAt?: Date;
+
+  @Prop({ type: MongooseSchema.Types.Mixed })
+  rankingPointsSnapshot?: Record<string, unknown>;
+
   createdAt!: Date;
   updatedAt!: Date;
 }

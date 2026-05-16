@@ -240,6 +240,10 @@ export class Team {
   @Prop({ type: Number, default: 0, min: 0, max: 1 })
   winRate!: number;
 
+  /** Cumulative ranking points for leaderboards (floored at 0 on each update). */
+  @Prop({ type: Number, default: 0, min: 0 })
+  rankingPoints!: number;
+
   /**
    * Sport-specific statistics keyed by sport name.
    * Only the key matching the team's sportType will be populated.
@@ -275,3 +279,4 @@ TeamSchema.index({ ownerIds: 1 });
 TeamSchema.index({ lookingForMembers: 1, status: 1 });
 TeamSchema.index({ teamOpenForMatch: 1, status: 1, sportType: 1 });
 TeamSchema.index({ tags: 1 });
+TeamSchema.index({ sportType: 1, status: 1, rankingPoints: -1 });

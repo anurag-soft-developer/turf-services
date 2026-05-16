@@ -8,6 +8,7 @@ import type {
 import { type NotificationModule } from '../../notification/schemas/notification.schema';
 import { UserRole } from '../../auth/decorators/roles.decorator';
 import type { PlayerSportEntry } from '../../core/sports/sport-stats';
+import type { SportRankingPointsEntry } from '../../core/points/ranking-points.types';
 import type { EarnedBadge } from '../../core/badges/badges';
 
 export type UserDocument = Omit<
@@ -223,6 +224,21 @@ export class User extends Document implements UserDocument {
   playerSportStats!: PlayerSportEntry[];
 
   /**
+   * Cumulative ranking points per sport for player leaderboards.
+   */
+  @Prop({
+    type: [
+      {
+        sportType: { type: String, required: true },
+        points: { type: Number, default: 0, min: 0 },
+      },
+    ],
+    _id: false,
+    default: [],
+  })
+  sportRankingPoints!: SportRankingPointsEntry[];
+
+  /**
    * Badges earned by the player across all sports.
    * Each badge carries `sportType` to identify the sport it was earned in.
    */
@@ -257,3 +273,7 @@ export const UserSchema = SchemaFactory.createForClass(User);
 // Index for better query performance
 // UserSchema.index({ email: 1 });
 UserSchema.index({ 'oAuthStrategies.provider': 1, 'oAuthStrategies.id': 1 });
+UserSchema.index({
+  'sportRankingPoints.sportType': 1,
+  'sportRankingPoints.points': -1,
+});

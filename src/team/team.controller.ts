@@ -19,8 +19,11 @@ import {
   UpdateTeamDto,
 } from './dto/team.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { Public } from '../auth/decorators/public.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Types } from 'mongoose';
+import { LeaderboardQueryDto } from '../core/points/leaderboard.dto';
+import { SportType } from './schemas/team.schema';
 
 @Controller('teams')
 @UseGuards(JwtAuthGuard)
@@ -42,6 +45,16 @@ export class TeamController {
     @CurrentUser('_id') userId: Types.ObjectId,
   ) {
     return this.teamService.findMany(userId.toString(), filter);
+  }
+
+  @Public()
+  @Get('leaderboard')
+  async leaderboard(@Query() query: LeaderboardQueryDto) {
+    return this.teamService.getLeaderboard(
+      query.sportType as SportType,
+      query.page,
+      query.limit,
+    );
   }
 
   @Get(':id')

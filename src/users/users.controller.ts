@@ -21,6 +21,7 @@ import {
   ReplaceFcmDevicesDto,
   UpsertFcmDeviceDto,
 } from './dto/fcm-devices.dto';
+import { LeaderboardQueryDto } from '../core/points/leaderboard.dto';
 import {
   SearchUsersListDto,
   UpdateNotificationSettingsDto,
@@ -82,6 +83,16 @@ export class UsersController {
   ) {
     const updated = await this.usersService.upsertFcmDevice(user._id, dto);
     return UsersService.sanitizeProfile(updated);
+  }
+
+  @Public()
+  @Get('leaderboard')
+  async leaderboard(@Query() query: LeaderboardQueryDto) {
+    return this.usersService.getLeaderboard(
+      query.sportType,
+      query.page,
+      query.limit,
+    );
   }
 
   @Public()

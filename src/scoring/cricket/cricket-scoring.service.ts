@@ -38,8 +38,12 @@ import {
   CreateCricketSessionDto,
   UpdateCricketStateDto,
 } from './dto/cricket-scoring.dto';
-import { computeCricketPlayerPoints } from './cricket-points.calculator';
+import {
+  computeCricketMatchRankingPoints,
+  computeCricketPlayerPoints,
+} from './cricket-points.calculator';
 import { CricketMatchStatsService } from './cricket-match-stats.service';
+import { CricketRankingPointsService } from './cricket-ranking-points.service';
 import {
   assertAnnouncedPlayingLineup,
   assertAnnouncedSquadsForCricket,
@@ -70,6 +74,7 @@ export class CricketScoringService {
     private readonly teamMemberService: TeamMemberService,
     private readonly realtimeDispatcher: ScoringRealtimeDispatcher,
     private readonly cricketMatchStatsService: CricketMatchStatsService,
+    private readonly cricketRankingPointsService: CricketRankingPointsService,
   ) {}
 
   async createSession(
@@ -485,6 +490,12 @@ export class CricketScoringService {
       winner?.toString() ?? null,
       winner === null,
     );
+    await this.cricketRankingPointsService.applyMatchRankingPoints(
+      match,
+      overs,
+      winner?.toString() ?? null,
+      winner === null,
+    );
 
     await match.save();
 
@@ -604,12 +615,32 @@ export class CricketScoringService {
       .find({ teamMatchId: match._id })
       .sort({ sequence: 1 })
       .lean();
-    return computeCricketPlayerPoints(
+
+    const isFinished =
+      match.status === TeamMatchStatus.COMPLETED ||
+      match.status === TeamMatchStatus.DRAW;
+    const winnerId = match.winnerTeam?.toString() ?? null;
+    const isDraw = match.status === TeamMatchStatus.DRAW;
+
+    if (isFinished) {
+      const { players, teams } = computeCricketMatchRankingPoints(
+        match,
+        overs,
+        winnerId,
+        isDraw,
+        { includeResultBonuses: true },
+      );
+      return { players, teams };
+    }
+
+    const players = computeCricketPlayerPoints(
       overs.map((o) => ({
         bowlerUserId: o.bowlerUserId,
         ballEvents: o.ballEvents,
+        innings: o.innings,
       })),
     );
+    return { players, teams: [] };
   }
 
   async updateCricketState(

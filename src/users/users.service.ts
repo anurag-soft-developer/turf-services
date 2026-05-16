@@ -15,6 +15,9 @@ import type {
 } from './interfaces/user.interface';
 import { UpdateProfileDto } from '../auth/dto/auth.dto';
 import type { Profile } from './interfaces/user.interface';
+import { playerLeaderboardStatsFromEntry } from '../core/points/leaderboard-stats.helpers';
+import type { PlayerLeaderboardRow } from '../core/points/ranking-points.types';
+import type { PlayerSportEntry } from '../core/sports/sport-stats';
 import type { PaginatedResult } from '../core/interfaces/common';
 import type { UpdateNotificationSettingsDto } from './dto/users.dto';
 import type { FcmTokenEntryPayload } from './dto/fcm-devices.dto';
@@ -342,7 +345,7 @@ export class UsersService {
       smsNotificationsEnabled: user.smsNotificationsEnabled,
       notificationsEnabled: user.notificationsEnabled,
       notificationModules: user.notificationModules,
-      fcmTokens: user.fcmTokens||[],
+      fcmTokens: user.fcmTokens || [],
       phone: user.phone,
       lastLogin: user.lastLogin?.toString(),
       isPasswordExists,
@@ -352,16 +355,88 @@ export class UsersService {
   }
 
   static sanitizePublicProfile(user: IUser | UserDocument): PublicProfile {
-    const { fullName, avatar, bio, playerSportStats, badges, isVerified } =
-      user;
+    const {
+      fullName,
+      avatar,
+      bio,
+      playerSportStats,
+      sportRankingPoints,
+      badges,
+      isVerified,
+    } = user;
     return {
       _id: user._id.toString(),
       fullName,
       avatar,
       bio,
       playerSportStats,
+      sportRankingPoints,
       badges,
       isVerified,
+    };
+  }
+
+  async getLeaderboard(
+    sportType: string,
+    page: number,
+    limit: number,
+  ): Promise<PaginatedResult<PlayerLeaderboardRow>> {
+    const skip = (page - 1) * limit;
+    const baseStages = [
+      { $match: { isActive: true } },
+      { $unwind: '$sportRankingPoints' },
+      { $match: { 'sportRankingPoints.sportType': sportType } },
+    ];
+
+    const [countAgg, rows] = await Promise.all([
+      this.userModel.aggregate<{ total: number }>([
+        ...baseStages,
+        { $count: 'total' },
+      ]),
+      this.userModel.aggregate<{
+        _id: { toString(): string };
+        fullName?: string;
+        avatar?: string;
+        points: number;
+        playerSportStats: PlayerSportEntry[];
+      }>([
+        ...baseStages,
+        { $sort: { 'sportRankingPoints.points': -1, fullName: 1 } },
+        { $skip: skip },
+        { $limit: limit },
+        {
+          $project: {
+            fullName: 1,
+            avatar: 1,
+            points: '$sportRankingPoints.points',
+            playerSportStats: 1,
+          },
+        },
+      ]),
+    ]);
+
+    const totalDocuments = countAgg[0]?.total ?? 0;
+
+    const data = rows.map((u, index) => {
+      const sportEntry = (u.playerSportStats ?? []).find(
+        (e) => e.sportType === sportType,
+      );
+      return {
+        rank: skip + index + 1,
+        id: u._id.toString(),
+        name: u.fullName?.trim() || 'Player',
+        points: u.points ?? 0,
+        stats: playerLeaderboardStatsFromEntry(sportEntry),
+        ...(u.avatar ? { avatar: u.avatar } : {}),
+      };
+    });
+    
+    return {
+      data,
+      totalDocuments,
+      page,
+      limit,
+      totalPages: Math.ceil(totalDocuments / limit) || 0,
     };
   }
 

@@ -1,4 +1,5 @@
 import type { PlayerSportEntry } from '../../core/sports/sport-stats';
+import type { SportRankingPointsEntry } from '../../core/points/ranking-points.types';
 import type { EarnedBadge } from '../../core/badges/badges';
 
 export interface IOAuthStrategy {
@@ -35,6 +36,7 @@ export interface Profile {
   notificationModules?: Record<string, boolean>;
   fcmTokens?: FcmTokenEntry[];
   playerSportStats?: PlayerSportEntry[];
+  sportRankingPoints?: SportRankingPointsEntry[];
   badges?: EarnedBadge[];
   isPasswordExists?: boolean;
   phone?: string;
@@ -51,6 +53,7 @@ export interface PublicProfile extends Pick<
   | 'bio'
   | 'isVerified'
   | 'playerSportStats'
+  | 'sportRankingPoints'
   | 'badges'
 > {}
 
