@@ -8,6 +8,14 @@ const CricketInningsSummarySchema = new MongooseSchema(
     runs: { type: Number, default: 0 },
     wickets: { type: Number, default: 0 },
     legalBalls: { type: Number, default: 0 },
+    battingTeamId: {
+      type: MongooseSchema.Types.ObjectId,
+      ref: Team.name,
+    },
+    bowlingTeamId: {
+      type: MongooseSchema.Types.ObjectId,
+      ref: Team.name,
+    },
   },
   { _id: false },
 );
@@ -17,6 +25,8 @@ export class CricketInningsSummary {
   runs!: number;
   wickets!: number;
   legalBalls!: number;
+  battingTeamId?: Types.ObjectId;
+  bowlingTeamId?: Types.ObjectId;
 }
 
 @Schema({ _id: false })

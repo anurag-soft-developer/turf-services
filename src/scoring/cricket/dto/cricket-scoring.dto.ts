@@ -99,3 +99,11 @@ const UpdateCricketStateSchema = z
 export class UpdateCricketStateDto extends createZodDto(
   UpdateCricketStateSchema,
 ) {}
+
+const CompleteCricketMatchSchema = z.object({
+  actorTeamId: objectId,
+});
+
+export class CompleteCricketMatchDto extends createZodDto(
+  CompleteCricketMatchSchema,
+) {}

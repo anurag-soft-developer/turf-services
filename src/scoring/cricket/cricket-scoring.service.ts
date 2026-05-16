@@ -1,11 +1,13 @@
 import {
   BadRequestException,
   Injectable,
-  NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import { assertCanActForTeam } from '../../matchmaking/util/matchmaking.helpers';
+import {
+  applyStatusUpdate,
+  assertCanActForTeam,
+} from '../../matchmaking/util/matchmaking.helpers';
 import {
   CricketState,
   TeamMatch,
@@ -28,15 +30,16 @@ import {
   CricketBallEvent,
   CricketOverEvent,
   CricketOverEventDocument,
-  CricketWicketKind,
 } from './cricket-over-event.schema';
 import { TEAM_MATCH_POPULATE } from '../../matchmaking/util/matchmaking.constants';
 import {
   AppendCricketBallDto,
+  CompleteCricketMatchDto,
   CreateCricketSessionDto,
   UpdateCricketStateDto,
 } from './dto/cricket-scoring.dto';
 import { computeCricketPlayerPoints } from './cricket-points.calculator';
+import { CricketMatchStatsService } from './cricket-match-stats.service';
 import {
   assertAnnouncedPlayingLineup,
   assertAnnouncedSquadsForCricket,
@@ -45,24 +48,16 @@ import {
   assertUserOnTeam,
   assertUsersInTeams,
 } from './util/cricket-scoring.asserts';
-
-/** Both teams bat (standard limited-overs). Mirrors [CricketState.inningsSummaries] length. */
-const CRICKET_INNINGS_PER_MATCH = 2;
-
-type OutcomeMapped = {
-  runsOffBat: number;
-  extrasWide: number;
-  extrasNoBall: boolean;
-  extrasBye: number;
-  extrasLegBye: number;
-  isWicket: boolean;
-  wicketKind?: CricketWicketKind;
-  totalRunsOnDelivery: number;
-  isLegalDelivery: boolean;
-  wicketsFallen: number;
-  dismissedUserId?: Types.ObjectId;
-  primaryFielderUserId?: Types.ObjectId;
-};
+import {
+  CRICKET_INNINGS_PER_MATCH,
+  computeOverAndBallAfter,
+  finalizeInningsSummaryTeams,
+  getDismissedBatsmenUserIds,
+  isCricketInningsComplete,
+  mapCricketOutcome,
+  resolveCricketWinnerFromInnings,
+  revertMatchStateFromBall,
+} from './util/cricket-scoring.helpers';
 
 @Injectable()
 export class CricketScoringService {
@@ -74,6 +69,7 @@ export class CricketScoringService {
     private readonly teamService: TeamService,
     private readonly teamMemberService: TeamMemberService,
     private readonly realtimeDispatcher: ScoringRealtimeDispatcher,
+    private readonly cricketMatchStatsService: CricketMatchStatsService,
   ) {}
 
   async createSession(
@@ -120,11 +116,15 @@ export class CricketScoringService {
 
     await assertUsersInTeams(this.teamMemberService, dto, bat, bowl);
 
-    const summaries = Array.from({ length: CRICKET_INNINGS_PER_MATCH }, () => ({
-      runs: 0,
-      wickets: 0,
-      legalBalls: 0,
-    }));
+    const summaries = Array.from(
+      { length: CRICKET_INNINGS_PER_MATCH },
+      (_, i) => ({
+        runs: 0,
+        wickets: 0,
+        legalBalls: 0,
+        ...(i === 0 ? { battingTeamId: bat, bowlingTeamId: bowl } : {}),
+      }),
+    );
 
     const cricketState: CricketState = {
       maxOvers: dto.maxOvers,
@@ -144,6 +144,7 @@ export class CricketScoringService {
     };
 
     match.cricketState = cricketState;
+    match.status = TeamMatchStatus.ONGOING;
     return await (await match.save()).populate(TEAM_MATCH_POPULATE);
   }
 
@@ -183,7 +184,7 @@ export class CricketScoringService {
     const nonStriker = new Types.ObjectId(dto.nonStrikerUserId);
     const bowler = new Types.ObjectId(dto.bowlerUserId);
 
-    const mapped = this.mapOutcome(dto.outcome, striker);
+    const mapped = mapCricketOutcome(dto.outcome, striker);
     const wicketsAfter =
       summary.wickets + (mapped.isWicket ? mapped.wicketsFallen : 0);
     const willCompleteAllOut = mapped.isWicket && wicketsAfter >= 10;
@@ -207,7 +208,7 @@ export class CricketScoringService {
     );
 
     const maxLegal = cs.maxOvers * 6;
-    if (this.isInningsComplete(cs, innIdx, maxLegal)) {
+    if (isCricketInningsComplete(cs, innIdx, maxLegal)) {
       throw new BadRequestException('change inning');
     }
     if (mapped.isLegalDelivery && summary.legalBalls + 1 > maxLegal) {
@@ -227,22 +228,11 @@ export class CricketScoringService {
     }
 
     const legalAfter = summary.legalBalls;
-    let overAfter: number;
-    let ballInOverAfter: number;
-    if (mapped.isLegalDelivery) {
-      const C = legalAfter;
-      overAfter = Math.floor((C - 1) / 6);
-      ballInOverAfter = ((C - 1) % 6) + 1;
-    } else {
-      const C = legalBefore;
-      if (C === 0) {
-        overAfter = 0;
-        ballInOverAfter = 1;
-      } else {
-        overAfter = Math.floor((C - 1) / 6);
-        ballInOverAfter = ((C - 1) % 6) + 1;
-      }
-    }
+    const { overAfter, ballInOverAfter } = computeOverAndBallAfter(
+      legalBefore,
+      legalAfter,
+      mapped.isLegalDelivery,
+    );
 
     const dismissed = mapped.dismissedUserId;
     if (mapped.isWicket && !willCompleteAllOut && dto.incomingBatsmanUserId) {
@@ -370,20 +360,30 @@ export class CricketScoringService {
     }
 
     const maxLegal = cs.maxOvers * 6;
-    if (!this.isInningsComplete(cs, innIdx, maxLegal)) {
+    if (!isCricketInningsComplete(cs, innIdx, maxLegal)) {
       throw new BadRequestException('Current innings is not complete');
     }
 
-    if (cs.currentInnings < cs.inningsSummaries.length) {
-      cs.currentInnings += 1;
-      const tmp = cs.battingTeamId;
-      cs.battingTeamId = cs.bowlingTeamId;
-      cs.bowlingTeamId = tmp;
-      cs.strikerUserId = undefined;
-      cs.nonStrikerUserId = undefined;
-      cs.bowlerUserId = undefined;
-    } else {
-      match.status = TeamMatchStatus.COMPLETED;
+    if (cs.currentInnings >= cs.inningsSummaries.length) {
+      throw new BadRequestException(
+        'All innings are finished; use complete match to finalise the result',
+      );
+    }
+
+    finalizeInningsSummaryTeams(cs, innIdx);
+    cs.currentInnings += 1;
+    const tmp = cs.battingTeamId;
+    cs.battingTeamId = cs.bowlingTeamId;
+    cs.bowlingTeamId = tmp;
+    cs.strikerUserId = undefined;
+    cs.nonStrikerUserId = undefined;
+    cs.bowlerUserId = undefined;
+
+    const nextIdx = cs.currentInnings - 1;
+    const nextSummary = cs.inningsSummaries[nextIdx];
+    if (nextSummary) {
+      nextSummary.battingTeamId = cs.battingTeamId;
+      nextSummary.bowlingTeamId = cs.bowlingTeamId;
     }
 
     await match.save();
@@ -394,6 +394,106 @@ export class CricketScoringService {
       actorUserId: userId,
       action: 'append_event',
       data: { kind: 'cricket_change_inning' },
+    });
+
+    return await match.populate(TEAM_MATCH_POPULATE);
+  }
+
+  async completeMatch(
+    userId: string,
+    teamMatchId: string,
+    dto: CompleteCricketMatchDto,
+  ): Promise<TeamMatchDocument> {
+    const actorTeam = await this.teamService.requireTeam(dto.actorTeamId);
+    await assertCanActForTeam(
+      actorTeam,
+      userId,
+      this.teamService,
+      this.teamMemberService,
+    );
+
+    const match = await requireTeamMatchForScoring(
+      this.teamMatchModel,
+      teamMatchId,
+    );
+    assertTeamMatchSport(match, SportType.CRICKET);
+
+    if (
+      match.status === TeamMatchStatus.COMPLETED ||
+      match.status === TeamMatchStatus.DRAW
+    ) {
+      throw new BadRequestException('Match is already finished');
+    }
+    if (
+      ![TeamMatchStatus.ONGOING, TeamMatchStatus.SCHEDULE_FINALIZED].includes(
+        match.status,
+      )
+    ) {
+      throw new BadRequestException(
+        'Match must be ongoing to complete from scoring',
+      );
+    }
+
+    if (!match.cricketState) {
+      throw new BadRequestException('Cricket scoring not initialized');
+    }
+
+    await assertLeadershipOnMatchTeams(
+      this.teamService,
+      this.teamMemberService,
+      userId,
+      match,
+    );
+
+    const cs = match.cricketState;
+    const maxLegal = cs.maxOvers * 6;
+
+    if (cs.currentInnings !== cs.inningsSummaries.length) {
+      throw new BadRequestException(
+        'Complete earlier innings before finishing the match',
+      );
+    }
+
+    const innIdx = cs.currentInnings - 1;
+    if (!isCricketInningsComplete(cs, innIdx, maxLegal)) {
+      throw new BadRequestException('Current innings is not complete');
+    }
+
+    for (let i = 0; i < cs.inningsSummaries.length; i++) {
+      finalizeInningsSummaryTeams(cs, i);
+      if (!isCricketInningsComplete(cs, i, maxLegal)) {
+        throw new BadRequestException('Not all innings are complete');
+      }
+    }
+
+    const winner = resolveCricketWinnerFromInnings(match);
+    if (winner === null) {
+      applyStatusUpdate(match, TeamMatchStatus.DRAW, userId);
+      match.winnerTeam = undefined;
+    } else {
+      applyStatusUpdate(match, TeamMatchStatus.COMPLETED, userId);
+      match.winnerTeam = winner;
+    }
+    match.closedAt = new Date();
+
+    const overs = await this.overEventModel
+      .find({ teamMatchId: match._id })
+      .exec();
+    await this.cricketMatchStatsService.applyMatchStats(
+      match,
+      overs,
+      winner?.toString() ?? null,
+      winner === null,
+    );
+
+    await match.save();
+
+    await this.realtimeDispatcher.dispatch({
+      sport: 'cricket',
+      teamMatchId: match._id.toString(),
+      actorUserId: userId,
+      action: 'append_event',
+      data: { kind: 'cricket_complete_match' },
     });
 
     return await match.populate(TEAM_MATCH_POPULATE);
@@ -433,10 +533,15 @@ export class CricketScoringService {
     const removedBall = overDoc.ballEvents[overDoc.ballEvents.length - 1];
     overDoc.ballEvents.pop();
 
-    this.revertMatchStateFromBall(match, overDoc, removedBall);
+    revertMatchStateFromBall(match, overDoc, removedBall);
 
-    if (match.status === TeamMatchStatus.COMPLETED) {
+    if (
+      match.status === TeamMatchStatus.COMPLETED ||
+      match.status === TeamMatchStatus.DRAW
+    ) {
       match.status = TeamMatchStatus.ONGOING;
+      match.winnerTeam = undefined;
+      match.closedAt = undefined;
     }
 
     let savedOver: CricketOverEventDocument | null = overDoc;
@@ -465,242 +570,6 @@ export class CricketScoringService {
     }
 
     return await savedOver.populate(CRICKET_OVER_EVENT_POPULATE);
-  }
-
-  private isInningsComplete(
-    cs: CricketState,
-    innIdx: number,
-    maxLegal: number,
-  ): boolean {
-    const summary = cs.inningsSummaries[innIdx];
-    if (!summary) {
-      return false;
-    }
-
-    if (summary.wickets >= 10 || summary.legalBalls >= maxLegal) {
-      return true;
-    }
-
-    if (innIdx > 0) {
-      const firstInningsRuns = cs.inningsSummaries[0]?.runs ?? 0;
-      if (summary.runs > firstInningsRuns) {
-        return true;
-      }
-    }
-
-    return false;
-  }
-
-  private revertMatchStateFromBall(
-    match: TeamMatchDocument,
-    overDoc: CricketOverEventDocument,
-    removedBall: CricketBallEvent,
-  ): void {
-    const cs = match.cricketState;
-    if (!cs) {
-      throw new BadRequestException('Cricket scoring not initialized');
-    }
-
-    if (cs.currentInnings > overDoc.innings) {
-      cs.currentInnings -= 1;
-      const tmp = cs.battingTeamId;
-      cs.battingTeamId = cs.bowlingTeamId;
-      cs.bowlingTeamId = tmp;
-    }
-
-    const summary = cs.inningsSummaries[overDoc.innings - 1];
-    if (!summary) {
-      throw new BadRequestException('Invalid innings');
-    }
-
-    summary.runs -= removedBall.totalRunsOnDelivery;
-    if (removedBall.isLegalDelivery) {
-      summary.legalBalls -= 1;
-    }
-    if (removedBall.isWicket) {
-      summary.wickets -= removedBall.wicketsFallen;
-    }
-
-    if (summary.runs < 0 || summary.legalBalls < 0 || summary.wickets < 0) {
-      throw new BadRequestException('Cannot undo this ball');
-    }
-
-    cs.strikerUserId = removedBall.strikerUserId;
-    cs.nonStrikerUserId = removedBall.nonStrikerUserId;
-    cs.bowlerUserId = overDoc.bowlerUserId;
-  }
-
-  private mapOutcome(
-    outcome: AppendCricketBallDto['outcome'],
-    strikerUserId: Types.ObjectId,
-  ): OutcomeMapped {
-    switch (outcome.kind) {
-      case 'dot':
-        return {
-          runsOffBat: 0,
-          extrasWide: 0,
-          extrasNoBall: false,
-          extrasBye: 0,
-          extrasLegBye: 0,
-          isWicket: false,
-          totalRunsOnDelivery: 0,
-          isLegalDelivery: true,
-          wicketsFallen: 0,
-        };
-      case 'runs':
-        return {
-          runsOffBat: outcome.offBat,
-          extrasWide: 0,
-          extrasNoBall: false,
-          extrasBye: 0,
-          extrasLegBye: 0,
-          isWicket: false,
-          totalRunsOnDelivery: outcome.offBat,
-          isLegalDelivery: true,
-          wicketsFallen: 0,
-        };
-      case 'wide': {
-        const total = 1 + outcome.additionalRuns;
-        return {
-          runsOffBat: 0,
-          extrasWide: total,
-          extrasNoBall: false,
-          extrasBye: 0,
-          extrasLegBye: 0,
-          isWicket: false,
-          totalRunsOnDelivery: total,
-          isLegalDelivery: false,
-          wicketsFallen: 0,
-        };
-      }
-      case 'no_ball':
-        return {
-          runsOffBat: outcome.offBat,
-          extrasWide: 0,
-          extrasNoBall: true,
-          extrasBye: 0,
-          extrasLegBye: 0,
-          isWicket: false,
-          totalRunsOnDelivery: 1 + outcome.offBat,
-          isLegalDelivery: false,
-          wicketsFallen: 0,
-        };
-      case 'bye':
-        return {
-          runsOffBat: 0,
-          extrasWide: 0,
-          extrasNoBall: false,
-          extrasBye: outcome.runs,
-          extrasLegBye: 0,
-          isWicket: false,
-          totalRunsOnDelivery: outcome.runs,
-          isLegalDelivery: true,
-          wicketsFallen: 0,
-        };
-      case 'leg_bye':
-        return {
-          runsOffBat: 0,
-          extrasWide: 0,
-          extrasNoBall: false,
-          extrasBye: 0,
-          extrasLegBye: outcome.runs,
-          isWicket: false,
-          totalRunsOnDelivery: outcome.runs,
-          isLegalDelivery: true,
-          wicketsFallen: 0,
-        };
-      case 'wicket_bowled':
-        return {
-          runsOffBat: outcome.offBat,
-          extrasWide: 0,
-          extrasNoBall: false,
-          extrasBye: 0,
-          extrasLegBye: 0,
-          isWicket: true,
-          wicketKind: CricketWicketKind.BOWLED,
-          dismissedUserId: strikerUserId,
-          totalRunsOnDelivery: outcome.offBat,
-          isLegalDelivery: true,
-          wicketsFallen: 1,
-        };
-      case 'wicket_caught':
-        return {
-          runsOffBat: outcome.offBat,
-          extrasWide: 0,
-          extrasNoBall: false,
-          extrasBye: 0,
-          extrasLegBye: 0,
-          isWicket: true,
-          wicketKind: CricketWicketKind.CAUGHT,
-          dismissedUserId: strikerUserId,
-          primaryFielderUserId: new Types.ObjectId(outcome.fielderUserId),
-          totalRunsOnDelivery: outcome.offBat,
-          isLegalDelivery: true,
-          wicketsFallen: 1,
-        };
-      case 'wicket_lbw':
-        return {
-          runsOffBat: outcome.offBat,
-          extrasWide: 0,
-          extrasNoBall: false,
-          extrasBye: 0,
-          extrasLegBye: 0,
-          isWicket: true,
-          wicketKind: CricketWicketKind.LBW,
-          dismissedUserId: strikerUserId,
-          totalRunsOnDelivery: outcome.offBat,
-          isLegalDelivery: true,
-          wicketsFallen: 1,
-        };
-      case 'wicket_run_out':
-        return {
-          runsOffBat: outcome.runsOffBat,
-          extrasWide: 0,
-          extrasNoBall: false,
-          extrasBye: 0,
-          extrasLegBye: 0,
-          isWicket: true,
-          wicketKind: CricketWicketKind.RUN_OUT,
-          dismissedUserId: new Types.ObjectId(outcome.dismissedUserId),
-          primaryFielderUserId: outcome.fielderUserId
-            ? new Types.ObjectId(outcome.fielderUserId)
-            : undefined,
-          totalRunsOnDelivery: outcome.runsOffBat,
-          isLegalDelivery: true,
-          wicketsFallen: 1,
-        };
-      case 'wicket_stumped':
-        return {
-          runsOffBat: outcome.offBat,
-          extrasWide: 0,
-          extrasNoBall: false,
-          extrasBye: 0,
-          extrasLegBye: 0,
-          isWicket: true,
-          wicketKind: CricketWicketKind.STUMPED,
-          dismissedUserId: strikerUserId,
-          primaryFielderUserId: new Types.ObjectId(outcome.wicketKeeperUserId),
-          totalRunsOnDelivery: outcome.offBat,
-          isLegalDelivery: true,
-          wicketsFallen: 1,
-        };
-      case 'wicket_hit_wicket':
-        return {
-          runsOffBat: outcome.offBat,
-          extrasWide: 0,
-          extrasNoBall: false,
-          extrasBye: 0,
-          extrasLegBye: 0,
-          isWicket: true,
-          wicketKind: CricketWicketKind.HIT_WICKET,
-          dismissedUserId: strikerUserId,
-          totalRunsOnDelivery: outcome.offBat,
-          isLegalDelivery: true,
-          wicketsFallen: 1,
-        };
-      default:
-        throw new BadRequestException('Unsupported outcome');
-    }
   }
 
   async getSessionView(teamMatchId: string): Promise<TeamMatchDocument> {
@@ -743,7 +612,6 @@ export class CricketScoringService {
     );
   }
 
-  /** Updates striker / non-striker / bowler on [CricketState] (manual lineup edit). */
   async updateCricketState(
     userId: string,
     teamMatchId: string,
@@ -817,7 +685,8 @@ export class CricketScoringService {
       nextBowler,
     );
 
-    const dismissed = await this.dismissedBatsmenUserIds(
+    const dismissed = await getDismissedBatsmenUserIds(
+      this.overEventModel,
       match._id as Types.ObjectId,
       cs.currentInnings,
     );
@@ -850,28 +719,4 @@ export class CricketScoringService {
 
     return await match.populate(TEAM_MATCH_POPULATE);
   }
-
-  private async dismissedBatsmenUserIds(
-    teamMatchOid: Types.ObjectId,
-    innings: number,
-  ): Promise<Set<string>> {
-    const outs = new Set<string>();
-    const overs = await this.overEventModel
-      .find({ teamMatchId: teamMatchOid, innings })
-      .select({ ballEvents: 1 })
-      .lean();
-    for (const o of overs) {
-      for (const b of o.ballEvents ?? []) {
-        if (
-          b.isWicket &&
-          b.dismissedUserId &&
-          (b.wicketsFallen ?? 0) >= 1
-        ) {
-          outs.add(b.dismissedUserId.toString());
-        }
-      }
-    }
-    return outs;
-  }
-
 }

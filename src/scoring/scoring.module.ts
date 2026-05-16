@@ -4,13 +4,16 @@ import {
   TeamMatch,
   TeamMatchSchema,
 } from '../matchmaking/schemas/team-match.schema';
+import { Team, TeamSchema } from '../team/schemas/team.schema';
 import { TeamModule } from '../team/team.module';
 import { TeamMemberModule } from '../team-member/team-member.module';
+import { User, UserSchema } from '../users/schemas/user.schema';
 import { ScoringRealtimeDispatcher } from './common/scoring-realtime-dispatcher.service';
 import {
   CricketOverEvent,
   CricketOverEventSchema,
 } from './cricket/cricket-over-event.schema';
+import { CricketMatchStatsService } from './cricket/cricket-match-stats.service';
 import { CricketScoringService } from './cricket/cricket-scoring.service';
 import { CricketScoringController } from './cricket/cricket-scoring.controller';
 import {
@@ -26,6 +29,8 @@ import { FootballScoringController } from './football/football-scoring.controlle
       { name: CricketOverEvent.name, schema: CricketOverEventSchema },
       { name: FootballMatchEvent.name, schema: FootballMatchEventSchema },
       { name: TeamMatch.name, schema: TeamMatchSchema },
+      { name: Team.name, schema: TeamSchema },
+      { name: User.name, schema: UserSchema },
     ]),
     TeamModule,
     TeamMemberModule,
@@ -33,6 +38,7 @@ import { FootballScoringController } from './football/football-scoring.controlle
   controllers: [CricketScoringController, FootballScoringController],
   providers: [
     ScoringRealtimeDispatcher,
+    CricketMatchStatsService,
     CricketScoringService,
     FootballScoringService,
   ],

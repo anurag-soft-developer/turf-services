@@ -108,6 +108,7 @@ export interface CricketFieldingStats {
 
 export interface CricketPlayerStats {
   matchesPlayed: number;
+  matchesWon: number;
   batting: CricketBattingStats;
   bowling: CricketBowlingStats;
   fielding: CricketFieldingStats;
