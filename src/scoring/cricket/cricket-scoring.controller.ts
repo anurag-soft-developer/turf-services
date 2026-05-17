@@ -13,7 +13,6 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import {
   AppendCricketBallDto,
-  CompleteCricketMatchDto,
   CreateCricketSessionDto,
   UpdateCricketStateDto,
 } from './dto/cricket-scoring.dto';
@@ -64,13 +63,11 @@ export class CricketScoringController {
   @Post('matches/:teamMatchId/complete')
   async completeMatch(
     @Param('teamMatchId') teamMatchId: string,
-    @Body() dto: CompleteCricketMatchDto,
     @CurrentUser('_id') userId: Types.ObjectId,
   ) {
     return this.cricketScoringService.completeMatch(
       userId.toString(),
       teamMatchId,
-      dto,
     );
   }
 

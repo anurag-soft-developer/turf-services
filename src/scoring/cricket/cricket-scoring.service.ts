@@ -4,10 +4,7 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import {
-  applyStatusUpdate,
-  assertCanActForTeam,
-} from '../../matchmaking/util/matchmaking.helpers';
+import { applyStatusUpdate } from '../../matchmaking/util/matchmaking.helpers';
 import {
   CricketState,
   TeamMatch,
@@ -21,7 +18,6 @@ import {
   assertCanAppendScoringEvents,
   assertTeamMatchSport,
   bumpMatchStatusToOngoingIfScheduled,
-  ensureActorTeamOnMatch,
   requireTeamMatchForScoring,
 } from '../common/scoring.helpers';
 import { ScoringRealtimeDispatcher } from '../common/scoring-realtime-dispatcher.service';
@@ -34,7 +30,6 @@ import {
 import { TEAM_MATCH_POPULATE } from '../../matchmaking/util/matchmaking.constants';
 import {
   AppendCricketBallDto,
-  CompleteCricketMatchDto,
   CreateCricketSessionDto,
   UpdateCricketStateDto,
 } from './dto/cricket-scoring.dto';
@@ -82,20 +77,17 @@ export class CricketScoringService {
     teamMatchId: string,
     dto: CreateCricketSessionDto,
   ): Promise<TeamMatchDocument> {
-    const actorTeam = await this.teamService.requireTeam(dto.actorTeamId);
-    await assertCanActForTeam(
-      actorTeam,
-      userId,
-      this.teamService,
-      this.teamMemberService,
-    );
-
     const match = await requireTeamMatchForScoring(
       this.teamMatchModel,
       teamMatchId,
     );
     assertTeamMatchSport(match, SportType.CRICKET);
-    ensureActorTeamOnMatch(match, new Types.ObjectId(dto.actorTeamId));
+    await assertLeadershipOnMatchTeams(
+      this.teamService,
+      this.teamMemberService,
+      userId,
+      match,
+    );
     assertCanAppendScoringEvents(match);
 
     if (match.cricketState) {
@@ -407,16 +399,7 @@ export class CricketScoringService {
   async completeMatch(
     userId: string,
     teamMatchId: string,
-    dto: CompleteCricketMatchDto,
   ): Promise<TeamMatchDocument> {
-    const actorTeam = await this.teamService.requireTeam(dto.actorTeamId);
-    await assertCanActForTeam(
-      actorTeam,
-      userId,
-      this.teamService,
-      this.teamMemberService,
-    );
-
     const match = await requireTeamMatchForScoring(
       this.teamMatchModel,
       teamMatchId,
@@ -664,15 +647,6 @@ export class CricketScoringService {
       userId,
       match,
     );
-
-    const actorTeam = await this.teamService.requireTeam(dto.actorTeamId);
-    await assertCanActForTeam(
-      actorTeam,
-      userId,
-      this.teamService,
-      this.teamMemberService,
-    );
-    ensureActorTeamOnMatch(match, new Types.ObjectId(dto.actorTeamId));
 
     const cs = match.cricketState;
     const nextStriker =

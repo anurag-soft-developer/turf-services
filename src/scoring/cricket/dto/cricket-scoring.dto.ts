@@ -56,7 +56,6 @@ const cricketOutcomeSchema = z.discriminatedUnion('kind', [
 ]);
 
 const CreateCricketSessionSchema = z.object({
-  actorTeamId: objectId,
   battingTeamId: objectId,
   bowlingTeamId: objectId,
   maxOvers: z.coerce.number().int().min(1).max(120).default(20),
@@ -83,7 +82,6 @@ export class AppendCricketBallDto extends createZodDto(
 
 const UpdateCricketStateSchema = z
   .object({
-    actorTeamId: objectId,
     strikerUserId: objectId.optional(),
     nonStrikerUserId: objectId.optional(),
     bowlerUserId: objectId.optional(),
@@ -98,12 +96,4 @@ const UpdateCricketStateSchema = z
 
 export class UpdateCricketStateDto extends createZodDto(
   UpdateCricketStateSchema,
-) {}
-
-const CompleteCricketMatchSchema = z.object({
-  actorTeamId: objectId,
-});
-
-export class CompleteCricketMatchDto extends createZodDto(
-  CompleteCricketMatchSchema,
 ) {}
