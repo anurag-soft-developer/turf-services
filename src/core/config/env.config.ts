@@ -32,7 +32,7 @@ export function validateConfig() {
       FRONTEND_URL: process.env.FRONTEND_URL!,
       APP_NAME: process.env.APP_NAME!,
       APP_VERSION: process.env.APP_VERSION || '1.0.0',
-
+      ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS?.split(',') || [],
       // Razorpay
       RAJORPAY_KEY_ID: process.env.RAJORPAY_KEY_ID!,
       RAJORPAY_KEY_SECRET: process.env.RAJORPAY_KEY_SECRET!,

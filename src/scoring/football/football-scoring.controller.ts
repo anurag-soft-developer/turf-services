@@ -1,10 +1,10 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Post,
-  Query,
   UseGuards,
 } from '@nestjs/common';
 import { Types } from 'mongoose';
@@ -13,7 +13,6 @@ import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import {
   AppendFootballEventDto,
   CreateFootballSessionDto,
-  ListFootballEventsDto,
 } from './dto/football-scoring.dto';
 import { FootballScoringService } from './football-scoring.service';
 
@@ -50,17 +49,36 @@ export class FootballScoringController {
     );
   }
 
+  @Post('matches/:teamMatchId/complete')
+  async completeMatch(
+    @Param('teamMatchId') teamMatchId: string,
+    @CurrentUser('_id') userId: Types.ObjectId,
+  ) {
+    return this.footballScoringService.completeMatch(
+      userId.toString(),
+      teamMatchId,
+    );
+  }
+
   @Get('matches/:teamMatchId')
   async getSession(@Param('teamMatchId') teamMatchId: string) {
     return this.footballScoringService.getSessionView(teamMatchId);
   }
 
-  @Get('matches/:teamMatchId/events')
-  async listEvents(
+  @Delete('matches/:teamMatchId/events/last')
+  async undoLastEvent(
     @Param('teamMatchId') teamMatchId: string,
-    @Query() query: ListFootballEventsDto,
+    @CurrentUser('_id') userId: Types.ObjectId,
   ) {
-    return this.footballScoringService.listEvents(teamMatchId, query);
+    return this.footballScoringService.undoLastEvent(
+      userId.toString(),
+      teamMatchId,
+    );
+  }
+
+  @Get('matches/:teamMatchId/events')
+  async listEvents(@Param('teamMatchId') teamMatchId: string) {
+    return this.footballScoringService.listEvents(teamMatchId);
   }
 
   @Get('matches/:teamMatchId/points')

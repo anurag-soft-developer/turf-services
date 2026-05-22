@@ -25,8 +25,7 @@ async function bootstrap() {
   // Enable CORS
   app.enableCors({
     origin: [
-      'http://localhost:3000',
-      'http://localhost:3001',
+      ...config.ALLOWED_ORIGINS,
       config.FRONTEND_URL,
     ].filter(Boolean),
     credentials: true,

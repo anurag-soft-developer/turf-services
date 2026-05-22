@@ -21,6 +21,8 @@ import {
   FootballMatchEvent,
   FootballMatchEventSchema,
 } from './football/football-match-event.schema';
+import { FootballMatchStatsService } from './football/football-match-stats.service';
+import { FootballRankingPointsService } from './football/football-ranking-points.service';
 import { FootballScoringService } from './football/football-scoring.service';
 import { FootballScoringController } from './football/football-scoring.controller';
 
@@ -42,6 +44,8 @@ import { FootballScoringController } from './football/football-scoring.controlle
     CricketMatchStatsService,
     CricketRankingPointsService,
     CricketScoringService,
+    FootballMatchStatsService,
+    FootballRankingPointsService,
     FootballScoringService,
   ],
   exports: [CricketScoringService, FootballScoringService],

@@ -99,7 +99,7 @@ export const SPORT_ROSTER_CONFIG: Record<
   SportType,
   { min: number; max: number }
 > = {
-  [SportType.CRICKET]: { min: 11, max: 15 },
+  [SportType.CRICKET]: { min: 5, max: 15 },
   [SportType.FOOTBALL]: { min: 5, max: 18 },
 };
 

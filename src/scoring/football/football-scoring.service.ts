@@ -1,16 +1,17 @@
 import {
   BadRequestException,
-  ForbiddenException,
   Injectable,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import { assertCanActForTeam } from '../../matchmaking/util/matchmaking.helpers';
+import { applyStatusUpdate } from '../../matchmaking/util/matchmaking.helpers';
+import { TEAM_MATCH_POPULATE } from '../../matchmaking/util/matchmaking.constants';
 import {
   FootballPeriod,
   FootballState,
   TeamMatch,
   TeamMatchDocument,
+  TeamMatchStatus,
 } from '../../matchmaking/schemas/team-match.schema';
 import { TeamService } from '../../team/team.service';
 import { TeamMemberService } from '../../team-member/team-member.service';
@@ -19,9 +20,9 @@ import {
   assertCanAppendScoringEvents,
   assertTeamMatchSport,
   bumpMatchStatusToOngoingIfScheduled,
-  ensureActorTeamOnMatch,
   requireTeamMatchForScoring,
 } from '../common/scoring.helpers';
+import { assertAnnouncedSquadsForSport } from '../common/scoring-squad.asserts';
 import { ScoringRealtimeDispatcher } from '../common/scoring-realtime-dispatcher.service';
 import {
   FootballEventKind,
@@ -31,9 +32,21 @@ import {
 import {
   AppendFootballEventDto,
   CreateFootballSessionDto,
-  ListFootballEventsDto,
 } from './dto/football-scoring.dto';
-import { computeFootballPlayerPoints } from './football-points.calculator';
+import {
+  computeFootballMatchRankingPoints,
+  computeFootballPlayerPoints,
+} from './football-points.calculator';
+import { FootballMatchStatsService } from './football-match-stats.service';
+import { FootballRankingPointsService } from './football-ranking-points.service';
+import {
+  assertLeadershipOnMatchTeams,
+  assertUserOnTeam,
+} from './util/football-scoring.asserts';
+import {
+  resolveFootballWinnerFromScore,
+  revertMatchStateFromEvent,
+} from './util/football-scoring.helpers';
 
 @Injectable()
 export class FootballScoringService {
@@ -45,6 +58,8 @@ export class FootballScoringService {
     private readonly teamService: TeamService,
     private readonly teamMemberService: TeamMemberService,
     private readonly realtimeDispatcher: ScoringRealtimeDispatcher,
+    private readonly footballMatchStatsService: FootballMatchStatsService,
+    private readonly footballRankingPointsService: FootballRankingPointsService,
   ) {}
 
   async createSession(
@@ -52,25 +67,24 @@ export class FootballScoringService {
     teamMatchId: string,
     dto: CreateFootballSessionDto,
   ): Promise<TeamMatchDocument> {
-    const actorTeam = await this.teamService.requireTeam(dto.actorTeamId);
-    await assertCanActForTeam(
-      actorTeam,
-      userId,
-      this.teamService,
-      this.teamMemberService,
-    );
-
     const match = await requireTeamMatchForScoring(
       this.teamMatchModel,
       teamMatchId,
     );
     assertTeamMatchSport(match, SportType.FOOTBALL);
-    ensureActorTeamOnMatch(match, new Types.ObjectId(dto.actorTeamId));
+    await assertLeadershipOnMatchTeams(
+      this.teamService,
+      this.teamMemberService,
+      userId,
+      match,
+    );
     assertCanAppendScoringEvents(match);
 
     if (match.footballState) {
       throw new BadRequestException('Football scoring already initialized');
     }
+
+    assertAnnouncedSquadsForSport(match, SportType.FOOTBALL);
 
     const footballState: FootballState = {
       scoreTeamOne: 0,
@@ -80,7 +94,8 @@ export class FootballScoringService {
     };
 
     match.footballState = footballState;
-    return match.save();
+    match.status = TeamMatchStatus.ONGOING;
+    return await (await match.save()).populate(TEAM_MATCH_POPULATE);
   }
 
   async appendEvent(
@@ -100,7 +115,12 @@ export class FootballScoringService {
 
     bumpMatchStatusToOngoingIfScheduled(match);
 
-    await this.assertLeadershipOnMatchTeams(userId, match);
+    await assertLeadershipOnMatchTeams(
+      this.teamService,
+      this.teamMemberService,
+      userId,
+      match,
+    );
 
     const fs = match.footballState;
     fs.currentPeriod = dto.period as FootballPeriod;
@@ -129,32 +149,172 @@ export class FootballScoringService {
     return built;
   }
 
+  async completeMatch(
+    userId: string,
+    teamMatchId: string,
+  ): Promise<TeamMatchDocument> {
+    const match = await requireTeamMatchForScoring(
+      this.teamMatchModel,
+      teamMatchId,
+    );
+    assertTeamMatchSport(match, SportType.FOOTBALL);
+
+    if (
+      match.status === TeamMatchStatus.COMPLETED ||
+      match.status === TeamMatchStatus.DRAW
+    ) {
+      throw new BadRequestException('Match is already finished');
+    }
+    if (
+      ![TeamMatchStatus.ONGOING, TeamMatchStatus.SCHEDULE_FINALIZED].includes(
+        match.status,
+      )
+    ) {
+      throw new BadRequestException(
+        'Match must be ongoing to complete from scoring',
+      );
+    }
+
+    if (!match.footballState) {
+      throw new BadRequestException('Football scoring not initialized');
+    }
+
+    await assertLeadershipOnMatchTeams(
+      this.teamService,
+      this.teamMemberService,
+      userId,
+      match,
+    );
+
+    const winner = resolveFootballWinnerFromScore(match);
+    const isDraw = winner === null;
+
+    if (isDraw) {
+      applyStatusUpdate(match, TeamMatchStatus.DRAW, userId);
+      match.winnerTeam = undefined;
+    } else {
+      applyStatusUpdate(match, TeamMatchStatus.COMPLETED, userId);
+      match.winnerTeam = winner;
+    }
+    match.closedAt = new Date();
+
+    const events = await this.footballEventModel
+      .find({ teamMatchId: match._id })
+      .sort({ sequence: 1 })
+      .lean();
+
+    await this.footballMatchStatsService.applyMatchStats(
+      match,
+      events as FootballMatchEvent[],
+      winner?.toString() ?? null,
+      isDraw,
+    );
+    await this.footballRankingPointsService.applyMatchRankingPoints(
+      match,
+      events as FootballMatchEvent[],
+      winner?.toString() ?? null,
+      isDraw,
+    );
+
+    await match.save();
+
+    await this.realtimeDispatcher.dispatch({
+      sport: 'football',
+      teamMatchId: match._id.toString(),
+      actorUserId: userId,
+      action: 'append_event',
+      data: { kind: 'football_complete_match' },
+    });
+
+    return await match.populate(TEAM_MATCH_POPULATE);
+  }
+
   async getSessionView(teamMatchId: string): Promise<TeamMatchDocument> {
     const match = await requireTeamMatchForScoring(
       this.teamMatchModel,
       teamMatchId,
     );
     assertTeamMatchSport(match, SportType.FOOTBALL);
-    return match;
+    return await match.populate(TEAM_MATCH_POPULATE);
   }
 
-  async listEvents(teamMatchId: string, query: ListFootballEventsDto) {
+  async listEvents(teamMatchId: string): Promise<FootballMatchEventDocument[]> {
     const match = await requireTeamMatchForScoring(
       this.teamMatchModel,
       teamMatchId,
     );
     assertTeamMatchSport(match, SportType.FOOTBALL);
-    const skip = (query.page - 1) * query.limit;
-    const [items, total] = await Promise.all([
-      this.footballEventModel
-        .find({ teamMatchId: match._id })
-        .sort({ sequence: 1 })
-        .skip(skip)
-        .limit(query.limit)
-        .lean(),
-      this.footballEventModel.countDocuments({ teamMatchId: match._id }),
-    ]);
-    return { items, total, page: query.page, limit: query.limit };
+    return this.footballEventModel
+      .find({ teamMatchId: match._id })
+      .sort({ sequence: 1 })
+      .exec();
+  }
+
+  async undoLastEvent(
+    userId: string,
+    teamMatchId: string,
+  ): Promise<FootballMatchEvent | null> {
+    const match = await requireTeamMatchForScoring(
+      this.teamMatchModel,
+      teamMatchId,
+    );
+    assertTeamMatchSport(match, SportType.FOOTBALL);
+    if (!match.footballState) {
+      throw new BadRequestException('Football scoring not initialized');
+    }
+
+    await assertLeadershipOnMatchTeams(
+      this.teamService,
+      this.teamMemberService,
+      userId,
+      match,
+    );
+
+    const lastEvent = await this.footballEventModel
+      .findOne({ teamMatchId: match._id })
+      .sort({ sequence: -1 });
+
+    if (!lastEvent) {
+      throw new BadRequestException('No event to undo');
+    }
+
+    const previous =
+      lastEvent.sequence > 1
+        ? await this.footballEventModel
+            .findOne({
+              teamMatchId: match._id,
+              sequence: lastEvent.sequence - 1,
+            })
+            .lean()
+        : null;
+
+    const removed = lastEvent.toObject();
+    revertMatchStateFromEvent(match, removed, previous);
+
+    if (
+      match.status === TeamMatchStatus.COMPLETED ||
+      match.status === TeamMatchStatus.DRAW
+    ) {
+      match.status = TeamMatchStatus.ONGOING;
+      match.winnerTeam = undefined;
+      match.closedAt = undefined;
+    }
+
+    await lastEvent.deleteOne();
+    await match.save();
+
+    await this.realtimeDispatcher.dispatch({
+      sport: 'football',
+      teamMatchId: match._id.toString(),
+      actorUserId: userId,
+      action: 'undo_event',
+      data: {
+        eventId: lastEvent._id.toString(),
+        removedEvent: removed,
+      },
+    });
+
+    return removed;
   }
 
   async getPoints(teamMatchId: string) {
@@ -167,7 +327,28 @@ export class FootballScoringService {
       .find({ teamMatchId: match._id })
       .sort({ sequence: 1 })
       .lean();
-    return computeFootballPlayerPoints(events as FootballMatchEvent[]);
+
+    const isFinished =
+      match.status === TeamMatchStatus.COMPLETED ||
+      match.status === TeamMatchStatus.DRAW;
+    const winnerId = match.winnerTeam?.toString() ?? null;
+    const isDraw = match.status === TeamMatchStatus.DRAW;
+
+    if (isFinished) {
+      const { players, teams } = computeFootballMatchRankingPoints(
+        match,
+        events as FootballMatchEvent[],
+        winnerId,
+        isDraw,
+        { includeResultBonuses: true },
+      );
+      return { players, teams };
+    }
+
+    const players = computeFootballPlayerPoints(
+      events as FootballMatchEvent[],
+    );
+    return { players, teams: [] };
   }
 
   private scoreDeltasForBeneficiary(
@@ -194,9 +375,13 @@ export class FootballScoringService {
       case 'goal': {
         const ben = new Types.ObjectId(p.beneficiaryTeamId);
         const scorer = new Types.ObjectId(p.scorerUserId);
-        await this.assertUserOnTeam(scorer, ben);
+        await assertUserOnTeam(this.teamMemberService, scorer, ben);
         if (p.assistUserId) {
-          await this.assertUserOnTeam(new Types.ObjectId(p.assistUserId), ben);
+          await assertUserOnTeam(
+            this.teamMemberService,
+            new Types.ObjectId(p.assistUserId),
+            ben,
+          );
         }
         const { d1, d2 } = this.scoreDeltasForBeneficiary(match, ben);
         fs.scoreTeamOne += d1;
@@ -220,7 +405,7 @@ export class FootballScoringService {
         const ben = new Types.ObjectId(p.beneficiaryTeamId);
         const conceding = new Types.ObjectId(p.concedingPlayerUserId);
         const concedingTeam = this.otherTeam(match, ben);
-        await this.assertUserOnTeam(conceding, concedingTeam);
+        await assertUserOnTeam(this.teamMemberService, conceding, concedingTeam);
         const { d1, d2 } = this.scoreDeltasForBeneficiary(match, ben);
         fs.scoreTeamOne += d1;
         fs.scoreTeamTwo += d2;
@@ -239,7 +424,7 @@ export class FootballScoringService {
       case 'yellow_card': {
         const teamId = new Types.ObjectId(p.teamId);
         const player = new Types.ObjectId(p.playerUserId);
-        await this.assertUserOnTeam(player, teamId);
+        await assertUserOnTeam(this.teamMemberService, player, teamId);
         return new this.footballEventModel({
           teamMatchId: match._id,
           sequence,
@@ -255,7 +440,7 @@ export class FootballScoringService {
       case 'red_card': {
         const teamId = new Types.ObjectId(p.teamId);
         const player = new Types.ObjectId(p.playerUserId);
-        await this.assertUserOnTeam(player, teamId);
+        await assertUserOnTeam(this.teamMemberService, player, teamId);
         return new this.footballEventModel({
           teamMatchId: match._id,
           sequence,
@@ -270,11 +455,13 @@ export class FootballScoringService {
       }
       case 'substitution': {
         const teamId = new Types.ObjectId(p.teamId);
-        await this.assertUserOnTeam(
+        await assertUserOnTeam(
+          this.teamMemberService,
           new Types.ObjectId(p.playerOffUserId),
           teamId,
         );
-        await this.assertUserOnTeam(
+        await assertUserOnTeam(
+          this.teamMemberService,
           new Types.ObjectId(p.playerOnUserId),
           teamId,
         );
@@ -294,7 +481,7 @@ export class FootballScoringService {
       case 'penalty_scored': {
         const ben = new Types.ObjectId(p.beneficiaryTeamId);
         const taker = new Types.ObjectId(p.takerUserId);
-        await this.assertUserOnTeam(taker, ben);
+        await assertUserOnTeam(this.teamMemberService, taker, ben);
         const { d1, d2 } = this.scoreDeltasForBeneficiary(match, ben);
         fs.scoreTeamOne += d1;
         fs.scoreTeamTwo += d2;
@@ -313,7 +500,7 @@ export class FootballScoringService {
       case 'penalty_missed': {
         const teamId = new Types.ObjectId(p.teamId);
         const taker = new Types.ObjectId(p.takerUserId);
-        await this.assertUserOnTeam(taker, teamId);
+        await assertUserOnTeam(this.teamMemberService, taker, teamId);
         return new this.footballEventModel({
           teamMatchId: match._id,
           sequence,
@@ -339,52 +526,5 @@ export class FootballScoringService {
     if (t === match.fromTeam.toString()) return match.toTeam;
     if (t === match.toTeam.toString()) return match.fromTeam;
     throw new BadRequestException('Invalid team id');
-  }
-
-  private async assertUserOnTeam(
-    userId: Types.ObjectId,
-    teamId: Types.ObjectId,
-  ): Promise<void> {
-    const ok = await this.teamMemberService.hasActiveMembership(
-      teamId.toString(),
-      userId.toString(),
-    );
-    if (!ok) {
-      throw new BadRequestException(
-        `User ${userId.toString()} is not an active member of team ${teamId.toString()}`,
-      );
-    }
-  }
-
-  private async assertLeadershipOnMatchTeams(
-    userId: string,
-    match: TeamMatchDocument,
-  ): Promise<void> {
-    const t1 = await this.teamService.requireTeam(match.fromTeam.toString());
-    const t2 = await this.teamService.requireTeam(match.toTeam.toString());
-    const can1 = await this.canLeadershipAct(t1, userId);
-    const can2 = await this.canLeadershipAct(t2, userId);
-    if (!can1 && !can2) {
-      throw new ForbiddenException(
-        'Only owners, captains, or vice captains of a match team can score',
-      );
-    }
-  }
-
-  private async canLeadershipAct(
-    team: Awaited<ReturnType<TeamService['requireTeam']>>,
-    userId: string,
-  ): Promise<boolean> {
-    try {
-      await assertCanActForTeam(
-        team,
-        userId,
-        this.teamService,
-        this.teamMemberService,
-      );
-      return true;
-    } catch {
-      return false;
-    }
   }
 }

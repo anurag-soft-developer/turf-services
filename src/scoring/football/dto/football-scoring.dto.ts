@@ -52,7 +52,6 @@ const footballEventPayloadSchema = z.discriminatedUnion('kind', [
 ]);
 
 const CreateFootballSessionSchema = z.object({
-  actorTeamId: objectId,
   period: footballPeriodSchema.default('first_half'),
   matchMinute: z.coerce.number().int().min(0).max(130).optional(),
 });
@@ -63,17 +62,9 @@ const AppendFootballEventSchema = z.object({
   payload: footballEventPayloadSchema,
 });
 
-const ListFootballEventsSchema = z.object({
-  page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(50),
-});
-
 export class CreateFootballSessionDto extends createZodDto(
   CreateFootballSessionSchema,
 ) {}
 export class AppendFootballEventDto extends createZodDto(
   AppendFootballEventSchema,
-) {}
-export class ListFootballEventsDto extends createZodDto(
-  ListFootballEventsSchema,
 ) {}

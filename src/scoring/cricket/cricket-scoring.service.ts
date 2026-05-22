@@ -20,6 +20,7 @@ import {
   bumpMatchStatusToOngoingIfScheduled,
   requireTeamMatchForScoring,
 } from '../common/scoring.helpers';
+import { assertAnnouncedSquadsForSport } from '../common/scoring-squad.asserts';
 import { ScoringRealtimeDispatcher } from '../common/scoring-realtime-dispatcher.service';
 import {
   CRICKET_OVER_EVENT_POPULATE,
@@ -41,7 +42,6 @@ import { CricketMatchStatsService } from './cricket-match-stats.service';
 import { CricketRankingPointsService } from './cricket-ranking-points.service';
 import {
   assertAnnouncedPlayingLineup,
-  assertAnnouncedSquadsForCricket,
   assertBattingBowlingRoster,
   assertLeadershipOnMatchTeams,
   assertUserOnTeam,
@@ -109,7 +109,7 @@ export class CricketScoringService {
       );
     }
 
-    assertAnnouncedSquadsForCricket(match);
+    assertAnnouncedSquadsForSport(match, SportType.CRICKET);
 
     await assertUsersInTeams(this.teamMemberService, dto, bat, bowl);
 

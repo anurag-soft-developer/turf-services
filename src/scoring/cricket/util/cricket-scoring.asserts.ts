@@ -6,49 +6,6 @@ import { TeamService } from '../../../team/team.service';
 import { TeamMemberService } from '../../../team-member/team-member.service';
 import { CreateCricketSessionDto } from '../dto/cricket-scoring.dto';
 
-export function assertAnnouncedSquadsForCricket(
-  match: TeamMatchDocument,
-): void {
-  const players = match.announcedPlayers ?? [];
-  if (players.length === 0) {
-    throw new BadRequestException(
-      'Announced playing squads are required before starting cricket scoring',
-    );
-  }
-
-  const t1 = match.fromTeam.toString();
-  const t2 = match.toTeam.toString();
-
-  for (const p of players) {
-    const tid = p.teamId.toString();
-    if (tid !== t1 && tid !== t2) {
-      throw new BadRequestException(
-        'Each announced player teamId must be one of the two teams on this match',
-      );
-    }
-  }
-
-  const playing = players.filter((p) => !p.is_substitute);
-  const countFor = (tid: string) =>
-    playing.filter((p) => p.teamId.toString() === tid).length;
-
-  const n1 = countFor(t1);
-  const n2 = countFor(t2);
-  const minPlayers = 6;
-  if (n1 < minPlayers || n2 < minPlayers) {
-    throw new BadRequestException(
-      `Each team must have at least ${minPlayers} playing (non-substitute) announced players (fromTeam: ${n1}, toTeam: ${n2})`,
-    );
-  }
-
-  const allIds = players.map((p) => p.userId.toString());
-  if (new Set(allIds).size !== allIds.length) {
-    throw new BadRequestException(
-      'Duplicate userId in announced players (includes the same player on both teams)',
-    );
-  }
-}
-
 export async function assertUserOnTeam(
   teamMemberService: TeamMemberService,
   userId: Types.ObjectId,
