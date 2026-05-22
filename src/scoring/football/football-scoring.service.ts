@@ -31,6 +31,7 @@ import {
 } from './football-match-event.schema';
 import {
   AppendFootballEventDto,
+  ChangeFootballInningDto,
   CreateFootballSessionDto,
 } from './dto/football-scoring.dto';
 import {
@@ -43,6 +44,16 @@ import {
   assertLeadershipOnMatchTeams,
   assertUserOnTeam,
 } from './util/football-scoring.asserts';
+import {
+  applyFootballScoreDeltas,
+  createFootballInningsSummaries,
+  defaultPeriodForInnings,
+  finalizeFootballInningsSummary,
+  FOOTBALL_INNINGS_PER_MATCH,
+  getCurrentInningsSummary,
+  pauseFootballTimer,
+  resumeFootballTimer,
+} from './util/football-innings.helpers';
 import {
   resolveFootballWinnerFromScore,
   revertMatchStateFromEvent,
@@ -86,11 +97,17 @@ export class FootballScoringService {
 
     assertAnnouncedSquadsForSport(match, SportType.FOOTBALL);
 
+    const inningsCount = dto.inningsPerMatch ?? FOOTBALL_INNINGS_PER_MATCH;
+    const period = dto.period as FootballPeriod;
     const footballState: FootballState = {
       scoreTeamOne: 0,
       scoreTeamTwo: 0,
-      currentPeriod: dto.period as FootballPeriod,
+      currentInnings: 1,
+      currentPeriod: period,
       matchMinute: dto.matchMinute,
+      inningsSummaries: createFootballInningsSummaries(inningsCount, period),
+      timerElapsedMs: 0,
+      isTimerPaused: true,
     };
 
     match.footballState = footballState;
@@ -149,6 +166,105 @@ export class FootballScoringService {
     return built;
   }
 
+  async changeInning(
+    userId: string,
+    teamMatchId: string,
+    dto: ChangeFootballInningDto,
+  ): Promise<TeamMatchDocument> {
+    const match = await requireTeamMatchForScoring(
+      this.teamMatchModel,
+      teamMatchId,
+    );
+    assertTeamMatchSport(match, SportType.FOOTBALL);
+    assertCanAppendScoringEvents(match);
+    if (!match.footballState) {
+      throw new BadRequestException('Football scoring not initialized');
+    }
+
+    await assertLeadershipOnMatchTeams(
+      this.teamService,
+      this.teamMemberService,
+      userId,
+      match,
+    );
+
+    const fs = match.footballState;
+    const innIdx = fs.currentInnings - 1;
+    finalizeFootballInningsSummary(fs, innIdx);
+
+    if (fs.currentInnings >= fs.inningsSummaries.length) {
+      throw new BadRequestException(
+        'All innings are finished; use complete match to finalise the result',
+      );
+    }
+
+    pauseFootballTimer(fs);
+    fs.currentInnings += 1;
+    const nextIdx = fs.currentInnings - 1;
+    const nextSummary = fs.inningsSummaries[nextIdx];
+    if (nextSummary) {
+      nextSummary.period =
+        (dto.period as FootballPeriod | undefined) ??
+        defaultPeriodForInnings(fs.currentInnings);
+      fs.currentPeriod = nextSummary.period;
+    }
+    if (dto.matchMinute !== undefined) {
+      fs.matchMinute = dto.matchMinute;
+    } else {
+      fs.matchMinute = undefined;
+    }
+
+    await match.save();
+
+    await this.realtimeDispatcher.dispatch({
+      sport: 'football',
+      teamMatchId: match._id.toString(),
+      actorUserId: userId,
+      action: 'append_event',
+      data: { kind: 'football_change_inning', innings: fs.currentInnings },
+    });
+
+    return await match.populate(TEAM_MATCH_POPULATE);
+  }
+
+  async pauseTimer(
+    userId: string,
+    teamMatchId: string,
+  ): Promise<TeamMatchDocument> {
+    const match = await this.requireFootballMatchForTimer(userId, teamMatchId);
+    pauseFootballTimer(match.footballState!);
+    await match.save();
+
+    await this.realtimeDispatcher.dispatch({
+      sport: 'football',
+      teamMatchId: match._id.toString(),
+      actorUserId: userId,
+      action: 'append_event',
+      data: { kind: 'football_timer_pause' },
+    });
+
+    return await match.populate(TEAM_MATCH_POPULATE);
+  }
+
+  async resumeTimer(
+    userId: string,
+    teamMatchId: string,
+  ): Promise<TeamMatchDocument> {
+    const match = await this.requireFootballMatchForTimer(userId, teamMatchId);
+    resumeFootballTimer(match.footballState!);
+    await match.save();
+
+    await this.realtimeDispatcher.dispatch({
+      sport: 'football',
+      teamMatchId: match._id.toString(),
+      actorUserId: userId,
+      action: 'append_event',
+      data: { kind: 'football_timer_resume' },
+    });
+
+    return await match.populate(TEAM_MATCH_POPULATE);
+  }
+
   async completeMatch(
     userId: string,
     teamMatchId: string,
@@ -185,6 +301,14 @@ export class FootballScoringService {
       userId,
       match,
     );
+
+    const fs = match.footballState;
+    finalizeFootballInningsSummary(fs, fs.currentInnings - 1);
+    if (fs.currentInnings !== fs.inningsSummaries.length) {
+      throw new BadRequestException(
+        'Complete all innings before finishing the match',
+      );
+    }
 
     const winner = resolveFootballWinnerFromScore(match);
     const isDraw = winner === null;
@@ -351,6 +475,28 @@ export class FootballScoringService {
     return { players, teams: [] };
   }
 
+  private async requireFootballMatchForTimer(
+    userId: string,
+    teamMatchId: string,
+  ): Promise<TeamMatchDocument> {
+    const match = await requireTeamMatchForScoring(
+      this.teamMatchModel,
+      teamMatchId,
+    );
+    assertTeamMatchSport(match, SportType.FOOTBALL);
+    assertCanAppendScoringEvents(match);
+    if (!match.footballState) {
+      throw new BadRequestException('Football scoring not initialized');
+    }
+    await assertLeadershipOnMatchTeams(
+      this.teamService,
+      this.teamMemberService,
+      userId,
+      match,
+    );
+    return match;
+  }
+
   private scoreDeltasForBeneficiary(
     match: TeamMatchDocument,
     beneficiaryTeamId: Types.ObjectId,
@@ -370,6 +516,19 @@ export class FootballScoringService {
   ): Promise<FootballMatchEventDocument> {
     const p = dto.payload;
     const fs = match.footballState!;
+    const innings = fs.currentInnings;
+    const inningSummary = getCurrentInningsSummary(fs);
+    if (!inningSummary.period) {
+      inningSummary.period = fs.currentPeriod;
+    }
+
+    const base = {
+      teamMatchId: match._id,
+      sequence,
+      innings,
+      period: dto.period as FootballPeriod,
+      matchMinute: dto.matchMinute,
+    };
 
     switch (p.kind) {
       case 'goal': {
@@ -384,14 +543,10 @@ export class FootballScoringService {
           );
         }
         const { d1, d2 } = this.scoreDeltasForBeneficiary(match, ben);
-        fs.scoreTeamOne += d1;
-        fs.scoreTeamTwo += d2;
+        applyFootballScoreDeltas(fs, d1, d2);
         return new this.footballEventModel({
-          teamMatchId: match._id,
-          sequence,
+          ...base,
           kind: FootballEventKind.GOAL,
-          period: dto.period as FootballPeriod,
-          matchMinute: dto.matchMinute,
           beneficiaryTeamId: ben,
           primaryUserId: scorer,
           secondaryUserId: p.assistUserId
@@ -407,14 +562,10 @@ export class FootballScoringService {
         const concedingTeam = this.otherTeam(match, ben);
         await assertUserOnTeam(this.teamMemberService, conceding, concedingTeam);
         const { d1, d2 } = this.scoreDeltasForBeneficiary(match, ben);
-        fs.scoreTeamOne += d1;
-        fs.scoreTeamTwo += d2;
+        applyFootballScoreDeltas(fs, d1, d2);
         return new this.footballEventModel({
-          teamMatchId: match._id,
-          sequence,
+          ...base,
           kind: FootballEventKind.OWN_GOAL,
-          period: dto.period as FootballPeriod,
-          matchMinute: dto.matchMinute,
           beneficiaryTeamId: ben,
           primaryUserId: conceding,
           scoreDeltaTeamOne: d1,
@@ -426,11 +577,8 @@ export class FootballScoringService {
         const player = new Types.ObjectId(p.playerUserId);
         await assertUserOnTeam(this.teamMemberService, player, teamId);
         return new this.footballEventModel({
-          teamMatchId: match._id,
-          sequence,
+          ...base,
           kind: FootballEventKind.YELLOW_CARD,
-          period: dto.period as FootballPeriod,
-          matchMinute: dto.matchMinute,
           beneficiaryTeamId: teamId,
           primaryUserId: player,
           scoreDeltaTeamOne: 0,
@@ -442,11 +590,8 @@ export class FootballScoringService {
         const player = new Types.ObjectId(p.playerUserId);
         await assertUserOnTeam(this.teamMemberService, player, teamId);
         return new this.footballEventModel({
-          teamMatchId: match._id,
-          sequence,
+          ...base,
           kind: FootballEventKind.RED_CARD,
-          period: dto.period as FootballPeriod,
-          matchMinute: dto.matchMinute,
           beneficiaryTeamId: teamId,
           primaryUserId: player,
           scoreDeltaTeamOne: 0,
@@ -466,11 +611,8 @@ export class FootballScoringService {
           teamId,
         );
         return new this.footballEventModel({
-          teamMatchId: match._id,
-          sequence,
+          ...base,
           kind: FootballEventKind.SUBSTITUTION,
-          period: dto.period as FootballPeriod,
-          matchMinute: dto.matchMinute,
           beneficiaryTeamId: teamId,
           primaryUserId: new Types.ObjectId(p.playerOffUserId),
           secondaryUserId: new Types.ObjectId(p.playerOnUserId),
@@ -483,14 +625,10 @@ export class FootballScoringService {
         const taker = new Types.ObjectId(p.takerUserId);
         await assertUserOnTeam(this.teamMemberService, taker, ben);
         const { d1, d2 } = this.scoreDeltasForBeneficiary(match, ben);
-        fs.scoreTeamOne += d1;
-        fs.scoreTeamTwo += d2;
+        applyFootballScoreDeltas(fs, d1, d2);
         return new this.footballEventModel({
-          teamMatchId: match._id,
-          sequence,
+          ...base,
           kind: FootballEventKind.PENALTY_SCORED,
-          period: dto.period as FootballPeriod,
-          matchMinute: dto.matchMinute,
           beneficiaryTeamId: ben,
           primaryUserId: taker,
           scoreDeltaTeamOne: d1,
@@ -502,11 +640,8 @@ export class FootballScoringService {
         const taker = new Types.ObjectId(p.takerUserId);
         await assertUserOnTeam(this.teamMemberService, taker, teamId);
         return new this.footballEventModel({
-          teamMatchId: match._id,
-          sequence,
+          ...base,
           kind: FootballEventKind.PENALTY_MISSED,
-          period: dto.period as FootballPeriod,
-          matchMinute: dto.matchMinute,
           beneficiaryTeamId: teamId,
           primaryUserId: taker,
           scoreDeltaTeamOne: 0,

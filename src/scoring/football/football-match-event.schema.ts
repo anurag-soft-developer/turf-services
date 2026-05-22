@@ -33,6 +33,9 @@ export class FootballMatchEvent {
   @Prop({ type: Number, required: true, min: 1 })
   sequence!: number;
 
+  @Prop({ type: Number, required: true, min: 1, max: 4 })
+  innings!: number;
+
   @Prop({
     type: String,
     enum: Object.values(FootballEventKind),

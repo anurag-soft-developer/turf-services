@@ -12,6 +12,7 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import {
   AppendFootballEventDto,
+  ChangeFootballInningDto,
   CreateFootballSessionDto,
 } from './dto/football-scoring.dto';
 import { FootballScoringService } from './football-scoring.service';
@@ -46,6 +47,41 @@ export class FootballScoringController {
       userId.toString(),
       teamMatchId,
       dto,
+    );
+  }
+
+  @Post('matches/:teamMatchId/inning/change')
+  async changeInning(
+    @Param('teamMatchId') teamMatchId: string,
+    @Body() dto: ChangeFootballInningDto,
+    @CurrentUser('_id') userId: Types.ObjectId,
+  ) {
+    return this.footballScoringService.changeInning(
+      userId.toString(),
+      teamMatchId,
+      dto,
+    );
+  }
+
+  @Post('matches/:teamMatchId/timer/pause')
+  async pauseTimer(
+    @Param('teamMatchId') teamMatchId: string,
+    @CurrentUser('_id') userId: Types.ObjectId,
+  ) {
+    return this.footballScoringService.pauseTimer(
+      userId.toString(),
+      teamMatchId,
+    );
+  }
+
+  @Post('matches/:teamMatchId/timer/resume')
+  async resumeTimer(
+    @Param('teamMatchId') teamMatchId: string,
+    @CurrentUser('_id') userId: Types.ObjectId,
+  ) {
+    return this.footballScoringService.resumeTimer(
+      userId.toString(),
+      teamMatchId,
     );
   }
 

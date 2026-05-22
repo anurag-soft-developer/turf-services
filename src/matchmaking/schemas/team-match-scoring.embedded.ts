@@ -77,6 +77,25 @@ export enum FootballPeriod {
   PENALTIES = 'penalties',
 }
 
+const FootballInningsSummarySchema = new MongooseSchema(
+  {
+    scoreTeamOne: { type: Number, default: 0, min: 0 },
+    scoreTeamTwo: { type: Number, default: 0, min: 0 },
+    period: {
+      type: String,
+      enum: Object.values(FootballPeriod),
+    },
+  },
+  { _id: false },
+);
+
+/** Per-innings aggregate (football). */
+export class FootballInningsSummary {
+  scoreTeamOne!: number;
+  scoreTeamTwo!: number;
+  period?: FootballPeriod;
+}
+
 @Schema({ _id: false })
 export class FootballState {
   @Prop({ type: Number, default: 0, min: 0 })
@@ -84,6 +103,9 @@ export class FootballState {
 
   @Prop({ type: Number, default: 0, min: 0 })
   scoreTeamTwo!: number;
+
+  @Prop({ type: Number, default: 1, min: 1, max: 4 })
+  currentInnings!: number;
 
   @Prop({
     type: String,
@@ -94,6 +116,22 @@ export class FootballState {
 
   @Prop({ type: Number, min: 0, max: 130 })
   matchMinute?: number;
+
+  @Prop({
+    type: [FootballInningsSummarySchema],
+    default: () => [{ scoreTeamOne: 0, scoreTeamTwo: 0 }],
+  })
+  inningsSummaries!: FootballInningsSummary[];
+
+  /** Accumulated playing time in milliseconds while timer is running. */
+  @Prop({ type: Number, default: 0, min: 0 })
+  timerElapsedMs!: number;
+
+  @Prop({ type: Date })
+  timerStartedAt?: Date;
+
+  @Prop({ type: Boolean, default: true })
+  isTimerPaused!: boolean;
 }
 
 export const FootballStateSchema = SchemaFactory.createForClass(FootballState);

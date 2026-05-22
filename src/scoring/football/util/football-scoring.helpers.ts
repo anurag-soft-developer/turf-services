@@ -4,20 +4,12 @@ import {
   TeamMatchDocument,
 } from '../../../matchmaking/schemas/team-match.schema';
 import { FootballMatchEvent } from '../football-match-event.schema';
+import {
+  revertFootballScoreDeltas,
+  resolveFootballWinnerFromInnings,
+} from './football-innings.helpers';
 
-/** Returns winner team id, or null when scores are level (draw). */
-export function resolveFootballWinnerFromScore(
-  match: TeamMatchDocument,
-): Types.ObjectId | null {
-  const fs = match.footballState;
-  if (!fs) {
-    return null;
-  }
-  if (fs.scoreTeamOne === fs.scoreTeamTwo) {
-    return null;
-  }
-  return fs.scoreTeamOne > fs.scoreTeamTwo ? match.fromTeam : match.toTeam;
-}
+export { resolveFootballWinnerFromInnings as resolveFootballWinnerFromScore };
 
 export function revertMatchStateFromEvent(
   match: TeamMatchDocument,
@@ -29,14 +21,26 @@ export function revertMatchStateFromEvent(
     return;
   }
 
-  fs.scoreTeamOne -= removed.scoreDeltaTeamOne;
-  fs.scoreTeamTwo -= removed.scoreDeltaTeamTwo;
+  revertFootballScoreDeltas(
+    fs,
+    removed.scoreDeltaTeamOne,
+    removed.scoreDeltaTeamTwo,
+    removed.innings,
+  );
+
+  if (removed.innings < fs.currentInnings) {
+    fs.currentInnings = removed.innings;
+  }
 
   if (previous) {
     fs.currentPeriod = previous.period;
     fs.matchMinute = previous.matchMinute;
+    if (previous.innings !== fs.currentInnings) {
+      fs.currentInnings = previous.innings;
+    }
   } else {
     fs.currentPeriod = FootballPeriod.FIRST_HALF;
     fs.matchMinute = undefined;
+    fs.currentInnings = 1;
   }
 }

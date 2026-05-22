@@ -26,6 +26,7 @@ export {
 export {
   CricketState,
   CricketStateSchema,
+  FootballInningsSummary,
   FootballPeriod,
   FootballState,
   FootballStateSchema,

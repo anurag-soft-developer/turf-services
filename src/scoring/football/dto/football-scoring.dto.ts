@@ -54,6 +54,12 @@ const footballEventPayloadSchema = z.discriminatedUnion('kind', [
 const CreateFootballSessionSchema = z.object({
   period: footballPeriodSchema.default('first_half'),
   matchMinute: z.coerce.number().int().min(0).max(130).optional(),
+  inningsPerMatch: z.coerce.number().int().min(1).max(4).default(2),
+});
+
+const ChangeFootballInningSchema = z.object({
+  period: footballPeriodSchema.optional(),
+  matchMinute: z.coerce.number().int().min(0).max(130).optional(),
 });
 
 const AppendFootballEventSchema = z.object({
@@ -67,4 +73,7 @@ export class CreateFootballSessionDto extends createZodDto(
 ) {}
 export class AppendFootballEventDto extends createZodDto(
   AppendFootballEventSchema,
+) {}
+export class ChangeFootballInningDto extends createZodDto(
+  ChangeFootballInningSchema,
 ) {}
