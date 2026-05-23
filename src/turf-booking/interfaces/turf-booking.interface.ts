@@ -24,6 +24,9 @@ export interface ITurfBooking {
   paymentStatus: PaymentStatus;
   paymentId?: string;
   razorpayOrderId?: string;
+  platformFeeAmount?: number;
+  ownerPayoutAmount?: number;
+  razorpayTransferId?: string;
   invoiceId?: string;
   paidAt?: string | Date;
   paymentExpiresAt?: string | Date;

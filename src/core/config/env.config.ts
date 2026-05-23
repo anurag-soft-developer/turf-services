@@ -37,6 +37,8 @@ export function validateConfig() {
       RAJORPAY_KEY_ID: process.env.RAJORPAY_KEY_ID!,
       RAJORPAY_KEY_SECRET: process.env.RAJORPAY_KEY_SECRET!,
       RAJORPAY_WEBHOOK_SECRET: process.env.RAJORPAY_WEBHOOK_SECRET || '',
+      /** Platform fee percentage retained on each turf booking (0–100). */
+      PLATFORM_FEE_PERCENT: Number(process.env.PLATFORM_FEE_PERCENT) ?? 10,
 
       // Email Configuration
       SMTP_HOST: process.env.SMTP_HOST!,

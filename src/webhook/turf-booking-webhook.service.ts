@@ -11,12 +11,21 @@ import {
   TurfBookingDocument,
 } from '../turf-booking/schemas/turf-booking.schema';
 import { RazorpayWebhookPayloadDto } from './dto/razorpay-webhook.dto';
+import { Turf, TurfDocument } from '../turf/schemas/turf.schema';
+import { User, UserDocument } from '../users/schemas/user.schema';
+import { RajorpayService } from '../core/services/rajorpay/rajorpay.service';
+import { settleOwnerPayoutForBooking } from '../turf-booking/utility/turf-booking-payout.utility';
 
 @Injectable()
 export class TurfBookingWebhookService {
   constructor(
     @InjectModel(TurfBooking.name)
     private turfBookingModel: Model<TurfBookingDocument>,
+    @InjectModel(Turf.name)
+    private turfModel: Model<TurfDocument>,
+    @InjectModel(User.name)
+    private userModel: Model<UserDocument>,
+    private readonly rajorpayService: RajorpayService,
   ) {}
 
   async processWebhookEvent(eventPayload: RazorpayWebhookPayloadDto): Promise<{
@@ -76,6 +85,14 @@ export class TurfBookingWebhookService {
     booking.paymentExpiresAt = undefined;
     booking.invoiceId = booking.invoiceId || this.generateInvoiceId(booking._id.toString());
     await booking.save();
+
+    await settleOwnerPayoutForBooking({
+      booking,
+      paymentId,
+      turfModel: this.turfModel,
+      userModel: this.userModel,
+      rajorpayService: this.rajorpayService,
+    });
   }
 
   private async applyFailedPaymentWebhook(

@@ -34,6 +34,7 @@ import {
 import { PaginatedResult } from '../core/interfaces/common';
 import { buildMongoSortOptions } from '../core/utils/mongo-sort.util';
 import { IRajorpayOrder } from '../core/interfaces/rajorpay.interface';
+import { User, UserDocument } from '../users/schemas/user.schema';
 import { userSelectFields } from '../users/schemas/user.schema';
 import { RajorpayService } from '../core/services/rajorpay/rajorpay.service';
 import { TurfBookingUtility } from './utility/turf-booking.utility';
@@ -42,6 +43,7 @@ import {
   notifyOwnerNewPaidBooking,
 } from './utility/turf-booking-notification.utility';
 import { NotificationService } from '../notification/notification.service';
+import { settleOwnerPayoutForBooking } from './utility/turf-booking-payout.utility';
 
 @Injectable()
 export class TurfBookingService {
@@ -61,6 +63,8 @@ export class TurfBookingService {
     private turfBookingModel: Model<TurfBookingDocument>,
     @InjectModel(Turf.name)
     private turfModel: Model<TurfDocument>,
+    @InjectModel(User.name)
+    private userModel: Model<UserDocument>,
     private readonly rajorpayService: RajorpayService,
     private readonly notificationService: NotificationService,
   ) {}
@@ -256,6 +260,14 @@ export class TurfBookingService {
     );
 
     await booking.save();
+
+    await settleOwnerPayoutForBooking({
+      booking,
+      paymentId: razorpay_payment_id,
+      turfModel: this.turfModel,
+      userModel: this.userModel,
+      rajorpayService: this.rajorpayService,
+    });
 
     await notifyOwnerNewPaidBooking(
       this.notificationService,

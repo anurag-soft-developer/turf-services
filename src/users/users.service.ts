@@ -21,6 +21,11 @@ import type { PlayerSportEntry } from '../core/sports/sport-stats';
 import type { PaginatedResult } from '../core/interfaces/common';
 import type { UpdateNotificationSettingsDto } from './dto/users.dto';
 import type { FcmTokenEntryPayload } from './dto/fcm-devices.dto';
+import {
+  HostOnboardingStatusResponse,
+  isHostPayoutReady,
+  RazorpayHostKycStatus,
+} from './interfaces/host-onboarding.interface';
 
 @Injectable()
 export class UsersService {
@@ -347,10 +352,27 @@ export class UsersService {
       notificationModules: user.notificationModules,
       fcmTokens: user.fcmTokens || [],
       phone: user.phone,
+      hostOnboarding: UsersService.sanitizeHostOnboarding(user),
       lastLogin: user.lastLogin?.toString(),
       isPasswordExists,
       createdAt,
       updatedAt,
+    };
+  }
+
+  static sanitizeHostOnboarding(
+    user: IUser | UserDocument,
+  ): HostOnboardingStatusResponse {
+    const onboarding = user.hostOnboarding;
+    const razorpayKycStatus =
+      onboarding?.razorpayKycStatus ?? RazorpayHostKycStatus.NOT_STARTED;
+    return {
+      razorpayKycStatus,
+      statusMessage: onboarding?.statusMessage,
+      canPublishTurfs: isHostPayoutReady(onboarding),
+      legalBusinessName: onboarding?.legalBusinessName,
+      appliedAt: onboarding?.appliedAt?.toISOString(),
+      activatedAt: onboarding?.activatedAt?.toISOString(),
     };
   }
 

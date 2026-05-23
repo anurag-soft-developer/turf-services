@@ -2,31 +2,96 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { config } from '../../config/env.config';
 import { IRajorpayOrder } from '../../interfaces/rajorpay.interface';
+import type {
+  IRazorpayLinkedAccount,
+  IRazorpayProduct,
+  IRazorpayTransferResponse,
+} from '../../interfaces/rajorpay-route.interface';
 
 @Injectable()
 export class RajorpayService {
   private static readonly DEFAULT_CURRENCY = 'INR';
+  private static readonly API_BASE = 'https://api.razorpay.com';
 
   async createOrder(amount: number, receipt: string): Promise<IRajorpayOrder> {
     const amountInPaise = Math.round(amount * 100);
-    const response = await fetch('https://api.razorpay.com/v1/orders', {
+    return this.apiRequest<IRajorpayOrder>('/v1/orders', {
       method: 'POST',
-      headers: {
-        Authorization: this.getBasicAuthHeader(),
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify({
         amount: amountInPaise,
         currency: RajorpayService.DEFAULT_CURRENCY,
         receipt,
       }),
     });
+  }
 
-    if (!response.ok) {
-      throw new BadRequestException('Failed to create Razorpay order');
-    }
+  async createLinkedAccount(payload: Record<string, unknown>): Promise<IRazorpayLinkedAccount> {
+    return this.apiRequest<IRazorpayLinkedAccount>('/v2/accounts', {
+      method: 'POST',
+      body: JSON.stringify({ ...payload, type: 'route' }),
+    });
+  }
 
-    return (await response.json()) as IRajorpayOrder;
+  async createAccountStakeholder(
+    accountId: string,
+    payload: Record<string, unknown>,
+  ): Promise<{ id: string }> {
+    return this.apiRequest<{ id: string }>(
+      `/v2/accounts/${accountId}/stakeholders`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+    );
+  }
+
+  async requestRouteProduct(
+    accountId: string,
+  ): Promise<IRazorpayProduct> {
+    return this.apiRequest<IRazorpayProduct>(
+      `/v2/accounts/${accountId}/products`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          product_name: 'route',
+          tnc_accepted: true,
+        }),
+      },
+    );
+  }
+
+  async updateRouteProduct(
+    accountId: string,
+    productId: string,
+    payload: Record<string, unknown>,
+  ): Promise<IRazorpayProduct> {
+    return this.apiRequest<IRazorpayProduct>(
+      `/v2/accounts/${accountId}/products/${productId}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      },
+    );
+  }
+
+  async createTransfersFromPayment(
+    paymentId: string,
+    transfers: Array<{ account: string; amount: number; currency?: string }>,
+  ): Promise<IRazorpayTransferResponse> {
+    return this.apiRequest<IRazorpayTransferResponse>(
+      `/v1/payments/${paymentId}/transfers`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          transfers: transfers.map((t) => ({
+            account: t.account,
+            amount: t.amount,
+            currency: t.currency ?? RajorpayService.DEFAULT_CURRENCY,
+            on_hold: false,
+          })),
+        }),
+      },
+    );
   }
 
   verifyPaymentSignature(params: {
@@ -58,6 +123,52 @@ export class RajorpayService {
       .update(rawPayload)
       .digest('hex');
     return this.safeEqualSignatures(expectedSignature, signature);
+  }
+
+
+  calculateOwnerPayoutAmount(totalAmount: number): {
+    platformFeeAmount: number;
+    ownerPayoutAmount: number;
+  } {
+    const platformFeePercent = config.PLATFORM_FEE_PERCENT;
+    const platformFeeAmount =
+      Math.round(((totalAmount * platformFeePercent) / 100) * 100) / 100;
+    const ownerPayoutAmount =
+      Math.round((totalAmount - platformFeeAmount) * 100) / 100;
+    return { platformFeeAmount, ownerPayoutAmount };
+  }
+
+  private async apiRequest<T>(
+    path: string,
+    init: RequestInit,
+  ): Promise<T> {
+    const response = await fetch(`${RajorpayService.API_BASE}${path}`, {
+      ...init,
+      headers: {
+        Authorization: this.getBasicAuthHeader(),
+        'Content-Type': 'application/json',
+        ...(init.headers ?? {}),
+      },
+    });
+
+    const body = (await response.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
+
+    if (!response.ok) {
+      const description =
+        typeof body.error === 'object' &&
+        body.error !== null &&
+        'description' in body.error
+          ? String((body.error as { description?: string }).description)
+          : typeof body.error === 'string'
+            ? body.error
+            : 'Razorpay API request failed';
+      throw new BadRequestException(description);
+    }
+
+    return body as T;
   }
 
   private getBasicAuthHeader(): string {

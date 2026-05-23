@@ -13,6 +13,8 @@ import { ITurf } from './interfaces/turf.interface';
 import { PaginatedResult } from '../core/interfaces/common';
 import { userSelectFields } from '../users/schemas/user.schema';
 import { buildMongoSortOptions } from '../core/utils/mongo-sort.util';
+import { HostOnboardingService } from '../users/host-onboarding.service';
+import { UsersService } from '../users/users.service';
 
 const TURF_SEARCH_SORT_FIELD_MAP: Record<string, string> = {
   price: 'pricing.basePricePerHour',
@@ -30,12 +32,22 @@ export class TurfService {
     },
   ];
 
-  constructor(@InjectModel(Turf.name) private turfModel: Model<Turf>) {}
+  constructor(
+    @InjectModel(Turf.name) private turfModel: Model<Turf>,
+    private readonly hostOnboardingService: HostOnboardingService,
+    private readonly usersService: UsersService,
+  ) {}
 
   async create(
     postedBy: string,
     createTurfDto: CreateTurfDto,
   ): Promise<TurfDocument> {
+    const owner = await this.usersService.findById(postedBy);
+    if (!owner) {
+      throw new NotFoundException('User not found');
+    }
+    this.hostOnboardingService.assertCanPublishTurfs(owner);
+
     const existingTurf = await this.turfModel
       .findOne({ name: createTurfDto.name })
       .exec();

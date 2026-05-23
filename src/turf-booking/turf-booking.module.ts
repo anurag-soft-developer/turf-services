@@ -6,6 +6,7 @@ import { TurfBookingController } from './turf-booking.controller';
 import { TurfBooking, TurfBookingSchema } from './schemas/turf-booking.schema';
 import { Turf, TurfSchema } from '../turf/schemas/turf.schema';
 import { RajorpayService } from '../core/services/rajorpay/rajorpay.service';
+import { User, UserSchema } from '../users/schemas/user.schema';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { RajorpayService } from '../core/services/rajorpay/rajorpay.service';
     MongooseModule.forFeature([
       { name: TurfBooking.name, schema: TurfBookingSchema },
       { name: Turf.name, schema: TurfSchema },
+      { name: User.name, schema: UserSchema },
     ]),
   ],
   controllers: [TurfBookingController],

@@ -6,6 +6,7 @@ import {
   NotFoundException,
   Param,
   Patch,
+  Post,
   Put,
   Query,
   UseGuards,
@@ -26,10 +27,15 @@ import {
   SearchUsersListDto,
   UpdateNotificationSettingsDto,
 } from './dto/users.dto';
+import { ApplyHostOnboardingDto } from './dto/host-onboarding.dto';
+import { HostOnboardingService } from './host-onboarding.service';
 
 @Controller('users')
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly hostOnboardingService: HostOnboardingService,
+  ) {}
 
   @UseGuards(JwtAuthGuard)
   @Get('profile')
@@ -38,12 +44,27 @@ export class UsersController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get('host-onboarding')
+  async getHostOnboardingStatus(@CurrentUser() user: IUser) {
+    return this.hostOnboardingService.getStatus(user);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('host-onboarding/apply')
+  async applyHostOnboarding(
+    @CurrentUser() user: IUser,
+    @Body() dto: ApplyHostOnboardingDto,
+  ) {
+    return this.hostOnboardingService.apply(user._id.toString(), user, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Patch('profile')
   async updateProfile(
     @CurrentUser() user: IUser,
     @Body() updateProfileDto: UpdateProfileDto,
   ): Promise<IUser> {
-    return (await this.usersService.updateProfile(user._id, updateProfileDto)).toObject();
+    return (await this.usersService.updateProfile(user._id.toString(), updateProfileDto)).toObject();
   }
 
   @UseGuards(JwtAuthGuard)
@@ -53,7 +74,7 @@ export class UsersController {
     @Body() updateNotificationSettingsDto: UpdateNotificationSettingsDto,
   ) {
     const updatedUser = await this.usersService.updateNotificationSettings(
-      user._id,
+      user._id.toString(),
       updateNotificationSettingsDto,
     );
 
@@ -68,7 +89,7 @@ export class UsersController {
     @Body() dto: ReplaceFcmDevicesDto,
   ) {
     const updated = await this.usersService.replaceFcmDevices(
-      user._id,
+      user._id.toString(),
       dto.devices,
     );
     return UsersService.sanitizeProfile(updated);
@@ -81,7 +102,7 @@ export class UsersController {
     @CurrentUser() user: IUser,
     @Body() dto: UpsertFcmDeviceDto,
   ) {
-    const updated = await this.usersService.upsertFcmDevice(user._id, dto);
+    const updated = await this.usersService.upsertFcmDevice(user._id.toString(), dto);
     return UsersService.sanitizeProfile(updated);
   }
 

@@ -104,6 +104,23 @@ export class TurfBooking extends Document implements TurfBookingDocument {
   razorpayOrderId?: string;
 
   @Prop({
+    type: Number,
+    min: 0,
+  })
+  platformFeeAmount?: number;
+
+  @Prop({
+    type: Number,
+    min: 0,
+  })
+  ownerPayoutAmount?: number;
+
+  @Prop({
+    type: String,
+  })
+  razorpayTransferId?: string;
+
+  @Prop({
     type: String,
   })
   invoiceId?: string;
