@@ -25,6 +25,7 @@ import {
 import { assertAnnouncedSquadsForSport } from '../common/scoring-squad.asserts';
 import { ScoringRealtimeDispatcher } from '../common/scoring-realtime-dispatcher.service';
 import {
+  FOOTBALL_EVENT_POPULATE,
   FootballEventKind,
   FootballMatchEvent,
   FootballMatchEventDocument,
@@ -52,6 +53,7 @@ import {
   FOOTBALL_INNINGS_PER_MATCH,
   getCurrentInningsSummary,
   pauseFootballTimer,
+  resetFootballInningTimer,
   resumeFootballTimer,
 } from './util/football-innings.helpers';
 import {
@@ -98,7 +100,7 @@ export class FootballScoringService {
     assertAnnouncedSquadsForSport(match, SportType.FOOTBALL);
 
     const inningsCount = dto.inningsPerMatch ?? FOOTBALL_INNINGS_PER_MATCH;
-    const period = dto.period as FootballPeriod;
+    const period = FootballPeriod.FIRST_HALF;
     const footballState: FootballState = {
       scoreTeamOne: 0,
       scoreTeamTwo: 0,
@@ -107,6 +109,7 @@ export class FootballScoringService {
       matchMinute: dto.matchMinute,
       inningsSummaries: createFootballInningsSummaries(inningsCount, period),
       timerElapsedMs: 0,
+      totalTimerElapsedMs: 0,
       isTimerPaused: true,
     };
 
@@ -138,12 +141,6 @@ export class FootballScoringService {
       userId,
       match,
     );
-
-    const fs = match.footballState;
-    fs.currentPeriod = dto.period as FootballPeriod;
-    if (dto.matchMinute !== undefined) {
-      fs.matchMinute = dto.matchMinute;
-    }
 
     const last = await this.footballEventModel
       .findOne({ teamMatchId: match._id })
@@ -198,7 +195,7 @@ export class FootballScoringService {
       );
     }
 
-    pauseFootballTimer(fs);
+    resetFootballInningTimer(fs);
     fs.currentInnings += 1;
     const nextIdx = fs.currentInnings - 1;
     const nextSummary = fs.inningsSummaries[nextIdx];
@@ -210,8 +207,6 @@ export class FootballScoringService {
     }
     if (dto.matchMinute !== undefined) {
       fs.matchMinute = dto.matchMinute;
-    } else {
-      fs.matchMinute = undefined;
     }
 
     await match.save();
@@ -368,9 +363,9 @@ export class FootballScoringService {
       teamMatchId,
     );
     assertTeamMatchSport(match, SportType.FOOTBALL);
-    return this.footballEventModel
+    return await this.footballEventModel
       .find({ teamMatchId: match._id })
-      .sort({ sequence: 1 })
+      .sort({ sequence: 1 }).populate(FOOTBALL_EVENT_POPULATE)
       .exec();
   }
 
@@ -526,8 +521,8 @@ export class FootballScoringService {
       teamMatchId: match._id,
       sequence,
       innings,
-      period: dto.period as FootballPeriod,
-      matchMinute: dto.matchMinute,
+      period: fs.currentPeriod,
+      matchMinute: fs.matchMinute,
     };
 
     switch (p.kind) {

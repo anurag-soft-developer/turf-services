@@ -135,3 +135,17 @@ export function getFootballTimerElapsedMs(fs: FootballState): number {
   }
   return fs.timerElapsedMs;
 }
+
+export function getFootballTotalTimerElapsedMs(fs: FootballState): number {
+  return (fs.totalTimerElapsedMs ?? 0) + getFootballTimerElapsedMs(fs);
+}
+
+/** Flush current innings timer into [totalTimerElapsedMs] and reset for next innings. */
+export function resetFootballInningTimer(fs: FootballState): void {
+  pauseFootballTimer(fs);
+  fs.totalTimerElapsedMs =
+    (fs.totalTimerElapsedMs ?? 0) + getFootballTimerElapsedMs(fs);
+  fs.timerElapsedMs = 0;
+  fs.timerStartedAt = undefined;
+  fs.isTimerPaused = true;
+}

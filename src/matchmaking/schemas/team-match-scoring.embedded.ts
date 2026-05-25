@@ -123,9 +123,13 @@ export class FootballState {
   })
   inningsSummaries!: FootballInningsSummary[];
 
-  /** Accumulated playing time in milliseconds while timer is running. */
+  /** Elapsed ms for the current innings only (resets on innings change). */
   @Prop({ type: Number, default: 0, min: 0 })
   timerElapsedMs!: number;
+
+  /** Sum of completed innings [timerElapsedMs] values. */
+  @Prop({ type: Number, default: 0, min: 0 })
+  totalTimerElapsedMs!: number;
 
   @Prop({ type: Date })
   timerStartedAt?: Date;

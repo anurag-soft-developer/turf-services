@@ -12,6 +12,7 @@ import { SportType } from '../../team/schemas/team.schema';
 const SCORING_ALLOWED_MATCH_STATUSES: TeamMatchStatus[] = [
   TeamMatchStatus.SCHEDULE_FINALIZED,
   TeamMatchStatus.ONGOING,
+  TeamMatchStatus.ACCEPTED,
 ];
 
 export async function requireTeamMatchForScoring(

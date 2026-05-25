@@ -1,8 +1,8 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Schema as MongooseSchema, Types } from 'mongoose';
+import { Document, Schema as MongooseSchema, PopulateOptions, Types } from 'mongoose';
 import { TeamMatch } from '../../matchmaking/schemas/team-match.schema';
 import { Team } from '../../team/schemas/team.schema';
-import { User } from '../../users/schemas/user.schema';
+import { User, userSelectFields } from '../../users/schemas/user.schema';
 import { FootballPeriod } from '../../matchmaking/schemas/team-match.schema';
 
 export type FootballMatchEventDocument = FootballMatchEvent & Document;
@@ -16,6 +16,11 @@ export enum FootballEventKind {
   PENALTY_SCORED = 'penalty_scored',
   PENALTY_MISSED = 'penalty_missed',
 }
+
+export const FOOTBALL_EVENT_POPULATE: PopulateOptions[] = [
+  { path: 'primaryUserId', select: userSelectFields },
+  { path: 'secondaryUserId', select: userSelectFields },
+];
 
 @Schema({
   timestamps: true,

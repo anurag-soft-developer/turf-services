@@ -31,4 +31,5 @@ export const TEAM_MATCH_POPULATE: PopulateOptions[] = [
   { path: 'cricketState.strikerUserId', select: userSelectFields },
   { path: 'cricketState.nonStrikerUserId', select: userSelectFields },
   { path: 'cricketState.bowlerUserId', select: userSelectFields },
+  
 ];
