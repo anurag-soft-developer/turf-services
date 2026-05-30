@@ -1,0 +1,43 @@
+import { createZodDto, type ZodDto } from 'nestjs-zod';
+import { z } from 'zod';
+import { WithdrawalStatus } from '../interfaces/withdrawal.interface';
+
+const attachmentSchema = z.string().url().max(2000);
+
+const CreateWithdrawalRequestSchema = z.object({
+  amount: z.coerce.number().min(1),
+});
+
+const WithdrawalFilterSchema = z.object({
+  status: z.enum(WithdrawalStatus).optional(),
+  userId: z.string().optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
+
+const UpdateWithdrawalStatusSchema = z.object({
+  status: z.enum(WithdrawalStatus),
+  rejectionReason: z.string().trim().min(1).max(1000).optional(),
+});
+
+const AddWithdrawalCommentSchema = z.object({
+  message: z.string().trim().min(1).max(1000),
+});
+
+const AddWithdrawalAttachmentsSchema = z.object({
+  attachments: z.array(attachmentSchema).min(1).max(10),
+});
+
+export class CreateWithdrawalRequestDto extends createZodDto(
+  CreateWithdrawalRequestSchema,
+) {}
+export class WithdrawalFilterDto extends createZodDto(WithdrawalFilterSchema) {}
+export class UpdateWithdrawalStatusDto extends createZodDto(
+  UpdateWithdrawalStatusSchema,
+) {}
+export class AddWithdrawalCommentDto extends createZodDto(
+  AddWithdrawalCommentSchema,
+) {}
+export class AddWithdrawalAttachmentsDto extends createZodDto(
+  AddWithdrawalAttachmentsSchema,
+) {}

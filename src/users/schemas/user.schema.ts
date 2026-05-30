@@ -10,11 +10,6 @@ import { UserRole } from '../../auth/decorators/roles.decorator';
 import type { PlayerSportEntry } from '../../core/sports/sport-stats';
 import type { SportRankingPointsEntry } from '../../core/points/ranking-points.types';
 import type { EarnedBadge } from '../../core/badges/badges';
-import {
-  RazorpayHostKycStatus,
-  type IHostOnboarding,
-} from '../interfaces/host-onboarding.interface';
-
 export type UserDocument = Omit<
   IUser,
   '_id' | 'lastLogin' | 'createdAt' | 'updatedAt'
@@ -76,7 +71,7 @@ export class User extends Document implements UserDocument {
     enum: Object.values(UserRole),
     default: UserRole.USER,
   })
-  role!: string;
+  role!: UserRole;
 
   @Prop({
     type: [
@@ -258,30 +253,6 @@ export class User extends Document implements UserDocument {
     default: [],
   })
   badges!: EarnedBadge[];
-
-  /**
-   * Razorpay Route linked-account onboarding for turf hosts.
-   */
-  @Prop({
-    type: {
-      razorpayAccountId: { type: String },
-      razorpayProductId: { type: String },
-      razorpayKycStatus: {
-        type: String,
-        enum: Object.values(RazorpayHostKycStatus),
-        default: RazorpayHostKycStatus.NOT_STARTED,
-      },
-      statusMessage: { type: String },
-      legalBusinessName: { type: String },
-      appliedAt: { type: Date },
-      activatedAt: { type: Date },
-    },
-    _id: false,
-    default: () => ({
-      razorpayKycStatus: RazorpayHostKycStatus.NOT_STARTED,
-    }),
-  })
-  hostOnboarding?: IHostOnboarding;
 
   @Prop({
     type: Date,

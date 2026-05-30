@@ -12,9 +12,8 @@ import {
 } from '../turf-booking/schemas/turf-booking.schema';
 import { RazorpayWebhookPayloadDto } from './dto/razorpay-webhook.dto';
 import { Turf, TurfDocument } from '../turf/schemas/turf.schema';
-import { User, UserDocument } from '../users/schemas/user.schema';
+import { WalletService } from '../wallet/wallet.service';
 import { RajorpayService } from '../core/services/rajorpay/rajorpay.service';
-import { settleOwnerPayoutForBooking } from '../turf-booking/utility/turf-booking-payout.utility';
 
 @Injectable()
 export class TurfBookingWebhookService {
@@ -23,8 +22,7 @@ export class TurfBookingWebhookService {
     private turfBookingModel: Model<TurfBookingDocument>,
     @InjectModel(Turf.name)
     private turfModel: Model<TurfDocument>,
-    @InjectModel(User.name)
-    private userModel: Model<UserDocument>,
+    private readonly walletService: WalletService,
     private readonly rajorpayService: RajorpayService,
   ) {}
 
@@ -86,13 +84,17 @@ export class TurfBookingWebhookService {
     booking.invoiceId = booking.invoiceId || this.generateInvoiceId(booking._id.toString());
     await booking.save();
 
-    await settleOwnerPayoutForBooking({
-      booking,
-      paymentId,
-      turfModel: this.turfModel,
-      userModel: this.userModel,
-      rajorpayService: this.rajorpayService,
-    });
+    const turf = await this.turfModel.findById(booking.turf).select('postedBy').lean();
+    if (!turf) return;
+    const payout =
+      booking.ownerPayoutAmount ??
+      this.rajorpayService.calculateOwnerPayoutAmount(booking.totalAmount)
+        .ownerPayoutAmount;
+    await this.walletService.moveAmountToEscrow(
+      booking._id.toString(),
+      turf.postedBy.toString(),
+      payout,
+    );
   }
 
   private async applyFailedPaymentWebhook(

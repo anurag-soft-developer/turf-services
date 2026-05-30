@@ -27,35 +27,15 @@ import {
   SearchUsersListDto,
   UpdateNotificationSettingsDto,
 } from './dto/users.dto';
-import { ApplyHostOnboardingDto } from './dto/host-onboarding.dto';
-import { HostOnboardingService } from './host-onboarding.service';
 
 @Controller('users')
 export class UsersController {
-  constructor(
-    private readonly usersService: UsersService,
-    private readonly hostOnboardingService: HostOnboardingService,
-  ) {}
+  constructor(private readonly usersService: UsersService) {}
 
   @UseGuards(JwtAuthGuard)
   @Get('profile')
   async getProfile(@CurrentUser() user: IUser) {
     return UsersService.sanitizeProfile(user);
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @Get('host-onboarding')
-  async getHostOnboardingStatus(@CurrentUser() user: IUser) {
-    return this.hostOnboardingService.getStatus(user);
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @Post('host-onboarding/apply')
-  async applyHostOnboarding(
-    @CurrentUser() user: IUser,
-    @Body() dto: ApplyHostOnboardingDto,
-  ) {
-    return this.hostOnboardingService.apply(user._id.toString(), user, dto);
   }
 
   @UseGuards(JwtAuthGuard)

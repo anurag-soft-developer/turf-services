@@ -2,11 +2,6 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { config } from '../../config/env.config';
 import { IRajorpayOrder } from '../../interfaces/rajorpay.interface';
-import type {
-  IRazorpayLinkedAccount,
-  IRazorpayProduct,
-  IRazorpayTransferResponse,
-} from '../../interfaces/rajorpay-route.interface';
 
 @Injectable()
 export class RajorpayService {
@@ -23,75 +18,6 @@ export class RajorpayService {
         receipt,
       }),
     });
-  }
-
-  async createLinkedAccount(payload: Record<string, unknown>): Promise<IRazorpayLinkedAccount> {
-    return this.apiRequest<IRazorpayLinkedAccount>('/v2/accounts', {
-      method: 'POST',
-      body: JSON.stringify({ ...payload, type: 'route' }),
-    });
-  }
-
-  async createAccountStakeholder(
-    accountId: string,
-    payload: Record<string, unknown>,
-  ): Promise<{ id: string }> {
-    return this.apiRequest<{ id: string }>(
-      `/v2/accounts/${accountId}/stakeholders`,
-      {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      },
-    );
-  }
-
-  async requestRouteProduct(
-    accountId: string,
-  ): Promise<IRazorpayProduct> {
-    return this.apiRequest<IRazorpayProduct>(
-      `/v2/accounts/${accountId}/products`,
-      {
-        method: 'POST',
-        body: JSON.stringify({
-          product_name: 'route',
-          tnc_accepted: true,
-        }),
-      },
-    );
-  }
-
-  async updateRouteProduct(
-    accountId: string,
-    productId: string,
-    payload: Record<string, unknown>,
-  ): Promise<IRazorpayProduct> {
-    return this.apiRequest<IRazorpayProduct>(
-      `/v2/accounts/${accountId}/products/${productId}`,
-      {
-        method: 'PATCH',
-        body: JSON.stringify(payload),
-      },
-    );
-  }
-
-  async createTransfersFromPayment(
-    paymentId: string,
-    transfers: Array<{ account: string; amount: number; currency?: string }>,
-  ): Promise<IRazorpayTransferResponse> {
-    return this.apiRequest<IRazorpayTransferResponse>(
-      `/v1/payments/${paymentId}/transfers`,
-      {
-        method: 'POST',
-        body: JSON.stringify({
-          transfers: transfers.map((t) => ({
-            account: t.account,
-            amount: t.amount,
-            currency: t.currency ?? RajorpayService.DEFAULT_CURRENCY,
-            on_hold: false,
-          })),
-        }),
-      },
-    );
   }
 
   verifyPaymentSignature(params: {
@@ -124,7 +50,6 @@ export class RajorpayService {
       .digest('hex');
     return this.safeEqualSignatures(expectedSignature, signature);
   }
-
 
   calculateOwnerPayoutAmount(totalAmount: number): {
     platformFeeAmount: number;

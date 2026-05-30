@@ -1,10 +1,11 @@
 import { Profile } from '../../users/interfaces/user.interface';
+import { UserRole } from '../decorators/roles.decorator';
 
 export interface IJwtPayload {
   sub: string;
   email: string;
   isEmailVerified: boolean;
-  role: string;
+  role: UserRole;
   iat?: number;
   exp?: number;
 }

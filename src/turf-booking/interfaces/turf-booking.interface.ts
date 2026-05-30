@@ -29,6 +29,8 @@ export interface ITurfBooking {
   razorpayTransferId?: string;
   invoiceId?: string;
   paidAt?: string | Date;
+  escrowCreditedAt?: string | Date;
+  escrowReleasedAt?: string | Date;
   paymentExpiresAt?: string | Date;
   slotHoldStatus?: SlotHoldStatus;
   refundId?: string;

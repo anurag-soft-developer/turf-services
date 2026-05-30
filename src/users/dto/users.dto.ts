@@ -1,6 +1,6 @@
 import { createZodDto, type ZodDto } from 'nestjs-zod';
 import { z } from 'zod';
-import {  NotificationModule } from '../../notification/schemas/notification.schema';
+import { NotificationModule } from '../../notification/schemas/notification.schema';
 
 const SearchUsersListSchema = z.object({
   query: z.string().trim().min(1).max(100).optional(),
@@ -19,5 +19,7 @@ const UpdateNotificationSettingsSchema = z
   })
   .strict();
 
-export class UpdateNotificationSettingsDto extends createZodDto(UpdateNotificationSettingsSchema) {}
-export class SearchUsersListDto extends   createZodDto(SearchUsersListSchema) {}
+export class UpdateNotificationSettingsDto extends createZodDto(
+  UpdateNotificationSettingsSchema,
+) {}
+export class SearchUsersListDto extends createZodDto(SearchUsersListSchema) {}

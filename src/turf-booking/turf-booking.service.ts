@@ -34,7 +34,6 @@ import {
 import { PaginatedResult } from '../core/interfaces/common';
 import { buildMongoSortOptions } from '../core/utils/mongo-sort.util';
 import { IRajorpayOrder } from '../core/interfaces/rajorpay.interface';
-import { User, UserDocument } from '../users/schemas/user.schema';
 import { userSelectFields } from '../users/schemas/user.schema';
 import { RajorpayService } from '../core/services/rajorpay/rajorpay.service';
 import { TurfBookingUtility } from './utility/turf-booking.utility';
@@ -43,8 +42,7 @@ import {
   notifyOwnerNewPaidBooking,
 } from './utility/turf-booking-notification.utility';
 import { NotificationService } from '../notification/notification.service';
-import { settleOwnerPayoutForBooking } from './utility/turf-booking-payout.utility';
-
+import { WalletService } from '../wallet/wallet.service';
 @Injectable()
 export class TurfBookingService {
   static populateOptions: PopulateOptions[] = [
@@ -63,10 +61,9 @@ export class TurfBookingService {
     private turfBookingModel: Model<TurfBookingDocument>,
     @InjectModel(Turf.name)
     private turfModel: Model<TurfDocument>,
-    @InjectModel(User.name)
-    private userModel: Model<UserDocument>,
     private readonly rajorpayService: RajorpayService,
     private readonly notificationService: NotificationService,
+    private readonly walletService: WalletService,
   ) {}
 
   async createBooking(
@@ -137,6 +134,8 @@ export class TurfBookingService {
         turfDoc,
         processedTimeSlots,
       );
+    const { ownerPayoutAmount, platformFeeAmount } =
+      this.rajorpayService.calculateOwnerPayoutAmount(totalAmount);
 
     // Create the booking
     const booking = new this.turfBookingModel({
@@ -146,15 +145,16 @@ export class TurfBookingService {
       playerCount,
       notes,
       totalAmount,
+      ownerPayoutAmount,
+      platformFeeAmount,
       status: TurfBookingStatus.PENDING,
       paymentStatus: PaymentStatus.PENDING,
       paymentExpiresAt: TurfBookingUtility.getPaymentExpiryDate(),
       slotHoldStatus: SlotHoldStatus.ACTIVE,
     });
 
-    return await (
-      await booking.save()
-    ).populate(TurfBookingService.populateOptions);
+    const savedBooking = await booking.save();
+    return await savedBooking.populate(TurfBookingService.populateOptions);
   }
 
   async createBookingOrder(
@@ -260,14 +260,24 @@ export class TurfBookingService {
     );
 
     await booking.save();
-
-    await settleOwnerPayoutForBooking({
-      booking,
-      paymentId: razorpay_payment_id,
-      turfModel: this.turfModel,
-      userModel: this.userModel,
-      rajorpayService: this.rajorpayService,
-    });
+    if (booking.ownerPayoutAmount && booking.ownerPayoutAmount > 0) {
+      const turfDoc = await this.turfModel.findById(booking.turf).select('postedBy');
+      if (turfDoc) {
+        const credited = await this.walletService.moveAmountToEscrow(
+          booking._id.toString(),
+          turfDoc.postedBy.toString(),
+          booking.ownerPayoutAmount,
+        );
+        if (!credited) {
+          await notifyOwnerNewPaidBooking(
+            this.notificationService,
+            this.turfModel,
+            booking,
+          );
+          return await booking.populate(TurfBookingService.populateOptions);
+        }
+      }
+    }
 
     await notifyOwnerNewPaidBooking(
       this.notificationService,
@@ -286,6 +296,8 @@ export class TurfBookingService {
       cancelledAt?: Date;
       confirmedAt?: Date;
       totalAmount?: number;
+      ownerPayoutAmount?: number;
+      platformFeeAmount?: number;
     },
     userId: string,
   ): Promise<TurfBookingDocument> {
@@ -362,7 +374,8 @@ export class TurfBookingService {
           turf!,
           processedTimeSlots,
         );
-
+      const { ownerPayoutAmount: newOwnerPayoutAmount } =
+        this.rajorpayService.calculateOwnerPayoutAmount(newTotalAmount);
       updateBookingDto = {
         ...updateBookingDto,
         timeSlots: processedTimeSlots as unknown as {
@@ -370,6 +383,8 @@ export class TurfBookingService {
           endTime: string;
         }[],
         totalAmount: newTotalAmount,
+        ownerPayoutAmount: newOwnerPayoutAmount,
+        platformFeeAmount: Math.max(0, newTotalAmount - newOwnerPayoutAmount),
       };
     }
 
@@ -394,9 +409,37 @@ export class TurfBookingService {
     const becomingCancelled =
       updateBookingDto.status === TurfBookingStatus.CANCELLED &&
       booking.status !== TurfBookingStatus.CANCELLED;
+    const becomingCompleted =
+      updateBookingDto.status === TurfBookingStatus.COMPLETED &&
+      booking.status !== TurfBookingStatus.COMPLETED;
 
     Object.assign(booking, updateBookingDto);
     await booking.save();
+
+    const ownerPayoutAmount =
+      booking.ownerPayoutAmount ??
+      this.rajorpayService.calculateOwnerPayoutAmount(booking.totalAmount)
+        .ownerPayoutAmount;
+
+    if (becomingCompleted && turf && ownerPayoutAmount > 0) {
+      await this.walletService.releaseEscrowToTotal(
+        booking._id.toString(),
+        turf.postedBy.toString(),
+        ownerPayoutAmount,
+      );
+    }
+
+    if (
+      becomingCancelled &&
+      turf &&
+      booking.paymentStatus === PaymentStatus.PAID &&
+      ownerPayoutAmount > 0
+    ) {
+      await this.walletService.deductEscrow(
+        turf.postedBy.toString(),
+        ownerPayoutAmount,
+      );
+    }
 
     if (becomingCancelled && turf) {
       if (isTurfOwner && !isBooker) {

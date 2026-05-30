@@ -22,6 +22,8 @@ import { NotificationModule } from './notification/notification.module';
 import { StorageModule } from './storage/storage.module';
 import { WebhookModule } from './webhook/webhook.module';
 import { ScoringModule } from './scoring/scoring.module';
+import { WithdrawalsModule } from './withdrawals/withdrawals.module';
+import { WalletModule } from './wallet/wallet.module';
 
 @Module({
   imports: [
@@ -42,6 +44,8 @@ import { ScoringModule } from './scoring/scoring.module';
     ChatModule,
     NotificationModule,
     StorageModule,
+    WalletModule,
+    WithdrawalsModule,
   ],
   controllers: [AppController],
   providers: [

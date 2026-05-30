@@ -3,7 +3,6 @@ import { RajorpayService } from '../core/services/rajorpay/rajorpay.service';
 import { TurfBookingService } from '../turf-booking/turf-booking.service';
 import { RazorpayWebhookPayloadDto } from './dto/razorpay-webhook.dto';
 import { TurfBookingWebhookService } from './turf-booking-webhook.service';
-import { HostOnboardingWebhookService } from './host-onboarding-webhook.service';
 
 @Injectable()
 export class RazorpayWebhookService {
@@ -11,7 +10,6 @@ export class RazorpayWebhookService {
     private readonly rajorpayService: RajorpayService,
     private readonly turfBookingWebhookService: TurfBookingWebhookService,
     private readonly turfBookingService: TurfBookingService,
-    private readonly hostOnboardingWebhookService: HostOnboardingWebhookService,
   ) {}
 
   async handleRazorpayWebhook(
@@ -33,14 +31,6 @@ export class RazorpayWebhookService {
     );
     if (!isValidSignature) {
       throw new BadRequestException('Invalid webhook signature');
-    }
-
-    const hostResult =
-      await this.hostOnboardingWebhookService.processWebhookEvent(
-        webhookPayload,
-      );
-    if (hostResult.processed) {
-      return hostResult;
     }
 
     return this.turfBookingWebhookService.processWebhookEvent(webhookPayload);

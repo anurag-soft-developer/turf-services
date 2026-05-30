@@ -1,10 +1,7 @@
 import type { PlayerSportEntry } from '../../core/sports/sport-stats';
 import type { SportRankingPointsEntry } from '../../core/points/ranking-points.types';
 import type { EarnedBadge } from '../../core/badges/badges';
-import type {
-  HostOnboardingStatusResponse,
-  IHostOnboarding,
-} from './host-onboarding.interface';
+import { UserRole } from '../../auth/decorators/roles.decorator';
 
 export interface IOAuthStrategy {
   provider: 'google' | 'facebook' | 'github' | 'twitter' | 'linkedin';
@@ -26,7 +23,7 @@ export interface FcmTokenEntry {
 export interface Profile {
   _id: string;
   email: string;
-  role: string;
+  role: UserRole;
   fullName?: string;
   bio?: string;
   avatar?: string;
@@ -44,7 +41,6 @@ export interface Profile {
   badges?: EarnedBadge[];
   isPasswordExists?: boolean;
   phone?: string;
-  hostOnboarding?: HostOnboardingStatusResponse;
   lastLogin?: string;
   createdAt: string;
   updatedAt: string;
@@ -62,8 +58,7 @@ export interface PublicProfile extends Pick<
   | 'badges'
 > {}
 
-export interface IUser extends Omit<Profile, 'hostOnboarding'> {
-  hostOnboarding?: IHostOnboarding;
+export interface IUser extends Profile {
   password?: string;
   oAuthStrategies?: IOAuthStrategy[];
   otp?: string;

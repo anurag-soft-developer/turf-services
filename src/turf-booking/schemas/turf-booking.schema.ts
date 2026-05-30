@@ -133,6 +133,16 @@ export class TurfBooking extends Document implements TurfBookingDocument {
   @Prop({
     type: Date,
   })
+  escrowCreditedAt?: Date;
+
+  @Prop({
+    type: Date,
+  })
+  escrowReleasedAt?: Date;
+
+  @Prop({
+    type: Date,
+  })
   paymentExpiresAt?: Date;
 
   @Prop({
