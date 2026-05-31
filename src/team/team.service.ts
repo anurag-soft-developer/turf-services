@@ -30,6 +30,15 @@ import {
 import omitEmpty from 'omit-empty';
 import { userSelectFields } from '../users/schemas/user.schema';
 import { TeamMemberService } from '../team-member/team-member.service';
+import {
+  TeamMatch,
+  TeamMatchDocument,
+} from '../matchmaking/schemas/team-match.schema';
+import {
+  assertCanViewTeam,
+  buildTeamTextSearchClause,
+  distinctOpponentsWithSentRequest,
+} from './util/team.helpers';
 
 @Injectable()
 export class TeamService {
@@ -40,6 +49,8 @@ export class TeamService {
   constructor(
     @InjectModel(Team.name)
     private teamModel: Model<TeamDocument>,
+    @InjectModel(TeamMatch.name)
+    private teamMatchModel: Model<TeamMatchDocument>,
     @Inject(forwardRef(() => TeamMemberService))
     private teamMemberService: TeamMemberService,
   ) {}
@@ -78,7 +89,12 @@ export class TeamService {
       throw new NotFoundException('Team not found');
     }
 
-    await this.assertCanView(team, viewerId);
+    await assertCanViewTeam(
+      team,
+      viewerId,
+      this.teamMemberService,
+      (t, uid) => this.isOwner(t, uid),
+    );
     return team;
   }
 
@@ -93,6 +109,9 @@ export class TeamService {
       genderCategory,
       lookingForMembers,
       teamOpenForMatch,
+      skipTeamsWithSentRequest,
+      fromTeamId,
+      search,
       page = 1,
       limit = 10,
       location,
@@ -111,8 +130,14 @@ export class TeamService {
       { _id: { $in: memberTeamIds } },
     ];
 
+    const andClauses: Record<string, unknown>[] = [{ $or: accessOr }];
+    const searchClause = search ? buildTeamTextSearchClause(search) : {};
+    if (Object.keys(searchClause).length > 0) {
+      andClauses.push(searchClause);
+    }
+
     const baseMatch: Record<string, unknown> = {
-      $or: accessOr,
+      $and: andClauses,
     };
 
     if (visibility) {
@@ -132,6 +157,20 @@ export class TeamService {
     }
     if (teamOpenForMatch !== undefined) {
       baseMatch.teamOpenForMatch = teamOpenForMatch;
+    }
+
+    if (skipTeamsWithSentRequest && fromTeamId) {
+      const sentToTeamIds = await distinctOpponentsWithSentRequest(
+        userId,
+        fromTeamId,
+        this.teamMatchModel,
+        this,
+        this.teamMemberService,
+        (id) => this.requireTeam(id),
+      );
+      if (sentToTeamIds.length > 0) {
+        baseMatch._id = { $nin: sentToTeamIds };
+      }
     }
 
     const skip = (page - 1) * limit;
@@ -331,27 +370,6 @@ export class TeamService {
     if (!this.isOwner(team, userId)) {
       throw new ForbiddenException('Only owners can perform this action');
     }
-  }
-
-  private async assertCanView(
-    team: TeamDocument,
-    viewerId: string,
-  ): Promise<void> {
-    if (team.visibility === TeamVisibility.PUBLIC) {
-      return;
-    }
-    if (this.isOwner(team, viewerId)) {
-      return;
-    }
-    if (
-      await this.teamMemberService.hasActiveMembership(
-        team._id.toString(),
-        viewerId,
-      )
-    ) {
-      return;
-    }
-    throw new ForbiddenException('You cannot view this private team');
   }
 
   isOwner(team: TeamDocument, userId: string): boolean {

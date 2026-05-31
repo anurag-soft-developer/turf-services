@@ -92,20 +92,34 @@ const UpdateTeamSchema = teamBaseSchema
     path: ['joinMode'],
   });
 
-const TeamFilterSchema = z.object({
-  visibility: visibilitySchema.optional(),
-  status: teamStatusSchema.optional(),
-  sportType: sportTypeSchema.optional(),
-  genderCategory: genderCategorySchema.optional(),
-  lookingForMembers: z
-    .enum(['true', 'false'])
-    .transform((v) => v === 'true')
-    .optional(),
-  page: z.coerce.number().min(1).default(1),
-  limit: z.coerce.number().min(1).max(50).default(10),
-  location: nearbyLocationQuerySchema.optional(),
-  teamOpenForMatch: z.enum(['true', 'false']).transform((v) => v === 'true').optional(),
-});
+const TeamFilterSchema = z
+  .object({
+    visibility: visibilitySchema.optional(),
+    status: teamStatusSchema.optional(),
+    sportType: sportTypeSchema.optional(),
+    genderCategory: genderCategorySchema.optional(),
+    lookingForMembers: z
+      .enum(['true', 'false'])
+      .transform((v) => v === 'true')
+      .optional(),
+    page: z.coerce.number().min(1).default(1),
+    limit: z.coerce.number().min(1).max(50).default(10),
+    location: nearbyLocationQuerySchema.optional(),
+    teamOpenForMatch: z
+      .enum(['true', 'false'])
+      .transform((v) => v === 'true')
+      .optional(),
+    skipTeamsWithSentRequest: z
+      .enum(['true', 'false'])
+      .transform((v) => v === 'true')
+      .optional(),
+    fromTeamId: z.string().min(1).optional(),
+    search: z.string().trim().min(1).max(200).optional(),
+  })
+  .refine((d) => !d.skipTeamsWithSentRequest || !!d.fromTeamId, {
+    message: 'fromTeamId is required when skipTeamsWithSentRequest is true',
+    path: ['fromTeamId'],
+  });
 
 const PromoteOwnerSchema = z.object({
   userId: z.string().min(1),

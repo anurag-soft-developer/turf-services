@@ -349,6 +349,9 @@ export class UsersService {
       phone: user.phone,
       lastLogin: user.lastLogin?.toString(),
       isPasswordExists,
+      playerSportStats: user.playerSportStats || [],
+      sportRankingPoints: user.sportRankingPoints || [],
+      badges: user.badges || [],
       createdAt,
       updatedAt,
     };

@@ -4,15 +4,10 @@ import { nearbyLocationQuerySchema } from '../../core/dto';
 
 // Pricing Filter Schema
 export const PricingFilterSchema = z.object({
-  minPrice: z.number().min(0).optional(),
-  maxPrice: z.number().min(0).optional(),
+  minPrice: z.coerce.number().min(0).optional(),
+  maxPrice: z.coerce.number().min(0).optional(),
   includeWeekendSurge: z.boolean().optional(),
-}).transform((data) => ({
-  ...data,
-  minPrice: data.minPrice ? Number(data.minPrice) : undefined,
-  maxPrice: data.maxPrice ? Number(data.maxPrice) : undefined,
-  includeWeekendSurge: data.includeWeekendSurge === true,
-}));
+});
 
 // Search Turf Schema
 export const SearchTurfSchema = z.object({
