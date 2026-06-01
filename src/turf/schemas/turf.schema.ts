@@ -27,8 +27,8 @@ export class Dimensions implements IDimensions {
   @Prop()
   width?: number;
 
-  @Prop({ default: 'ft' })
-  unit!: string;
+  @Prop({ enum: ['meters', 'feet'], default: 'meters' })
+  unit!: 'meters' | 'feet';
 }
 
 @Schema()

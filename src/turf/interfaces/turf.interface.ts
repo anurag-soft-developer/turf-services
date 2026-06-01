@@ -9,7 +9,7 @@ export interface ILocation {
 export interface IDimensions {
   length?: number;
   width?: number;
-  unit: string;
+  unit?: 'meters' | 'feet';
 }
 
 export interface IPricing {

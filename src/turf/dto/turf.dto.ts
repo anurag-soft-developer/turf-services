@@ -2,11 +2,13 @@ import { z } from 'zod';
 import { createZodDto, type ZodDto } from 'nestjs-zod';
 import { geoLocationSchema } from '../../core/dto';
 
+export const dimensionUnitSchema = z.enum(['meters', 'feet']);
+
 // Dimensions Schema
 export const DimensionsSchema = z.object({
   length: z.number().min(0).optional(),
   width: z.number().min(0).optional(),
-  unit: z.string().optional(),
+  unit: dimensionUnitSchema.optional(),
 });
 
 // Pricing Schema
