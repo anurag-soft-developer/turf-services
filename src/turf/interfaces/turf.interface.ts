@@ -1,5 +1,6 @@
 import { Types } from 'mongoose';
 import type { GeoPoint } from '../../core/schemas/geo-location.schema';
+import { TurfStatus } from '../schemas/turf.schema';
 
 export interface ILocation {
   address: string;
@@ -35,6 +36,11 @@ export interface ITurf {
   pricing: IPricing;
   operatingHours: IOperatingHours;
   isAvailable: boolean;
+  status: TurfStatus;
+  rejectionReason?: string;
+  submittedAt?: Date;
+  reviewedAt?: Date;
+  reviewedBy?: Types.ObjectId;
   slotBufferMins: number;
   averageRating?: number;
   totalReviews?: number;

@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import type { QueryFilter } from 'mongoose';
@@ -10,10 +11,12 @@ import { Turf, TurfDocument } from './schemas/turf.schema';
 import { CreateTurfDto, UpdateTurfDto } from './dto/turf.dto';
 import { SearchTurfDto } from './dto/turf.filter.dto';
 import { ITurf } from './interfaces/turf.interface';
+import { TurfStatus } from './schemas/turf.schema';
 import { PaginatedResult } from '../core/interfaces/common';
 import { userSelectFields } from '../users/schemas/user.schema';
 import { buildMongoSortOptions } from '../core/utils/mongo-sort.util';
 import { UsersService } from '../users/users.service';
+import { UserRole } from '../auth/decorators/roles.decorator';
 
 const TURF_SEARCH_SORT_FIELD_MAP: Record<string, string> = {
   price: 'pricing.basePricePerHour',
@@ -21,6 +24,11 @@ const TURF_SEARCH_SORT_FIELD_MAP: Record<string, string> = {
   createdAt: 'createdAt',
   distance: 'distance',
 };
+
+export interface TurfViewer {
+  userId: string;
+  role: UserRole;
+}
 
 @Injectable()
 export class TurfService {
@@ -57,7 +65,7 @@ export class TurfService {
     return await (await turf.save()).populate(TurfService.populateOptions);
   }
 
-  async findById(id: string): Promise<TurfDocument> {
+  async findById(id: string, viewer?: TurfViewer): Promise<TurfDocument> {
     const turf = await this.turfModel
       .findById(id)
       .populate(TurfService.populateOptions)
@@ -65,20 +73,45 @@ export class TurfService {
     if (!turf) {
       throw new NotFoundException('Turf not found');
     }
+
+    if (viewer && !this.canViewTurf(turf, viewer)) {
+      throw new NotFoundException('Turf not found');
+    }
+
+    if (!viewer && turf.status !== TurfStatus.PUBLISHED) {
+      throw new NotFoundException('Turf not found');
+    }
+
     return turf;
+  }
+
+  canViewTurf(turf: TurfDocument, viewer: TurfViewer): boolean {
+    if (turf.status === TurfStatus.PUBLISHED) {
+      return true;
+    }
+    if (viewer.role === UserRole.PLATFORM_ADMIN) {
+      return true;
+    }
+    return turf.postedBy.toString() === viewer.userId;
   }
 
   async update(
     id: string,
     updateTurfDto: UpdateTurfDto,
+    viewer: TurfViewer,
   ): Promise<TurfDocument> {
-    if (updateTurfDto.name) {
-      const existingTurf = await this.turfModel
-        .findOne({ name: updateTurfDto.name, _id: { $ne: id } })
+    const existing = await this.turfModel.findById(id).exec();
+    if (!existing) {
+      throw new NotFoundException('Turf not found');
+    }
+    this.assertOwnerOrAdmin(existing, viewer);
 
+    if (updateTurfDto.name) {
+      const nameConflict = await this.turfModel
+        .findOne({ name: updateTurfDto.name, _id: { $ne: id } })
         .exec();
 
-      if (existingTurf) {
+      if (nameConflict) {
         throw new ConflictException('Turf with this name already exists');
       }
     }
@@ -98,7 +131,13 @@ export class TurfService {
     return turf;
   }
 
-  async delete(id: string): Promise<void> {
+  async delete(id: string, viewer: TurfViewer): Promise<void> {
+    const existing = await this.turfModel.findById(id).exec();
+    if (!existing) {
+      throw new NotFoundException('Turf not found');
+    }
+    this.assertOwnerOrAdmin(existing, viewer);
+
     const result = await this.turfModel.findByIdAndDelete(id).exec();
     if (!result) {
       throw new NotFoundException('Turf not found');
@@ -109,6 +148,12 @@ export class TurfService {
     const totalTurfs = await this.turfModel.countDocuments();
     const availableTurfs = await this.turfModel.countDocuments({
       isAvailable: true,
+    });
+    const publishedTurfs = await this.turfModel.countDocuments({
+      status: TurfStatus.PUBLISHED,
+    });
+    const pendingApprovalTurfs = await this.turfModel.countDocuments({
+      status: TurfStatus.PENDING_APPROVAL,
     });
     const sportTypeStats = await this.turfModel.aggregate([
       {
@@ -132,9 +177,20 @@ export class TurfService {
       totalTurfs,
       availableTurfs,
       unavailableTurfs: totalTurfs - availableTurfs,
+      publishedTurfs,
+      pendingApprovalTurfs,
       sportTypeStats,
       averagePrice: averagePrice[0]?.avgPrice || 0,
     };
+  }
+
+  searchFeedTurfs(searchDto: SearchTurfDto): Promise<PaginatedResult<ITurf>> {
+    const { status: _status, isAvailable: _isAvailable, ...rest } = searchDto;
+    return this.searchTurfs({
+      ...rest,
+      status: TurfStatus.PUBLISHED,
+      isAvailable: true,
+    });
   }
 
   async searchTurfs(searchDto: SearchTurfDto): Promise<PaginatedResult<ITurf>> {
@@ -147,6 +203,7 @@ export class TurfService {
       isAvailable,
       operatingTime,
       postedBy,
+      status,
       page = 1,
       limit = 10,
       sort,
@@ -158,6 +215,10 @@ export class TurfService {
 
     if (postedBy) {
       query.postedBy = new Types.ObjectId(postedBy);
+    }
+
+    if (status) {
+      query.status = status;
     }
 
     if (globalSearchText) {
@@ -308,5 +369,15 @@ export class TurfService {
       limit,
       totalPages: Math.ceil(metadata.total / limit),
     };
+  }
+
+  private assertOwnerOrAdmin(turf: TurfDocument, viewer: TurfViewer): void {
+    const isOwner = turf.postedBy.toString() === viewer.userId;
+    const isAdmin = viewer.role === UserRole.PLATFORM_ADMIN;
+    if (!isOwner && !isAdmin) {
+      throw new ForbiddenException(
+        'You do not have permission to modify this turf',
+      );
+    }
   }
 }

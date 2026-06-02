@@ -17,6 +17,7 @@ import {
   Turf,
   TurfDocument,
 } from '../turf/schemas/turf.schema';
+import { TurfStatus } from '../turf/schemas/turf.schema';
 import TurfBookingStatsUtility from './utility/turf-booking.stats.utility';
 import {
   CreateTurfBookingDto,
@@ -87,6 +88,12 @@ export class TurfBookingService {
 
     if (!turfDoc.isAvailable) {
       throw new BadRequestException('Turf is not available for booking');
+    }
+
+    if (turfDoc.status !== TurfStatus.PUBLISHED) {
+      throw new BadRequestException(
+        'Turf is not published and cannot be booked',
+      );
     }
 
     // Sort time slots by start time to ensure they don't overlap
@@ -476,6 +483,12 @@ export class TurfBookingService {
     const turfDoc = await this.turfModel.findById(turfId);
     if (!turfDoc) {
       throw new NotFoundException('Turf not found');
+    }
+
+    if (turfDoc.status !== TurfStatus.PUBLISHED) {
+      throw new BadRequestException(
+        'Turf is not published and slot availability cannot be checked',
+      );
     }
 
     const dayRef = moment(dateStr).startOf('day').toDate();

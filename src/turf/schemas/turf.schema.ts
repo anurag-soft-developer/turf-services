@@ -12,10 +12,22 @@ import {
   GeoLocationSchema,
 } from '../../core/schemas/geo-location.schema';
 
-export type TurfDocument = Omit<ITurf, '_id' | 'createdAt' | 'updatedAt'> & {
+export type TurfDocument = Omit<
+  ITurf,
+  '_id' | 'createdAt' | 'updatedAt' | 'submittedAt' | 'reviewedAt'
+> & {
   createdAt: Date;
   updatedAt: Date;
+  submittedAt?: Date;
+  reviewedAt?: Date;
 } & Document;
+
+export enum TurfStatus {
+  DRAFT = 'draft',
+  PENDING_APPROVAL = 'pending_approval',
+  PUBLISHED = 'published',
+  REJECTED = 'rejected',
+}
 
 export const turfSelectFields: string = '_id name location images pricing postedBy';
 
@@ -122,6 +134,29 @@ export class Turf extends Document implements TurfDocument {
   isAvailable!: boolean;
 
   @Prop({
+    type: String,
+    enum: Object.values(TurfStatus),
+    default: TurfStatus.DRAFT,
+    index: true,
+  })
+  status!: TurfStatus;
+
+  @Prop({ type: String })
+  rejectionReason?: string;
+
+  @Prop({ type: Date })
+  submittedAt?: Date;
+
+  @Prop({ type: Date })
+  reviewedAt?: Date;
+
+  @Prop({
+    type: MongooseSchema.Types.ObjectId,
+    ref: User.name,
+  })
+  reviewedBy?: Types.ObjectId;
+
+  @Prop({
     type: Number,
     default: 15,
   })
@@ -159,3 +194,4 @@ export const TurfSchema = SchemaFactory.createForClass(Turf);
 
 // Index for location-based searches
 TurfSchema.index({ 'location.coordinates': '2dsphere' });
+TurfSchema.index({ status: 1, isAvailable: 1, createdAt: -1 });

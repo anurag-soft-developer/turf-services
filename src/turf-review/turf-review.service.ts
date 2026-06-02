@@ -3,6 +3,7 @@ import {
   ConflictException,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, PopulateOptions, QueryFilter, Types } from 'mongoose';
@@ -20,6 +21,7 @@ import {
   ReportReviewDto,
   ModerateReviewDto,
 } from './dto/turf-review.dto';
+import { TurfStatus } from '../turf/schemas/turf.schema';
 import { PaginatedResult } from '../core/interfaces/common';
 import { buildMongoSortOptions } from '../core/utils/mongo-sort.util';
 import { userSelectFields } from '../users/schemas/user.schema';
@@ -56,6 +58,12 @@ export class TurfReviewService {
     const turfDoc = await this.turfModel.findById(turf);
     if (!turfDoc) {
       throw new NotFoundException('Turf not found');
+    }
+
+    if (turfDoc.status !== TurfStatus.PUBLISHED) {
+      throw new BadRequestException(
+        'Reviews can only be submitted for published turfs',
+      );
     }
 
     // Check if user already reviewed this turf
