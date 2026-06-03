@@ -95,7 +95,7 @@ export class TurfApprovalService {
     if (!turf) {
       throw new NotFoundException('Turf not found');
     }
-    if (turf.postedBy.toString() !== ownerId) {
+    if (turf.postedBy.toString() !== ownerId.toString()) {
       throw new ForbiddenException('You do not own this turf');
     }
     return turf;

@@ -1,8 +1,10 @@
 import { createZodDto, type ZodDto } from 'nestjs-zod';
 import { z } from 'zod';
+import { PayoutMethod } from '../interfaces/wallet.interface';
 
 const UpdatePayoutDetailsSchema = z
   .object({
+    primaryMethod: z.enum(PayoutMethod).optional(),
     accountHolderName: z.string().trim().min(2).max(120).optional(),
     bankName: z.string().trim().min(2).max(120).optional(),
     accountNumber: z
@@ -26,11 +28,9 @@ const UpdatePayoutDetailsSchema = z
       .optional(),
   })
   .strict()
-  .refine(
-    (value) =>
-      Object.keys(value).some(Boolean),
-    { message: 'At least one payout field must be provided' },
-  );
+  .refine((value) => Object.keys(value).some((key) => value[key as keyof typeof value] !== undefined), {
+    message: 'At least one payout field must be provided',
+  });
 
 export class UpdatePayoutDetailsDto extends createZodDto(
   UpdatePayoutDetailsSchema,

@@ -21,6 +21,7 @@ import { userSelectFields } from '../users/schemas/user.schema';
 import { WithdrawalStatus } from './interfaces/withdrawal.interface';
 import { WithdrawalUtility } from './utility/withdrawal.utility';
 import { PaginatedResult } from '../core/interfaces/common';
+import { resolveId } from '../core/utils/mongo-ref.util';
 import { WalletService } from '../wallet/wallet.service';
 import { WalletUtility } from '../wallet/utility/wallet.utility';
 import { UserRole } from '../auth/decorators/roles.decorator';
@@ -39,10 +40,22 @@ export class WithdrawalsService {
     private readonly walletService: WalletService,
   ) {}
 
+  private toWithdrawalResponse(
+    doc: WithdrawalDocument,
+    options: { forHost?: boolean } = {},
+  ) {
+    const plain = doc.toObject();
+    if (options.forHost) {
+      const { payoutSnapshot: _omit, ...rest } = plain;
+      return rest;
+    }
+    return plain;
+  }
+
   async createRequest(
     userId: string,
     dto: CreateWithdrawalRequestDto,
-  ): Promise<WithdrawalDocument> {
+  ) {
     const wallet = await this.walletService.getOrCreateWallet(userId);
 
     if (!WalletUtility.hasCompletePayoutDetails(wallet.payoutDetails)) {
@@ -68,9 +81,11 @@ export class WithdrawalsService {
         attachments: [],
       });
 
-      return (await created.populate(
+      const populated = (await created.populate(
         WithdrawalsService.populateOptions,
       )) as WithdrawalDocument;
+
+      return this.toWithdrawalResponse(populated, { forHost: true });
     } catch (error) {
       await this.walletService.releaseWithdrawalHold(userId, dto.amount);
       throw error;
@@ -81,7 +96,7 @@ export class WithdrawalsService {
     withdrawalId: string,
     userId: string,
     userRole: string,
-  ): Promise<WithdrawalDocument> {
+  ) {
     const request = await this.withdrawalModel
       .findById(withdrawalId)
       .populate(WithdrawalsService.populateOptions);
@@ -90,26 +105,39 @@ export class WithdrawalsService {
       throw new NotFoundException('Withdrawal request not found');
     }
 
-    const isOwner = request.requestedBy.toString() === userId;
+    const hostUserId = resolveId(request.requestedBy);
+    const isOwner = hostUserId === userId;
     const isPlatformAdmin = userRole === UserRole.PLATFORM_ADMIN;
 
     if (!isOwner && !isPlatformAdmin) {
       throw new ForbiddenException('Access denied');
     }
 
-    return request as WithdrawalDocument;
+    const response = this.toWithdrawalResponse(request, {
+      forHost: isOwner && !isPlatformAdmin,
+    });
+
+    if (isPlatformAdmin) {
+      const wallet = await this.walletService.getOrCreateWallet(hostUserId);
+      return {
+        ...response,
+        hostPayoutDetails: wallet.payoutDetails,
+      };
+    }
+
+    return response;
   }
 
   async cancelRequest(
     withdrawalId: string,
     userId: string,
-  ): Promise<WithdrawalDocument> {
+  ) {
     const request = await this.withdrawalModel.findById(withdrawalId);
     if (!request) {
       throw new NotFoundException('Withdrawal request not found');
     }
 
-    if (request.requestedBy.toString() !== userId) {
+    if (resolveId(request.requestedBy) !== userId) {
       throw new ForbiddenException('Access denied');
     }
 
@@ -129,15 +157,17 @@ export class WithdrawalsService {
 
     await this.walletService.releaseWithdrawalHold(userId, request.amount);
 
-    return (await request.populate(
+    const populated = (await request.populate(
       WithdrawalsService.populateOptions,
     )) as WithdrawalDocument;
+
+    return this.toWithdrawalResponse(populated, { forHost: true });
   }
 
   async listMine(
     userId: string,
     filter: WithdrawalFilterDto,
-  ): Promise<PaginatedResult<WithdrawalDocument>> {
+  ): Promise<PaginatedResult<ReturnType<WithdrawalsService['toWithdrawalResponse']>>> {
     const { status, page = 1, limit = 20 } = filter;
     const query: Record<string, unknown> = { requestedBy: userId };
     if (status) query.status = status;
@@ -154,7 +184,7 @@ export class WithdrawalsService {
     ]);
 
     return {
-      data,
+      data: data.map((doc) => this.toWithdrawalResponse(doc, { forHost: true })),
       totalDocuments,
       page,
       limit,
@@ -164,7 +194,7 @@ export class WithdrawalsService {
 
   async listAll(
     filter: WithdrawalFilterDto,
-  ): Promise<PaginatedResult<WithdrawalDocument>> {
+  ): Promise<PaginatedResult<ReturnType<WithdrawalsService['toWithdrawalResponse']>>> {
     const { status, userId, page = 1, limit = 20 } = filter;
     const query: Record<string, unknown> = {};
     if (status) query.status = status;
@@ -182,7 +212,7 @@ export class WithdrawalsService {
     ]);
 
     return {
-      data,
+      data: data.map((doc) => this.toWithdrawalResponse(doc)),
       totalDocuments,
       page,
       limit,
@@ -194,17 +224,17 @@ export class WithdrawalsService {
     withdrawalId: string,
     userId: string,
     dto: AddWithdrawalCommentDto,
-  ): Promise<WithdrawalDocument> {
+  ) {
     const request = await this.withdrawalModel.findById(withdrawalId);
     if (!request) {
       throw new NotFoundException('Withdrawal request not found');
     }
 
-    if (WithdrawalUtility.isTerminalStatus(request.status)) {
-      throw new BadRequestException(
-        'Cannot add comment to a terminal withdrawal request',
-      );
-    }
+    // if (WithdrawalUtility.isTerminalStatus(request.status)) {
+    //   throw new BadRequestException(
+    //     'Cannot add comment to a terminal withdrawal request',
+    //   );
+    // }
 
     request.comments.push({
       addedBy: new Types.ObjectId(userId),
@@ -213,25 +243,27 @@ export class WithdrawalsService {
     });
     await request.save();
 
-    return (await request.populate(
+    const populated = (await request.populate(
       WithdrawalsService.populateOptions,
     )) as WithdrawalDocument;
+
+    return this.toWithdrawalResponse(populated);
   }
 
   async addAttachments(
     withdrawalId: string,
     dto: AddWithdrawalAttachmentsDto,
-  ): Promise<WithdrawalDocument> {
+  ) {
     const request = await this.withdrawalModel.findById(withdrawalId);
     if (!request) {
       throw new NotFoundException('Withdrawal request not found');
     }
 
-    if (WithdrawalUtility.isTerminalStatus(request.status)) {
-      throw new BadRequestException(
-        'Cannot update attachments on a terminal withdrawal request',
-      );
-    }
+    // if (WithdrawalUtility.isTerminalStatus(request.status)) {
+    //   throw new BadRequestException(
+    //     'Cannot update attachments on a terminal withdrawal request',
+    //   );
+    // }
 
     const mergedAttachments = [...request.attachments, ...dto.attachments];
     if (mergedAttachments.length > 10) {
@@ -241,16 +273,18 @@ export class WithdrawalsService {
     request.attachments = mergedAttachments;
     await request.save();
 
-    return (await request.populate(
+    const populated = (await request.populate(
       WithdrawalsService.populateOptions,
     )) as WithdrawalDocument;
+
+    return this.toWithdrawalResponse(populated);
   }
 
   async updateStatus(
     withdrawalId: string,
     adminUserId: string,
     dto: UpdateWithdrawalStatusDto,
-  ): Promise<WithdrawalDocument> {
+  ) {
     const request = await this.withdrawalModel.findById(withdrawalId);
     if (!request) {
       throw new NotFoundException('Withdrawal request not found');
@@ -268,8 +302,24 @@ export class WithdrawalsService {
       dto.status === WithdrawalStatus.SETTLED &&
       request.status !== WithdrawalStatus.SETTLED
     ) {
+      const hostUserId = resolveId(request.requestedBy);
+      const wallet = await this.walletService.getOrCreateWallet(hostUserId);
+
+      const payoutSnapshot = WalletUtility.buildPayoutSnapshotForMethod(
+        wallet.payoutDetails,
+        dto.paidViaMethod!,
+      );
+
+      if (!payoutSnapshot) {
+        throw new BadRequestException(
+          `Complete ${dto.paidViaMethod} payout details are not available for this host`,
+        );
+      }
+
+      request.payoutSnapshot = payoutSnapshot;
+
       const settled = await this.walletService.settleWithdrawal(
-        request.requestedBy.toString(),
+        hostUserId,
         request.amount,
       );
 
@@ -294,15 +344,24 @@ export class WithdrawalsService {
 
     await request.save();
 
+    const hostUserId = resolveId(request.requestedBy);
+
     if (shouldReleaseHold) {
       await this.walletService.releaseWithdrawalHold(
-        request.requestedBy.toString(),
+        hostUserId,
         request.amount,
       );
     }
 
-    return (await request.populate(
+    const populated = (await request.populate(
       WithdrawalsService.populateOptions,
     )) as WithdrawalDocument;
+
+    const wallet = await this.walletService.getOrCreateWallet(hostUserId);
+
+    return {
+      ...this.toWithdrawalResponse(populated),
+      hostPayoutDetails: wallet.payoutDetails,
+    };
   }
 }

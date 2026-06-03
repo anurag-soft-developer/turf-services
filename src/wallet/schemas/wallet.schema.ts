@@ -1,7 +1,11 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
 import { User } from '../../users/schemas/user.schema';
-import type { IWallet, PayoutDetails } from '../interfaces/wallet.interface';
+import {
+  PayoutMethod,
+  type IWallet,
+  type PayoutDetails,
+} from '../interfaces/wallet.interface';
 
 export type WalletDocument = Omit<IWallet, '_id'> &
   Document & {
@@ -37,6 +41,10 @@ export class Wallet extends Document implements WalletDocument {
 
   @Prop({
     type: {
+      primaryMethod: {
+        type: String,
+        enum: Object.values(PayoutMethod),
+      },
       accountHolderName: { type: String, trim: true },
       bankName: { type: String, trim: true },
       accountNumber: { type: String, trim: true },

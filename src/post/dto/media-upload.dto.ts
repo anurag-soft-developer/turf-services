@@ -6,6 +6,7 @@ export enum MediaUploadPurpose {
   AVATAR = 'avatar',
   TURF_MEDIA = 'turfMedia',
   TEAM_MEDIA = 'teamMedia',
+  WITHDRAWAL_ATTACHMENT = 'withdrawalAttachment',
 }
 
 export const mediaUploadPurposeSchema = z.enum(MediaUploadPurpose);

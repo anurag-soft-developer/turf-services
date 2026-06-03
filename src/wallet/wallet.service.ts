@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import {
@@ -45,7 +45,7 @@ export class WalletService {
       _id: wallet._id.toString(),
       heldBalance: wallet.heldBalance ?? 0,
       availableBalance: WalletService.getAvailableBalance(wallet),
-      payoutDetails: WalletUtility.maskPayoutDetails(wallet.toObject().payoutDetails),
+      payoutDetails: wallet.toObject().payoutDetails,
     };
   }
 
@@ -134,6 +134,19 @@ export class WalletService {
     if (!wallet) {
       throw new NotFoundException('Wallet not found');
     }
+
+    if (
+      dto.primaryMethod !== undefined &&
+      !WalletUtility.hasCompleteMethodDetails(
+        wallet.payoutDetails,
+        dto.primaryMethod,
+      )
+    ) {
+      throw new BadRequestException(
+        `Complete ${dto.primaryMethod} payout details required before setting as primary method`,
+      );
+    }
+
     return this.toWalletResponse(wallet);
   }
 

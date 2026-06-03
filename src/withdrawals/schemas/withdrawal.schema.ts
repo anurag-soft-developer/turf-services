@@ -4,6 +4,7 @@ import {
   IWithdrawalRequest,
   WithdrawalStatus,
 } from '../interfaces/withdrawal.interface';
+import { PayoutMethod } from '../../wallet/interfaces/wallet.interface';
 import { User } from '../../users/schemas/user.schema';
 
 export type WithdrawalDocument = Omit<IWithdrawalRequest, '_id'> &
@@ -11,6 +12,27 @@ export type WithdrawalDocument = Omit<IWithdrawalRequest, '_id'> &
     createdAt: Date;
     updatedAt: Date;
   };
+
+@Schema({ _id: false })
+class PayoutSnapshot {
+  @Prop({ type: String, enum: Object.values(PayoutMethod), required: true })
+  method!: PayoutMethod;
+
+  @Prop({ type: String, trim: true })
+  accountHolderName?: string;
+
+  @Prop({ type: String, trim: true })
+  bankName?: string;
+
+  @Prop({ type: String, trim: true })
+  accountNumber?: string;
+
+  @Prop({ type: String, trim: true, uppercase: true })
+  ifscCode?: string;
+
+  @Prop({ type: String, trim: true, lowercase: true })
+  upiId?: string;
+}
 
 @Schema({ _id: false })
 class WithdrawalComment {
@@ -52,6 +74,9 @@ export class Withdrawal extends Document implements WithdrawalDocument {
     },
   })
   attachments!: string[];
+
+  @Prop({ type: PayoutSnapshot })
+  payoutSnapshot?: PayoutSnapshot;
 
   @Prop({ type: String, trim: true, maxlength: 1000 })
   rejectionReason?: string;

@@ -35,6 +35,7 @@ const ALLOWED_MIME_TYPES = new Set([
   'video/mp4',
   'video/webm',
   'video/quicktime',
+  'application/pdf',
 ]);
 
 const DEFAULT_SIGNED_UPLOAD_MAX_BYTES = 25 * 1024 * 1024;

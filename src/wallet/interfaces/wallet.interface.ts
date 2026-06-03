@@ -1,6 +1,12 @@
 import { Types } from 'mongoose';
 
+export enum PayoutMethod {
+  UPI = 'upi',
+  BANK = 'bank',
+}
+
 export interface PayoutDetails {
+  primaryMethod?: PayoutMethod;
   accountHolderName?: string;
   bankName?: string;
   accountNumber?: string;

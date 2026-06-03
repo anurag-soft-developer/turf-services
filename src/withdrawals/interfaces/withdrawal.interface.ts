@@ -1,4 +1,8 @@
 import { Types } from 'mongoose';
+import {
+  PayoutDetails,
+  PayoutMethod,
+} from '../../wallet/interfaces/wallet.interface';
 
 export enum WithdrawalStatus {
   PENDING = 'pending',
@@ -15,6 +19,15 @@ export interface IWithdrawalComment {
   createdAt: Date;
 }
 
+export interface PayoutSnapshot {
+  method: PayoutMethod;
+  accountHolderName?: string;
+  bankName?: string;
+  accountNumber?: string;
+  ifscCode?: string;
+  upiId?: string;
+}
+
 export interface IWithdrawalRequest {
   _id: string;
   requestedBy: Types.ObjectId;
@@ -22,10 +35,16 @@ export interface IWithdrawalRequest {
   status: WithdrawalStatus;
   comments: IWithdrawalComment[];
   attachments: string[];
+  payoutSnapshot?: PayoutSnapshot;
   rejectionReason?: string;
   reviewedBy?: Types.ObjectId;
   reviewedAt?: Date;
   processedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
+}
+
+/** Included on admin GET withdrawal responses only. */
+export interface IWithdrawalAdminResponse extends IWithdrawalRequest {
+  hostPayoutDetails?: PayoutDetails;
 }

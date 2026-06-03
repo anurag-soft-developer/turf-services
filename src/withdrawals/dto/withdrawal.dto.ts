@@ -1,5 +1,6 @@
 import { createZodDto, type ZodDto } from 'nestjs-zod';
 import { z } from 'zod';
+import { PayoutMethod } from '../../wallet/interfaces/wallet.interface';
 import { WithdrawalStatus } from '../interfaces/withdrawal.interface';
 
 const attachmentSchema = z.string().url().max(2000);
@@ -15,10 +16,21 @@ const WithdrawalFilterSchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 
-const UpdateWithdrawalStatusSchema = z.object({
-  status: z.enum(WithdrawalStatus),
-  rejectionReason: z.string().trim().min(1).max(1000).optional(),
-});
+const UpdateWithdrawalStatusSchema = z
+  .object({
+    status: z.enum(WithdrawalStatus),
+    rejectionReason: z.string().trim().min(1).max(1000).optional(),
+    paidViaMethod: z.enum(PayoutMethod).optional(),
+  })
+  .refine(
+    (data) =>
+      data.status !== WithdrawalStatus.SETTLED ||
+      data.paidViaMethod !== undefined,
+    {
+      message: 'paidViaMethod is required when status is settled',
+      path: ['paidViaMethod'],
+    },
+  );
 
 const AddWithdrawalCommentSchema = z.object({
   message: z.string().trim().min(1).max(1000),
@@ -26,6 +38,10 @@ const AddWithdrawalCommentSchema = z.object({
 
 const AddWithdrawalAttachmentsSchema = z.object({
   attachments: z.array(attachmentSchema).min(1).max(10),
+});
+
+const UpdateWithdrawalPayoutSnapshotSchema = z.object({
+  method: z.enum(PayoutMethod),
 });
 
 export class CreateWithdrawalRequestDto extends createZodDto(
