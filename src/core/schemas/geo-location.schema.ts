@@ -25,6 +25,18 @@ export class GeoLocation {
 
   @Prop({ type: GeoPointSchema, required: true })
   coordinates!: GeoPoint;
+
+  @Prop({ trim: true })
+  city?: string;
+
+  @Prop({ trim: true })
+  state?: string;
+
+  @Prop({ trim: true })
+  zip?: string;
+
+  @Prop({ trim: true })
+  country?: string;
 }
 
 export const GeoLocationSchema = SchemaFactory.createForClass(GeoLocation);

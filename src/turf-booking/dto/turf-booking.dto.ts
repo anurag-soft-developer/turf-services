@@ -4,7 +4,7 @@ import {
   TurfBookingStatus,
   PaymentStatus,
 } from '../interfaces/turf-booking.interface';
-import { date } from '../../core/dto';
+import { date, parseBooleanQuery, parseEnumQuery } from '../../core/dto';
 
 const TimeSlotSchema = z.object({
   startTime: date,
@@ -36,8 +36,10 @@ const UpdateTurfBookingSchema = z.object({
 const TurfBookingFilterSchema = z.object({
   turf: z.string().optional(),
   bookedBy: z.string().optional(),
-  status: z.enum(TurfBookingStatus).optional(),
+  status: parseEnumQuery(z.enum(TurfBookingStatus)),
   paymentStatus: z.enum(PaymentStatus).optional(),
+  /** When true: at least one slot still upcoming. When false: archive (past + completed/cancelled). */
+  upcoming: parseBooleanQuery(),
   startDate: date.optional(),
   endDate: date.optional(),
   page: z.coerce.number().min(1).default(1),

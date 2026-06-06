@@ -1,10 +1,7 @@
 import { Types } from 'mongoose';
 import type { GeoPoint } from '../../core/schemas/geo-location.schema';
+import { ILocation } from '../../turf/interfaces/turf.interface';
 
-export interface IEventLocation {
-  address: string;
-  coordinates: GeoPoint;
-}
 
 export interface IEvent {
   _id: string;
@@ -15,7 +12,7 @@ export interface IEvent {
   coverImages: string[];
   eventDate: Date;
   reportingTime?: string;
-  location: IEventLocation;
+  location: ILocation;
   price: number;
   currency: string;
   maxParticipants: number;

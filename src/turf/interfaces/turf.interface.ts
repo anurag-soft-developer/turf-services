@@ -5,6 +5,10 @@ import { TurfStatus } from '../schemas/turf.schema';
 export interface ILocation {
   address: string;
   coordinates: GeoPoint;
+  city?: string;
+  state?: string;
+  zip?: string;
+  country?: string;
 }
 
 export interface IDimensions {

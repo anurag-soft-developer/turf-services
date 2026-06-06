@@ -620,6 +620,7 @@ export class TurfBookingService {
       bookedBy,
       status,
       paymentStatus,
+      upcoming,
       startDate,
       endDate,
       page = 1,
@@ -629,14 +630,41 @@ export class TurfBookingService {
     } = filterDto;
 
     const filter: QueryFilter<TurfBookingDocument> = {};
+    const now = new Date();
 
     if (turf) filter.turf = turf;
     if (bookedBy) filter.bookedBy = bookedBy;
-    if (status) filter.status = status;
     if (paymentStatus) filter.paymentStatus = paymentStatus;
 
+    if (upcoming === true) {
+      filter.timeSlots = {
+        $elemMatch: { endTime: { $gte: now } },
+      };
+      if (status?.length) {
+        filter.status = status.length === 1 ? status[0] : { $in: status };
+      }
+    } else if (upcoming === false) {
+      filter.$or = [
+        {
+          status: {
+            $in: [TurfBookingStatus.COMPLETED, TurfBookingStatus.CANCELLED],
+          },
+        },
+        {
+          status: {
+            $in: [TurfBookingStatus.CONFIRMED, TurfBookingStatus.PENDING],
+          },
+          timeSlots: {
+            $not: { $elemMatch: { endTime: { $gte: now } } },
+          },
+        },
+      ];
+    } else if (status?.length) {
+      filter.status = status.length === 1 ? status[0] : { $in: status };
+    }
+
     // Date range filtering - check if any time slot overlaps with the date range
-    if (startDate || endDate) {
+    if ((startDate || endDate) && upcoming === undefined) {
       const dateFilter: any = {};
       if (startDate && endDate) {
         // Booking has at least one slot that overlaps with the date range
