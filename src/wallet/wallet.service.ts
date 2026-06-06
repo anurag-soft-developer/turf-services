@@ -2,12 +2,17 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import {
+  EventBooking,
+  EventBookingDocument,
+} from '../event-booking/schemas/event-booking.schema';
+import {
   TurfBooking,
   TurfBookingDocument,
 } from '../turf-booking/schemas/turf-booking.schema';
 import { Wallet, WalletDocument } from './schemas/wallet.schema';
 import { UpdatePayoutDetailsDto } from './dto/wallet.dto';
 import type { IWalletResponse } from './interfaces/wallet.interface';
+import { WalletType } from './interfaces/wallet.interface';
 import { WalletUtility } from './utility/wallet.utility';
 
 @Injectable()
@@ -17,6 +22,8 @@ export class WalletService {
     private readonly walletModel: Model<WalletDocument>,
     @InjectModel(TurfBooking.name)
     private readonly turfBookingModel: Model<TurfBookingDocument>,
+    @InjectModel(EventBooking.name)
+    private readonly eventBookingModel: Model<EventBookingDocument>,
   ) {}
 
   async getOrCreateWallet(userId: string): Promise<WalletDocument> {
@@ -30,6 +37,7 @@ export class WalletService {
     if (!wallet) {
       throw new NotFoundException('Wallet not found');
     }
+
     return wallet;
   }
 
@@ -39,42 +47,61 @@ export class WalletService {
   }
 
   toWalletResponse(wallet: WalletDocument): IWalletResponse {
-    const plain = wallet.toObject();
     return {
-      ...plain,
       _id: wallet._id.toString(),
-      heldBalance: wallet.heldBalance ?? 0,
+      user: wallet.user,
+      turfWallet: WalletUtility.toLaneResponse(wallet.turfWallet),
+      eventWallet: WalletUtility.toLaneResponse(wallet.eventWallet),
+      payoutDetails: wallet.payoutDetails,
+      createdAt: wallet.createdAt,
+      updatedAt: wallet.updatedAt,
+      turfAvailableBalance: WalletUtility.getTurfAvailableBalance(wallet),
+      eventAvailableBalance: WalletUtility.getEventAvailableBalance(wallet),
       availableBalance: WalletService.getAvailableBalance(wallet),
-      payoutDetails: wallet.toObject().payoutDetails,
     };
   }
 
-  static getAvailableBalance(wallet: {
-    totalBalance: number;
-    heldBalance?: number;
-  }): number {
-    return wallet.totalBalance - (wallet.heldBalance ?? 0);
+  static getAvailableBalance(
+    wallet: Parameters<typeof WalletUtility.getCombinedAvailableBalance>[0],
+  ): number {
+    return WalletUtility.getCombinedAvailableBalance(wallet);
   }
 
   async reserveWithdrawalHold(
     userId: string,
     amount: number,
   ): Promise<boolean> {
-    const wallet = await this.walletModel.findOneAndUpdate(
-      {
-        user: new Types.ObjectId(userId),
-        $expr: {
-          $gte: [
-            { $subtract: ['$totalBalance', { $ifNull: ['$heldBalance', 0] }] },
-            amount,
-          ],
-        },
-      },
-      { $inc: { heldBalance: amount } },
+    const wallet = await this.getOrCreateWallet(userId);
+    const split = WalletUtility.splitWithdrawalHold(wallet, amount);
+    if (!split) {
+      return false;
+    }
+
+    const { turfHold, eventHold } = split;
+    const inc: Record<string, number> = {};
+    if (turfHold > 0) {
+      Object.assign(
+        inc,
+        WalletUtility.buildIncPatch(WalletType.TURF, 'heldBalance', turfHold),
+      );
+    }
+    if (eventHold > 0) {
+      Object.assign(
+        inc,
+        WalletUtility.buildIncPatch(WalletType.EVENT, 'heldBalance', eventHold),
+      );
+    }
+    if (Object.keys(inc).length === 0) {
+      return false;
+    }
+
+    const updated = await this.walletModel.findOneAndUpdate(
+      { user: new Types.ObjectId(userId) },
+      { $inc: inc },
       { new: true },
     );
 
-    return !!wallet;
+    return !!updated;
   }
 
   async releaseWithdrawalHold(
@@ -86,33 +113,124 @@ export class WalletService {
     });
     if (!wallet) return;
 
-    const releaseAmount = Math.min(amount, wallet.heldBalance ?? 0);
-    if (releaseAmount <= 0) return;
+    const { turfRelease, eventRelease } =
+      WalletUtility.splitWithdrawalRelease(wallet, amount);
+
+    const inc: Record<string, number> = {};
+    if (turfRelease > 0) {
+      Object.assign(
+        inc,
+        WalletUtility.buildIncPatch(
+          WalletType.TURF,
+          'heldBalance',
+          -turfRelease,
+        ),
+      );
+    }
+    const eventHeld = WalletUtility.getLane(wallet, WalletType.EVENT).heldBalance;
+    const actualEventRelease = Math.min(eventRelease, eventHeld);
+    if (actualEventRelease > 0) {
+      Object.assign(
+        inc,
+        WalletUtility.buildIncPatch(
+          WalletType.EVENT,
+          'heldBalance',
+          -actualEventRelease,
+        ),
+      );
+    }
+    if (Object.keys(inc).length === 0) return;
 
     await this.walletModel.findOneAndUpdate(
       { user: new Types.ObjectId(userId) },
-      { $inc: { heldBalance: -releaseAmount } },
+      { $inc: inc },
     );
   }
 
   async settleWithdrawal(userId: string, amount: number): Promise<boolean> {
-    const wallet = await this.walletModel.findOneAndUpdate(
-      {
-        user: new Types.ObjectId(userId),
-        totalBalance: { $gte: amount },
-        heldBalance: { $gte: amount },
-      },
-      {
-        $inc: {
-          heldBalance: -amount,
-          totalBalance: -amount,
-          totalWithdrawn: amount,
-        },
-      },
+    const wallet = await this.getOrCreateWallet(userId);
+    const { turfRelease, eventRelease } =
+      WalletUtility.splitWithdrawalRelease(wallet, amount);
+
+    const turfHeld = WalletUtility.getLane(wallet, WalletType.TURF).heldBalance;
+    const eventHeld = WalletUtility.getLane(wallet, WalletType.EVENT).heldBalance;
+    const eventSettle = Math.min(eventRelease, eventHeld);
+
+    if (turfHeld < turfRelease || eventHeld < eventSettle) {
+      return false;
+    }
+
+    const turfAvailable = WalletUtility.getTurfAvailableBalance(wallet);
+    const eventAvailable = WalletUtility.getEventAvailableBalance(wallet);
+    if (turfAvailable < turfRelease || eventAvailable < eventSettle) {
+      return false;
+    }
+
+    const inc: Record<string, number> = {};
+    if (turfRelease > 0) {
+      Object.assign(
+        inc,
+        WalletUtility.buildIncPatch(WalletType.TURF, 'heldBalance', -turfRelease),
+        WalletUtility.buildIncPatch(
+          WalletType.TURF,
+          'totalBalance',
+          -turfRelease,
+        ),
+        WalletUtility.buildIncPatch(
+          WalletType.TURF,
+          'totalWithdrawn',
+          turfRelease,
+        ),
+      );
+    }
+    if (eventSettle > 0) {
+      Object.assign(
+        inc,
+        WalletUtility.buildIncPatch(
+          WalletType.EVENT,
+          'heldBalance',
+          -eventSettle,
+        ),
+        WalletUtility.buildIncPatch(
+          WalletType.EVENT,
+          'totalBalance',
+          -eventSettle,
+        ),
+        WalletUtility.buildIncPatch(
+          WalletType.EVENT,
+          'totalWithdrawn',
+          eventSettle,
+        ),
+      );
+    }
+
+    const filter: Record<string, unknown> = {
+      user: new Types.ObjectId(userId),
+    };
+    if (turfRelease > 0) {
+      filter[WalletUtility.lanePath(WalletType.TURF, 'heldBalance')] = {
+        $gte: turfRelease,
+      };
+      filter[WalletUtility.lanePath(WalletType.TURF, 'totalBalance')] = {
+        $gte: turfRelease,
+      };
+    }
+    if (eventSettle > 0) {
+      filter[WalletUtility.lanePath(WalletType.EVENT, 'heldBalance')] = {
+        $gte: eventSettle,
+      };
+      filter[WalletUtility.lanePath(WalletType.EVENT, 'totalBalance')] = {
+        $gte: eventSettle,
+      };
+    }
+
+    const updated = await this.walletModel.findOneAndUpdate(
+      filter,
+      { $inc: inc },
       { new: true },
     );
 
-    return !!wallet;
+    return !!updated;
   }
 
   async updatePayoutDetails(
@@ -150,16 +268,105 @@ export class WalletService {
     return this.toWalletResponse(wallet);
   }
 
-  /**
-   * Atomically marks a booking as escrow-credited and moves `amount` to the host wallet escrow.
-   * Returns false when this booking was already credited (idempotent no-op).
-   */
   async moveAmountToEscrow(
+    walletType: WalletType,
     bookingId: string,
     userId: string,
     amount: number,
   ): Promise<boolean> {
-    const lockResult = await this.turfBookingModel.updateOne(
+    return this.creditEscrow(walletType, bookingId, userId, amount);
+  }
+
+  async releaseEscrowToTotal(
+    walletType: WalletType,
+    bookingId: string,
+    userId: string,
+    amount: number,
+  ): Promise<boolean> {
+    return this.releaseEscrow(walletType, bookingId, userId, amount);
+  }
+
+  async deductEscrow(
+    walletType: WalletType,
+    userId: string,
+    amount: number,
+  ): Promise<void> {
+    await this.walletModel.findOneAndUpdate(
+      {
+        user: new Types.ObjectId(userId),
+        [WalletUtility.lanePath(walletType, 'escrowBalance')]: { $gte: amount },
+      },
+      {
+        $inc: WalletUtility.buildIncPatch(
+          walletType,
+          'escrowBalance',
+          -amount,
+        ),
+      },
+    );
+  }
+
+  async deductWithdrawableBalance(userId: string, amount: number): Promise<boolean> {
+    const wallet = await this.getOrCreateWallet(userId);
+    const split = WalletUtility.splitWithdrawalHold(wallet, amount);
+    if (!split) {
+      return false;
+    }
+
+    const { turfHold, eventHold } = split;
+    const inc: Record<string, number> = {};
+    if (turfHold > 0) {
+      Object.assign(
+        inc,
+        WalletUtility.buildIncPatch(WalletType.TURF, 'totalBalance', -turfHold),
+        WalletUtility.buildIncPatch(
+          WalletType.TURF,
+          'totalWithdrawn',
+          turfHold,
+        ),
+      );
+    }
+    if (eventHold > 0) {
+      Object.assign(
+        inc,
+        WalletUtility.buildIncPatch(
+          WalletType.EVENT,
+          'totalBalance',
+          -eventHold,
+        ),
+        WalletUtility.buildIncPatch(
+          WalletType.EVENT,
+          'totalWithdrawn',
+          eventHold,
+        ),
+      );
+    }
+
+    const updated = await this.walletModel.findOneAndUpdate(
+      { user: new Types.ObjectId(userId) },
+      { $inc: inc },
+      { new: true },
+    );
+
+    return !!updated;
+  }
+
+  async hasSufficientWithdrawableBalance(
+    userId: string,
+    amount: number,
+  ): Promise<boolean> {
+    const wallet = await this.getOrCreateWallet(userId);
+    return WalletService.getAvailableBalance(wallet) >= amount;
+  }
+
+  private async creditEscrow(
+    walletType: WalletType,
+    bookingId: string,
+    userId: string,
+    amount: number,
+  ): Promise<boolean> {
+    const bookingModel = this.getBookingModel(walletType);
+    const lockResult = await bookingModel.updateOne(
       {
         _id: new Types.ObjectId(bookingId),
         escrowCreditedAt: { $exists: false },
@@ -177,7 +384,11 @@ export class WalletService {
       await this.findOneAndUpsertWithRetry(
         { user: userObjectId },
         {
-          $inc: { escrowBalance: amount },
+          $inc: WalletUtility.buildIncPatch(
+            walletType,
+            'escrowBalance',
+            amount,
+          ),
           $setOnInsert: { user: userObjectId },
         },
         { new: false },
@@ -187,16 +398,14 @@ export class WalletService {
     return true;
   }
 
-  /**
-   * Atomically marks a booking as escrow-released and moves `amount` from escrow to withdrawable balance.
-   * Returns false when this booking was already released (idempotent no-op).
-   */
-  async releaseEscrowToTotal(
+  private async releaseEscrow(
+    walletType: WalletType,
     bookingId: string,
     userId: string,
     amount: number,
   ): Promise<boolean> {
-    const lockResult = await this.turfBookingModel.updateOne(
+    const bookingModel = this.getBookingModel(walletType);
+    const lockResult = await bookingModel.updateOne(
       {
         _id: new Types.ObjectId(bookingId),
         escrowReleasedAt: { $exists: false },
@@ -210,16 +419,17 @@ export class WalletService {
     }
 
     if (amount > 0) {
+      const escrowPath = WalletUtility.lanePath(walletType, 'escrowBalance');
       const result = await this.walletModel.findOneAndUpdate(
         {
           user: new Types.ObjectId(userId),
-          escrowBalance: { $gte: amount },
+          [escrowPath]: { $gte: amount },
         },
         {
           $inc: {
-            escrowBalance: -amount,
-            totalBalance: amount,
-            totalEarnings: amount,
+            ...WalletUtility.buildIncPatch(walletType, 'escrowBalance', -amount),
+            ...WalletUtility.buildIncPatch(walletType, 'totalBalance', amount),
+            ...WalletUtility.buildIncPatch(walletType, 'totalEarnings', amount),
           },
         },
         { new: true },
@@ -227,7 +437,7 @@ export class WalletService {
 
       if (!result) {
         throw new NotFoundException(
-          'Wallet not found or insufficient escrow balance',
+          `Wallet not found or insufficient ${walletType} escrow balance`,
         );
       }
     }
@@ -235,34 +445,12 @@ export class WalletService {
     return true;
   }
 
-  async deductEscrow(userId: string, amount: number): Promise<void> {
-    await this.walletModel.findOneAndUpdate(
-      {
-        user: new Types.ObjectId(userId),
-        escrowBalance: { $gte: amount },
-      },
-      { $inc: { escrowBalance: -amount } },
-    );
-  }
-
-  async deductWithdrawableBalance(userId: string, amount: number): Promise<boolean> {
-    const wallet = await this.walletModel.findOneAndUpdate(
-      { user: new Types.ObjectId(userId), totalBalance: { $gte: amount } },
-      {
-        $inc: { totalBalance: -amount, totalWithdrawn: amount },
-      },
-      { new: true },
-    );
-
-    return !!wallet;
-  }
-
-  async hasSufficientWithdrawableBalance(
-    userId: string,
-    amount: number,
-  ): Promise<boolean> {
-    const wallet = await this.getOrCreateWallet(userId);
-    return WalletService.getAvailableBalance(wallet) >= amount;
+  private getBookingModel(
+    walletType: WalletType,
+  ): Model<TurfBookingDocument | EventBookingDocument> {
+    return walletType === WalletType.TURF
+      ? this.turfBookingModel
+      : this.eventBookingModel;
   }
 
   private async findOneAndUpsertWithRetry(

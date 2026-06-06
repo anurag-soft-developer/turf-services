@@ -1,6 +1,10 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import {
+  EventBooking,
+  EventBookingSchema,
+} from '../event-booking/schemas/event-booking.schema';
+import {
   TurfBooking,
   TurfBookingSchema,
 } from '../turf-booking/schemas/turf-booking.schema';
@@ -13,6 +17,7 @@ import { WalletService } from './wallet.service';
     MongooseModule.forFeature([
       { name: Wallet.name, schema: WalletSchema },
       { name: TurfBooking.name, schema: TurfBookingSchema },
+      { name: EventBooking.name, schema: EventBookingSchema },
     ]),
   ],
   controllers: [WalletController],

@@ -5,6 +5,11 @@ export enum PayoutMethod {
   BANK = 'bank',
 }
 
+export enum WalletType {
+  TURF = 'turf',
+  EVENT = 'event',
+}
+
 export interface PayoutDetails {
   primaryMethod?: PayoutMethod;
   accountHolderName?: string;
@@ -14,14 +19,19 @@ export interface PayoutDetails {
   upiId?: string;
 }
 
-export interface IWallet {
-  _id: string;
-  user: Types.ObjectId;
+export interface IWalletLaneBalance {
   totalBalance: number;
   heldBalance: number;
   escrowBalance: number;
   totalEarnings: number;
   totalWithdrawn: number;
+}
+
+export interface IWallet {
+  _id: string;
+  user: Types.ObjectId;
+  turfWallet: IWalletLaneBalance;
+  eventWallet: IWalletLaneBalance;
   payoutDetails?: PayoutDetails;
   createdAt: Date;
   updatedAt: Date;
@@ -29,4 +39,6 @@ export interface IWallet {
 
 export interface IWalletResponse extends IWallet {
   availableBalance: number;
+  turfAvailableBalance: number;
+  eventAvailableBalance: number;
 }

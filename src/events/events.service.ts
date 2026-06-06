@@ -1,0 +1,356 @@
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+  forwardRef,
+  Inject,
+} from '@nestjs/common';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model, PopulateOptions, Types } from 'mongoose';
+import { Event, EventDocument } from './schemas/event.schema';
+import { CreateEventDto, SearchEventDto, UpdateEventDto } from './dto/events.dto';
+import { EventStatus, IEvent } from './interfaces/event.interface';
+import { PaginatedResult } from '../core/interfaces/common';
+import { userSelectFields } from '../users/schemas/user.schema';
+import { buildMongoSortOptions } from '../core/utils/mongo-sort.util';
+import { UsersService } from '../users/users.service';
+import { UserRole } from '../auth/decorators/roles.decorator';
+import { EventSlugUtility } from './utility/event-slug.utility';
+import { EventBookingService } from '../event-booking/event-booking.service';
+
+export interface EventViewer {
+  userId: string;
+  role: UserRole;
+}
+
+@Injectable()
+export class EventsService {
+  static populateOptions: PopulateOptions[] = [
+    {
+      path: 'createdBy',
+      select: userSelectFields,
+    },
+    {
+      path: 'turf',
+      select: '_id name location images',
+    },
+  ];
+
+  constructor(
+    @InjectModel(Event.name) private readonly eventModel: Model<EventDocument>,
+    private readonly usersService: UsersService,
+    @Inject(forwardRef(() => EventBookingService))
+    private readonly eventBookingService: EventBookingService,
+  ) {}
+
+  async create(
+    createdBy: string,
+    dto: CreateEventDto,
+  ): Promise<EventDocument> {
+    const owner = await this.usersService.findById(createdBy);
+    if (!owner) {
+      throw new NotFoundException('User not found');
+    }
+
+    const slug = await this.ensureUniqueSlug(dto.title);
+
+    const event = new this.eventModel({
+      ...dto,
+      eventDate: new Date(dto.eventDate),
+      createdBy,
+      slug,
+      status: EventStatus.DRAFT,
+      registeredCount: 0,
+      isClosed: false,
+      archive: false,
+      currency: dto.currency ?? 'INR',
+    });
+
+    return (await event.save()).populate(EventsService.populateOptions);
+  }
+
+  async findMine(
+    userId: string,
+    filter: SearchEventDto,
+  ): Promise<PaginatedResult<IEvent>> {
+    return this.searchEvents({ ...filter, createdBy: userId });
+  }
+
+  async findPublic(filter: SearchEventDto): Promise<PaginatedResult<IEvent>> {
+    return this.searchEvents(
+      { ...filter, status: EventStatus.PUBLISHED },
+      { publicFeed: true },
+    );
+  }
+
+  async findPublicBySlug(slug: string): Promise<EventDocument> {
+    const event = await this.eventModel
+      .findOne({
+        slug,
+        status: EventStatus.PUBLISHED,
+        archive: false,
+        isClosed: false,
+      })
+      .populate(EventsService.populateOptions)
+      .exec();
+
+    if (!event) {
+      throw new NotFoundException('Event not found');
+    }
+
+    return event;
+  }
+
+  async findById(id: string, viewer?: EventViewer): Promise<EventDocument> {
+    const event = await this.eventModel
+      .findById(id)
+      .populate(EventsService.populateOptions)
+      .exec();
+
+    if (!event) {
+      throw new NotFoundException('Event not found');
+    }
+
+    if (viewer && !this.canViewEvent(event, viewer)) {
+      throw new NotFoundException('Event not found');
+    }
+
+    if (!viewer && event.status !== EventStatus.PUBLISHED) {
+      throw new NotFoundException('Event not found');
+    }
+
+    if (!viewer && (event.archive || event.isClosed)) {
+      throw new NotFoundException('Event not found');
+    }
+
+    return event;
+  }
+
+  canViewEvent(event: EventDocument, viewer: EventViewer): boolean {
+    if (
+      event.status === EventStatus.PUBLISHED &&
+      !event.archive &&
+      !event.isClosed
+    ) {
+      return true;
+    }
+    if (viewer.role === UserRole.PLATFORM_ADMIN) {
+      return true;
+    }
+    return event.createdBy.toString() === viewer.userId;
+  }
+
+  async update(
+    id: string,
+    dto: UpdateEventDto,
+    viewer: EventViewer,
+  ): Promise<EventDocument> {
+    const existing = await this.eventModel.findById(id).exec();
+    if (!existing) {
+      throw new NotFoundException('Event not found');
+    }
+    this.assertOrganizerOrAdmin(existing, viewer);
+
+    if (dto.title && dto.title !== existing.title) {
+      existing.slug = await this.ensureUniqueSlug(dto.title, id);
+    }
+
+    const patch: Record<string, unknown> = { ...dto };
+    if (dto.eventDate) {
+      patch.eventDate = new Date(dto.eventDate);
+    }
+    if (dto.location) {
+      if (dto.location.address) {
+        existing.location.address = dto.location.address;
+      }
+      if (dto.location.coordinates) {
+        existing.location.coordinates = dto.location.coordinates;
+      }
+      delete patch.location;
+    }
+
+    Object.assign(existing, patch);
+    return (await existing.save()).populate(EventsService.populateOptions);
+  }
+
+  async delete(id: string, viewer: EventViewer): Promise<void> {
+    const existing = await this.eventModel.findById(id).exec();
+    if (!existing) {
+      throw new NotFoundException('Event not found');
+    }
+    this.assertOrganizerOrAdmin(existing, viewer);
+
+    const result = await this.eventModel.findByIdAndDelete(id).exec();
+    if (!result) {
+      throw new NotFoundException('Event not found');
+    }
+  }
+
+  async closeEvent(id: string, viewer: EventViewer): Promise<EventDocument> {
+    const event = await this.eventModel.findById(id).exec();
+    if (!event) {
+      throw new NotFoundException('Event not found');
+    }
+    this.assertOrganizerOrAdmin(event, viewer);
+
+    if (event.isClosed || event.status === EventStatus.CLOSED) {
+      throw new ConflictException('Event is already closed');
+    }
+
+    if (event.status !== EventStatus.PUBLISHED) {
+      throw new ForbiddenException('Only published events can be closed');
+    }
+
+    event.status = EventStatus.CLOSED;
+    event.isClosed = true;
+    event.closedAt = new Date();
+    event.registrationsPaused = true;
+
+    await event.save();
+    await this.eventBookingService.releaseEscrowForClosedEvent(id);
+
+    return (await event.populate(
+      EventsService.populateOptions,
+    )) as EventDocument;
+  }
+
+  async searchEvents(
+    searchDto: SearchEventDto,
+    options: { publicFeed?: boolean } = {},
+  ): Promise<PaginatedResult<IEvent>> {
+    const {
+      globalSearchText,
+      createdBy,
+      status,
+      minPrice,
+      maxPrice,
+      page = 1,
+      limit = 10,
+      sortBy,
+      sortOrder = 'asc',
+    } = searchDto;
+
+    const query: Record<string, unknown> = { archive: false };
+    if (options.publicFeed) {
+      query.isClosed = false;
+    }
+
+    if (createdBy) {
+      query.createdBy = new Types.ObjectId(createdBy);
+    }
+    if (status) {
+      query.status = status;
+    }
+    if (globalSearchText) {
+      const searchRegex = new RegExp(globalSearchText, 'i');
+      query.$or = [
+        { title: searchRegex },
+        { description: searchRegex },
+        { 'location.address': searchRegex },
+      ];
+    }
+    if (minPrice !== undefined || maxPrice !== undefined) {
+      query.price = {};
+      if (minPrice !== undefined) {
+        (query.price as { $gte?: number }).$gte = minPrice;
+      }
+      if (maxPrice !== undefined) {
+        (query.price as { $lte?: number }).$lte = maxPrice;
+      }
+    }
+
+    const skip = (page - 1) * limit;
+    const sortField = sortBy
+      ? `${sortBy}:${sortOrder}`
+      : `eventDate:${sortOrder}`;
+    const sort = buildMongoSortOptions(sortField, {
+      defaultSort: { eventDate: 1 },
+      whenParsedEmpty: 'default',
+    });
+
+    const [data, totalDocuments] = await Promise.all([
+      this.eventModel
+        .find(query)
+        .populate(EventsService.populateOptions)
+        .sort(sort)
+        .skip(skip)
+        .limit(limit)
+        .exec(),
+      this.eventModel.countDocuments(query),
+    ]);
+
+    return {
+      data: data.map((doc) => ({
+        ...doc.toObject(),
+        _id: doc._id.toString(),
+      })) as IEvent[],
+      totalDocuments,
+      page,
+      limit,
+      totalPages: Math.ceil(totalDocuments / limit) || 0,
+    };
+  }
+
+  async getPublishedEventForBooking(eventId: string): Promise<EventDocument> {
+    const event = await this.eventModel.findById(eventId).exec();
+    if (!event) {
+      throw new NotFoundException('Event not found');
+    }
+    if (
+      event.status !== EventStatus.PUBLISHED ||
+      event.isClosed ||
+      event.registrationsPaused ||
+      event.archive
+    ) {
+      throw new ForbiddenException('Event is not open for registration');
+    }
+    return event;
+  }
+
+  async incrementRegisteredCount(eventId: string, delta: number): Promise<void> {
+    await this.eventModel.findByIdAndUpdate(eventId, {
+      $inc: { registeredCount: delta },
+    });
+  }
+
+  private assertOrganizerOrAdmin(
+    event: EventDocument,
+    viewer: EventViewer,
+  ): void {
+    const isOrganizer = event.createdBy.toString() === viewer.userId;
+    const isAdmin = viewer.role === UserRole.PLATFORM_ADMIN;
+    if (!isOrganizer && !isAdmin) {
+      throw new ForbiddenException('Access denied');
+    }
+  }
+
+  private async ensureUniqueSlug(
+    title: string,
+    excludeId?: string,
+  ): Promise<string> {
+    const base = EventSlugUtility.slugifyTitle(title) || 'event';
+    let candidate = base;
+    let attempt = 0;
+
+    while (true) {
+      const existing = await this.eventModel
+        .findOne({
+          slug: candidate,
+          ...(excludeId ? { _id: { $ne: excludeId } } : {}),
+        })
+        .select('_id')
+        .lean();
+
+      if (!existing) {
+        return candidate;
+      }
+
+      attempt += 1;
+      candidate = EventSlugUtility.withSuffix(
+        base,
+        `${Date.now().toString(36)}${attempt}`,
+      );
+    }
+  }
+}

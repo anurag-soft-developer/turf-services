@@ -3,9 +3,31 @@ import { Document, Types } from 'mongoose';
 import { User } from '../../users/schemas/user.schema';
 import {
   PayoutMethod,
+  type IWalletLaneBalance,
   type IWallet,
   type PayoutDetails,
 } from '../interfaces/wallet.interface';
+
+@Schema({ _id: false })
+export class WalletLaneBalance implements IWalletLaneBalance {
+  @Prop({ type: Number, default: 0, min: 0 })
+  totalBalance!: number;
+
+  @Prop({ type: Number, default: 0, min: 0 })
+  heldBalance!: number;
+
+  @Prop({ type: Number, default: 0, min: 0 })
+  escrowBalance!: number;
+
+  @Prop({ type: Number, default: 0, min: 0 })
+  totalEarnings!: number;
+
+  @Prop({ type: Number, default: 0, min: 0 })
+  totalWithdrawn!: number;
+}
+
+export const WalletLaneBalanceSchema =
+  SchemaFactory.createForClass(WalletLaneBalance);
 
 export type WalletDocument = Omit<IWallet, '_id'> &
   Document & {
@@ -24,20 +46,17 @@ export class Wallet extends Document implements WalletDocument {
   })
   user!: Types.ObjectId;
 
-  @Prop({ type: Number, default: 0, min: 0 })
-  totalBalance!: number;
+  @Prop({
+    type: WalletLaneBalanceSchema,
+    default: () => ({}),
+  })
+  turfWallet!: WalletLaneBalance;
 
-  @Prop({ type: Number, default: 0, min: 0 })
-  heldBalance!: number;
-
-  @Prop({ type: Number, default: 0, min: 0 })
-  escrowBalance!: number;
-
-  @Prop({ type: Number, default: 0, min: 0 })
-  totalEarnings!: number;
-
-  @Prop({ type: Number, default: 0, min: 0 })
-  totalWithdrawn!: number;
+  @Prop({
+    type: WalletLaneBalanceSchema,
+    default: () => ({}),
+  })
+  eventWallet!: WalletLaneBalance;
 
   @Prop({
     type: {

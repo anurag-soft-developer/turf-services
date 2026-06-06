@@ -1,9 +1,105 @@
 import type { PayoutSnapshot } from '../../withdrawals/interfaces/withdrawal.interface';
-import type { PayoutDetails } from '../interfaces/wallet.interface';
-import { PayoutMethod } from '../interfaces/wallet.interface';
+import type {
+  IWalletLaneBalance,
+  PayoutDetails,
+} from '../interfaces/wallet.interface';
+import { PayoutMethod, WalletType } from '../interfaces/wallet.interface';
 import type { UpdatePayoutDetailsDto } from '../dto/wallet.dto';
 
+export type WalletLaneField = keyof IWalletLaneBalance;
+
+export type WalletBalanceSource = {
+  turfWallet?: Partial<IWalletLaneBalance>;
+  eventWallet?: Partial<IWalletLaneBalance>;
+};
+
 export class WalletUtility {
+  static laneKey(walletType: WalletType): 'turfWallet' | 'eventWallet' {
+    return walletType === WalletType.TURF ? 'turfWallet' : 'eventWallet';
+  }
+
+  static lanePath(walletType: WalletType, field: WalletLaneField): string {
+    return `${WalletUtility.laneKey(walletType)}.${field}`;
+  }
+
+  static buildIncPatch(
+    walletType: WalletType,
+    field: WalletLaneField,
+    delta: number,
+  ): Record<string, number> {
+    return { [WalletUtility.lanePath(walletType, field)]: delta };
+  }
+
+  static getLane(
+    wallet: WalletBalanceSource,
+    walletType: WalletType,
+  ): IWalletLaneBalance {
+    const key = WalletUtility.laneKey(walletType);
+    const lane = wallet[key];
+    return {
+      totalBalance: lane?.totalBalance ?? 0,
+      heldBalance: lane?.heldBalance ?? 0,
+      escrowBalance: lane?.escrowBalance ?? 0,
+      totalEarnings: lane?.totalEarnings ?? 0,
+      totalWithdrawn: lane?.totalWithdrawn ?? 0,
+    };
+  }
+
+  static toLaneResponse(lane?: Partial<IWalletLaneBalance>): IWalletLaneBalance {
+    return {
+      totalBalance: lane?.totalBalance ?? 0,
+      heldBalance: lane?.heldBalance ?? 0,
+      escrowBalance: lane?.escrowBalance ?? 0,
+      totalEarnings: lane?.totalEarnings ?? 0,
+      totalWithdrawn: lane?.totalWithdrawn ?? 0,
+    };
+  }
+
+  static getAvailableBalanceForLane(
+    wallet: WalletBalanceSource,
+    walletType: WalletType,
+  ): number {
+    const lane = WalletUtility.getLane(wallet, walletType);
+    return lane.totalBalance - lane.heldBalance;
+  }
+
+  static getTurfAvailableBalance(wallet: WalletBalanceSource): number {
+    return WalletUtility.getAvailableBalanceForLane(wallet, WalletType.TURF);
+  }
+
+  static getEventAvailableBalance(wallet: WalletBalanceSource): number {
+    return WalletUtility.getAvailableBalanceForLane(wallet, WalletType.EVENT);
+  }
+
+  static getCombinedAvailableBalance(wallet: WalletBalanceSource): number {
+    return (
+      WalletUtility.getTurfAvailableBalance(wallet) +
+      WalletUtility.getEventAvailableBalance(wallet)
+    );
+  }
+
+  static splitWithdrawalHold(
+    wallet: WalletBalanceSource,
+    amount: number,
+  ): { turfHold: number; eventHold: number } | null {
+    const combined = WalletUtility.getCombinedAvailableBalance(wallet);
+    if (combined < amount) {
+      return null;
+    }
+    const turfAvailable = WalletUtility.getTurfAvailableBalance(wallet);
+    const turfHold = Math.min(amount, turfAvailable);
+    return { turfHold, eventHold: amount - turfHold };
+  }
+
+  static splitWithdrawalRelease(
+    wallet: WalletBalanceSource,
+    amount: number,
+  ): { turfRelease: number; eventRelease: number } {
+    const turfHeld = WalletUtility.getLane(wallet, WalletType.TURF).heldBalance;
+    const turfRelease = Math.min(amount, turfHeld);
+    return { turfRelease, eventRelease: amount - turfRelease };
+  }
+
   static maskAccountNumber(value?: string): string | undefined {
     if (!value) return undefined;
     if (value.length <= 4) return value;
@@ -102,7 +198,6 @@ export class WalletUtility {
     return WalletUtility.hasCompleteMethodDetails(payoutDetails, method);
   }
 
-
   static buildPayoutSnapshotForMethod(
     payoutDetails: PayoutDetails | undefined,
     method: PayoutMethod,
@@ -127,7 +222,6 @@ export class WalletUtility {
     };
   }
 
-  /** Mongo $set keys for only the payout fields present in the PATCH payload. */
   static buildPayoutDetailsPatch(
     dto: UpdatePayoutDetailsDto,
   ): Record<string, string> {

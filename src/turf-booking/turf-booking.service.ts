@@ -44,6 +44,7 @@ import {
 } from './utility/turf-booking-notification.utility';
 import { NotificationService } from '../notification/notification.service';
 import { WalletService } from '../wallet/wallet.service';
+import { WalletType } from '../wallet/interfaces/wallet.interface';
 @Injectable()
 export class TurfBookingService {
   static populateOptions: PopulateOptions[] = [
@@ -271,6 +272,7 @@ export class TurfBookingService {
       const turfDoc = await this.turfModel.findById(booking.turf).select('postedBy');
       if (turfDoc) {
         const credited = await this.walletService.moveAmountToEscrow(
+          WalletType.TURF,
           booking._id.toString(),
           turfDoc.postedBy.toString(),
           booking.ownerPayoutAmount,
@@ -430,6 +432,7 @@ export class TurfBookingService {
 
     if (becomingCompleted && turf && ownerPayoutAmount > 0) {
       await this.walletService.releaseEscrowToTotal(
+        WalletType.TURF,
         booking._id.toString(),
         turf.postedBy.toString(),
         ownerPayoutAmount,
@@ -443,6 +446,7 @@ export class TurfBookingService {
       ownerPayoutAmount > 0
     ) {
       await this.walletService.deductEscrow(
+        WalletType.TURF,
         turf.postedBy.toString(),
         ownerPayoutAmount,
       );
