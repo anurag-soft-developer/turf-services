@@ -1,16 +1,21 @@
 import { createZodDto, type ZodDto } from 'nestjs-zod';
 import { z } from 'zod';
-import { PayoutMethod } from '../../wallet/interfaces/wallet.interface';
+import {
+  PayoutMethod,
+  WalletType,
+} from '../../wallet/interfaces/wallet.interface';
 import { WithdrawalStatus } from '../interfaces/withdrawal.interface';
 
 const attachmentSchema = z.string().url().max(2000);
 
 const CreateWithdrawalRequestSchema = z.object({
+  walletType: z.enum(WalletType),
   amount: z.coerce.number().min(1),
 });
 
 const WithdrawalFilterSchema = z.object({
   status: z.enum(WithdrawalStatus).optional(),
+  walletType: z.enum(WalletType).optional(),
   userId: z.string().optional(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),

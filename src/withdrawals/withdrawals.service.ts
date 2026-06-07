@@ -46,7 +46,12 @@ export class WithdrawalsService {
   ) {
     const plain = doc.toObject();
     if (options.forHost) {
-      const { payoutSnapshot: _omit, ...rest } = plain;
+      const {
+        payoutSnapshot: _omitPayoutSnapshot,
+        comments: _omitComments,
+        attachments: _omitAttachments,
+        ...rest
+      } = plain;
       return rest;
     }
     return plain;
@@ -66,6 +71,7 @@ export class WithdrawalsService {
 
     const reserved = await this.walletService.reserveWithdrawalHold(
       userId,
+      dto.walletType,
       dto.amount,
     );
     if (!reserved) {
@@ -75,6 +81,7 @@ export class WithdrawalsService {
     try {
       const created = await this.withdrawalModel.create({
         requestedBy: userId,
+        walletType: dto.walletType,
         amount: dto.amount,
         status: WithdrawalStatus.PENDING,
         comments: [],
@@ -87,7 +94,11 @@ export class WithdrawalsService {
 
       return this.toWithdrawalResponse(populated, { forHost: true });
     } catch (error) {
-      await this.walletService.releaseWithdrawalHold(userId, dto.amount);
+      await this.walletService.releaseWithdrawalHold(
+        userId,
+        dto.walletType,
+        dto.amount,
+      );
       throw error;
     }
   }
@@ -155,7 +166,11 @@ export class WithdrawalsService {
     request.status = WithdrawalStatus.CANCELLED;
     await request.save();
 
-    await this.walletService.releaseWithdrawalHold(userId, request.amount);
+    await this.walletService.releaseWithdrawalHold(
+      userId,
+      request.walletType,
+      request.amount,
+    );
 
     const populated = (await request.populate(
       WithdrawalsService.populateOptions,
@@ -168,9 +183,10 @@ export class WithdrawalsService {
     userId: string,
     filter: WithdrawalFilterDto,
   ): Promise<PaginatedResult<ReturnType<WithdrawalsService['toWithdrawalResponse']>>> {
-    const { status, page = 1, limit = 20 } = filter;
+    const { status, walletType, page = 1, limit = 20 } = filter;
     const query: Record<string, unknown> = { requestedBy: userId };
     if (status) query.status = status;
+    if (walletType) query.walletType = walletType;
 
     const skip = (page - 1) * limit;
     const [data, totalDocuments] = await Promise.all([
@@ -195,9 +211,10 @@ export class WithdrawalsService {
   async listAll(
     filter: WithdrawalFilterDto,
   ): Promise<PaginatedResult<ReturnType<WithdrawalsService['toWithdrawalResponse']>>> {
-    const { status, userId, page = 1, limit = 20 } = filter;
+    const { status, walletType, userId, page = 1, limit = 20 } = filter;
     const query: Record<string, unknown> = {};
     if (status) query.status = status;
+    if (walletType) query.walletType = walletType;
     if (userId) query.requestedBy = userId;
 
     const skip = (page - 1) * limit;
@@ -320,6 +337,7 @@ export class WithdrawalsService {
 
       const settled = await this.walletService.settleWithdrawal(
         hostUserId,
+        request.walletType,
         request.amount,
       );
 
@@ -349,6 +367,7 @@ export class WithdrawalsService {
     if (shouldReleaseHold) {
       await this.walletService.releaseWithdrawalHold(
         hostUserId,
+        request.walletType,
         request.amount,
       );
     }

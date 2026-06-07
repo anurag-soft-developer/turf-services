@@ -4,7 +4,10 @@ import {
   IWithdrawalRequest,
   WithdrawalStatus,
 } from '../interfaces/withdrawal.interface';
-import { PayoutMethod } from '../../wallet/interfaces/wallet.interface';
+import {
+  PayoutMethod,
+  WalletType,
+} from '../../wallet/interfaces/wallet.interface';
 import { User } from '../../users/schemas/user.schema';
 
 export type WithdrawalDocument = Omit<IWithdrawalRequest, '_id'> &
@@ -53,6 +56,14 @@ export class Withdrawal extends Document implements WithdrawalDocument {
 
   @Prop({ type: Number, required: true, min: 1 })
   amount!: number;
+
+  @Prop({
+    type: String,
+    enum: Object.values(WalletType),
+    required: true,
+    index: true,
+  })
+  walletType!: WalletType;
 
   @Prop({
     type: String,

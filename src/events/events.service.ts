@@ -77,6 +77,73 @@ export class EventsService {
     return this.searchEvents({ ...filter, createdBy: userId });
   }
 
+  async findMineStats(userId: string) {
+    const [stats] = await this.eventModel.aggregate([
+      {
+        $match: {
+          createdBy: new Types.ObjectId(userId),
+          archive: false,
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalEvents: { $sum: 1 },
+          draftCount: {
+            $sum: {
+              $cond: [{ $eq: ['$status', EventStatus.DRAFT] }, 1, 0],
+            },
+          },
+          pendingApprovalCount: {
+            $sum: {
+              $cond: [{ $eq: ['$status', EventStatus.PENDING_APPROVAL] }, 1, 0],
+            },
+          },
+          publishedCount: {
+            $sum: {
+              $cond: [{ $eq: ['$status', EventStatus.PUBLISHED] }, 1, 0],
+            },
+          },
+          rejectedCount: {
+            $sum: {
+              $cond: [{ $eq: ['$status', EventStatus.REJECTED] }, 1, 0],
+            },
+          },
+          closedCount: {
+            $sum: {
+              $cond: [{ $eq: ['$status', EventStatus.CLOSED] }, 1, 0],
+            },
+          },
+          totalRegistrations: { $sum: '$registeredCount' },
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          totalEvents: 1,
+          draftCount: 1,
+          pendingApprovalCount: 1,
+          publishedCount: 1,
+          rejectedCount: 1,
+          closedCount: 1,
+          totalRegistrations: 1,
+        },
+      },
+    ]);
+
+    return (
+      stats ?? {
+        totalEvents: 0,
+        draftCount: 0,
+        pendingApprovalCount: 0,
+        publishedCount: 0,
+        rejectedCount: 0,
+        closedCount: 0,
+        totalRegistrations: 0,
+      }
+    );
+  }
+
   async findPublic(filter: SearchEventDto): Promise<PaginatedResult<IEvent>> {
     return this.searchEvents(
       { ...filter, status: EventStatus.PUBLISHED },

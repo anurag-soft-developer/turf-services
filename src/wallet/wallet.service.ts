@@ -69,164 +69,104 @@ export class WalletService {
 
   async reserveWithdrawalHold(
     userId: string,
+    walletType: WalletType,
     amount: number,
   ): Promise<boolean> {
-    const wallet = await this.getOrCreateWallet(userId);
-    const split = WalletUtility.splitWithdrawalHold(wallet, amount);
-    if (!split) {
+    if (amount <= 0) {
       return false;
     }
 
-    const { turfHold, eventHold } = split;
-    const inc: Record<string, number> = {};
-    if (turfHold > 0) {
-      Object.assign(
-        inc,
-        WalletUtility.buildIncPatch(WalletType.TURF, 'heldBalance', turfHold),
-      );
-    }
-    if (eventHold > 0) {
-      Object.assign(
-        inc,
-        WalletUtility.buildIncPatch(WalletType.EVENT, 'heldBalance', eventHold),
-      );
-    }
-    if (Object.keys(inc).length === 0) {
-      return false;
-    }
+    const totalPath = WalletUtility.lanePath(walletType, 'totalBalance');
+    const heldPath = WalletUtility.lanePath(walletType, 'heldBalance');
 
     const updated = await this.walletModel.findOneAndUpdate(
-      { user: new Types.ObjectId(userId) },
-      { $inc: inc },
+      {
+        user: new Types.ObjectId(userId),
+        $expr: {
+          $gte: [
+            {
+              $subtract: [`$${totalPath}`, `$${heldPath}`],
+            },
+            amount,
+          ],
+        },
+      },
+      {
+        $inc: WalletUtility.buildIncPatch(walletType, 'heldBalance', amount),
+      },
       { new: true },
     );
 
-    return !!updated;
+    if (updated) {
+      return true;
+    }
+
+    const wallet = await this.getOrCreateWallet(userId);
+    if (WalletUtility.getAvailableBalanceForLane(wallet, walletType) < amount) {
+      return false;
+    }
+
+    const retry = await this.walletModel.findOneAndUpdate(
+      {
+        user: new Types.ObjectId(userId),
+        $expr: {
+          $gte: [
+            {
+              $subtract: [`$${totalPath}`, `$${heldPath}`],
+            },
+            amount,
+          ],
+        },
+      },
+      { $inc: WalletUtility.buildIncPatch(walletType, 'heldBalance', amount) },
+      { new: true },
+    );
+
+    return !!retry;
   }
 
   async releaseWithdrawalHold(
     userId: string,
+    walletType: WalletType,
     amount: number,
   ): Promise<void> {
-    const wallet = await this.walletModel.findOne({
-      user: new Types.ObjectId(userId),
-    });
-    if (!wallet) return;
-
-    const { turfRelease, eventRelease } =
-      WalletUtility.splitWithdrawalRelease(wallet, amount);
-
-    const inc: Record<string, number> = {};
-    if (turfRelease > 0) {
-      Object.assign(
-        inc,
-        WalletUtility.buildIncPatch(
-          WalletType.TURF,
-          'heldBalance',
-          -turfRelease,
-        ),
-      );
-    }
-    const eventHeld = WalletUtility.getLane(wallet, WalletType.EVENT).heldBalance;
-    const actualEventRelease = Math.min(eventRelease, eventHeld);
-    if (actualEventRelease > 0) {
-      Object.assign(
-        inc,
-        WalletUtility.buildIncPatch(
-          WalletType.EVENT,
-          'heldBalance',
-          -actualEventRelease,
-        ),
-      );
-    }
-    if (Object.keys(inc).length === 0) return;
+    if (amount <= 0) return;
 
     await this.walletModel.findOneAndUpdate(
-      { user: new Types.ObjectId(userId) },
-      { $inc: inc },
+      {
+        user: new Types.ObjectId(userId),
+        [WalletUtility.lanePath(walletType, 'heldBalance')]: { $gte: amount },
+      },
+      {
+        $inc: WalletUtility.buildIncPatch(walletType, 'heldBalance', -amount),
+      },
     );
   }
 
-  async settleWithdrawal(userId: string, amount: number): Promise<boolean> {
-    const wallet = await this.getOrCreateWallet(userId);
-    const { turfRelease, eventRelease } =
-      WalletUtility.splitWithdrawalRelease(wallet, amount);
-
-    const turfHeld = WalletUtility.getLane(wallet, WalletType.TURF).heldBalance;
-    const eventHeld = WalletUtility.getLane(wallet, WalletType.EVENT).heldBalance;
-    const eventSettle = Math.min(eventRelease, eventHeld);
-
-    if (turfHeld < turfRelease || eventHeld < eventSettle) {
+  async settleWithdrawal(
+    userId: string,
+    walletType: WalletType,
+    amount: number,
+  ): Promise<boolean> {
+    if (amount <= 0) {
       return false;
-    }
-
-    const turfAvailable = WalletUtility.getTurfAvailableBalance(wallet);
-    const eventAvailable = WalletUtility.getEventAvailableBalance(wallet);
-    if (turfAvailable < turfRelease || eventAvailable < eventSettle) {
-      return false;
-    }
-
-    const inc: Record<string, number> = {};
-    if (turfRelease > 0) {
-      Object.assign(
-        inc,
-        WalletUtility.buildIncPatch(WalletType.TURF, 'heldBalance', -turfRelease),
-        WalletUtility.buildIncPatch(
-          WalletType.TURF,
-          'totalBalance',
-          -turfRelease,
-        ),
-        WalletUtility.buildIncPatch(
-          WalletType.TURF,
-          'totalWithdrawn',
-          turfRelease,
-        ),
-      );
-    }
-    if (eventSettle > 0) {
-      Object.assign(
-        inc,
-        WalletUtility.buildIncPatch(
-          WalletType.EVENT,
-          'heldBalance',
-          -eventSettle,
-        ),
-        WalletUtility.buildIncPatch(
-          WalletType.EVENT,
-          'totalBalance',
-          -eventSettle,
-        ),
-        WalletUtility.buildIncPatch(
-          WalletType.EVENT,
-          'totalWithdrawn',
-          eventSettle,
-        ),
-      );
     }
 
     const filter: Record<string, unknown> = {
       user: new Types.ObjectId(userId),
+      [WalletUtility.lanePath(walletType, 'heldBalance')]: { $gte: amount },
+      [WalletUtility.lanePath(walletType, 'totalBalance')]: { $gte: amount },
     };
-    if (turfRelease > 0) {
-      filter[WalletUtility.lanePath(WalletType.TURF, 'heldBalance')] = {
-        $gte: turfRelease,
-      };
-      filter[WalletUtility.lanePath(WalletType.TURF, 'totalBalance')] = {
-        $gte: turfRelease,
-      };
-    }
-    if (eventSettle > 0) {
-      filter[WalletUtility.lanePath(WalletType.EVENT, 'heldBalance')] = {
-        $gte: eventSettle,
-      };
-      filter[WalletUtility.lanePath(WalletType.EVENT, 'totalBalance')] = {
-        $gte: eventSettle,
-      };
-    }
 
     const updated = await this.walletModel.findOneAndUpdate(
       filter,
-      { $inc: inc },
+      {
+        $inc: {
+          ...WalletUtility.buildIncPatch(walletType, 'heldBalance', -amount),
+          ...WalletUtility.buildIncPatch(walletType, 'totalBalance', -amount),
+          ...WalletUtility.buildIncPatch(walletType, 'totalWithdrawn', amount),
+        },
+      },
       { new: true },
     );
 
@@ -354,8 +294,12 @@ export class WalletService {
   async hasSufficientWithdrawableBalance(
     userId: string,
     amount: number,
+    walletType?: WalletType,
   ): Promise<boolean> {
     const wallet = await this.getOrCreateWallet(userId);
+    if (walletType) {
+      return WalletUtility.getAvailableBalanceForLane(wallet, walletType) >= amount;
+    }
     return WalletService.getAvailableBalance(wallet) >= amount;
   }
 

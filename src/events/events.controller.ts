@@ -47,6 +47,11 @@ export class EventsController {
     return this.eventsService.findMine(user._id, query);
   }
 
+  @Get('mine/stats')
+  async findMineStats(@CurrentUser() user: UserInterface.IUser) {
+    return this.eventsService.findMineStats(user._id);
+  }
+
   @Get('admin/pending')
   @UseGuards(RolesGuard)
   @Roles(UserRole.PLATFORM_ADMIN)

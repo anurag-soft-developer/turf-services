@@ -2,6 +2,7 @@ import { Types } from 'mongoose';
 import {
   PayoutDetails,
   PayoutMethod,
+  WalletType,
 } from '../../wallet/interfaces/wallet.interface';
 
 export enum WithdrawalStatus {
@@ -31,6 +32,7 @@ export interface PayoutSnapshot {
 export interface IWithdrawalRequest {
   _id: string;
   requestedBy: Types.ObjectId;
+  walletType: WalletType;
   amount: number;
   status: WithdrawalStatus;
   comments: IWithdrawalComment[];
