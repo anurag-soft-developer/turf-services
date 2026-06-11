@@ -7,7 +7,7 @@ import {
   Inject,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, PopulateOptions, Types } from 'mongoose';
+import { Model, PipelineStage, PopulateOptions, Types } from 'mongoose';
 import { Event, EventDocument } from './schemas/event.schema';
 import { CreateEventDto, SearchEventDto, UpdateEventDto } from './dto/events.dto';
 import { EventStatus, IEvent } from './interfaces/event.interface';
@@ -23,6 +23,13 @@ export interface EventViewer {
   userId: string;
   role: UserRole;
 }
+
+const EVENT_SEARCH_SORT_FIELD_MAP: Record<string, string> = {
+  eventDate: 'eventDate',
+  price: 'price',
+  distance: 'distance',
+  createdAt: 'createdAt',
+};
 
 @Injectable()
 export class EventsService {
@@ -285,18 +292,69 @@ export class EventsService {
   async searchEvents(
     searchDto: SearchEventDto,
     options: { publicFeed?: boolean } = {},
-  ): Promise<PaginatedResult<IEvent>> {
+  ){
     const {
-      globalSearchText,
-      createdBy,
-      status,
-      minPrice,
-      maxPrice,
+      location,
       page = 1,
       limit = 10,
       sortBy,
       sortOrder = 'asc',
     } = searchDto;
+
+    const query = this.buildEventSearchQuery(searchDto, options);
+    const skip = (page - 1) * limit;
+    const nearbyLat = location?.nearbyLat;
+    const nearbyLng = location?.nearbyLng;
+
+    if (nearbyLat !== undefined && nearbyLng !== undefined) {
+      return this.searchEventsNearLocation({
+        query,
+        nearbyLat,
+        nearbyLng,
+        nearbyRadiusKm: location?.nearbyRadiusKm ?? 100,
+        sortBy,
+        sortOrder,
+        page,
+        limit,
+        skip,
+      });
+    }
+
+    const sortField = sortBy
+      ? `${sortBy}:${sortOrder}`
+      : `eventDate:${sortOrder}`;
+    const sort = buildMongoSortOptions(sortField, {
+      defaultSort: { eventDate: 1 },
+      fieldMap: EVENT_SEARCH_SORT_FIELD_MAP,
+      whenParsedEmpty: 'default',
+    });
+
+    const [data, totalDocuments] = await Promise.all([
+      this.eventModel
+        .find(query)
+        .populate(EventsService.populateOptions)
+        .sort(sort)
+        .skip(skip)
+        .limit(limit)
+        .exec(),
+      this.eventModel.countDocuments(query),
+    ]);
+
+    return {
+      data: data,
+      totalDocuments,
+      page,
+      limit,
+      totalPages: Math.ceil(totalDocuments / limit) || 0,
+    };
+  }
+
+  private buildEventSearchQuery(
+    searchDto: SearchEventDto,
+    options: { publicFeed?: boolean } = {},
+  ): Record<string, unknown> {
+    const { globalSearchText, createdBy, status, minPrice, maxPrice } =
+      searchDto;
 
     const query: Record<string, unknown> = { archive: false };
     if (options.publicFeed) {
@@ -327,36 +385,143 @@ export class EventsService {
       }
     }
 
-    const skip = (page - 1) * limit;
-    const sortField = sortBy
-      ? `${sortBy}:${sortOrder}`
-      : `eventDate:${sortOrder}`;
-    const sort = buildMongoSortOptions(sortField, {
-      defaultSort: { eventDate: 1 },
-      whenParsedEmpty: 'default',
+    return query;
+  }
+
+  private async searchEventsNearLocation({
+    query,
+    nearbyLat,
+    nearbyLng,
+    nearbyRadiusKm,
+    sortBy,
+    sortOrder = 'asc',
+    page,
+    limit,
+    skip,
+  }: {
+    query: Record<string, unknown>;
+    nearbyLat: number;
+    nearbyLng: number;
+    nearbyRadiusKm: number;
+    sortBy?: string;
+    sortOrder?: 'asc' | 'desc';
+    page: number;
+    limit: number;
+    skip: number;
+  }){
+    const geoMatch = {
+      ...query,
+      'location.coordinates': { $exists: true, $ne: null },
+    };
+
+    const pipeline: PipelineStage[] = [
+      {
+        $geoNear: {
+          key: 'location.coordinates',
+          near: {
+            type: 'Point',
+            coordinates: [nearbyLng, nearbyLat],
+          },
+          distanceField: 'distance',
+          maxDistance: nearbyRadiusKm * 1000,
+          spherical: true,
+          query: geoMatch,
+        },
+      },
+    ];
+
+    if (sortBy) {
+      const sortOptions = buildMongoSortOptions(`${sortBy}:${sortOrder}`, {
+        defaultSort: { eventDate: 1 },
+        fieldMap: EVENT_SEARCH_SORT_FIELD_MAP,
+        whenParsedEmpty: 'none',
+      });
+      if (Object.keys(sortOptions).length > 0) {
+        pipeline.push({ $sort: sortOptions });
+      }
+    }
+
+    pipeline.push(...EventsService.buildPopulationStages());
+    pipeline.push({
+      $facet: {
+        metadata: [{ $count: 'total' }],
+        data: [{ $skip: skip }, { $limit: limit }],
+      },
     });
 
-    const [data, totalDocuments] = await Promise.all([
-      this.eventModel
-        .find(query)
-        .populate(EventsService.populateOptions)
-        .sort(sort)
-        .skip(skip)
-        .limit(limit)
-        .exec(),
-      this.eventModel.countDocuments(query),
-    ]);
+    const results = await this.eventModel.aggregate(pipeline);
+    const metadata = results[0]?.metadata[0] || { total: 0 };
+    const data = results[0]?.data || [];
 
     return {
-      data: data.map((doc) => ({
-        ...doc.toObject(),
-        _id: doc._id.toString(),
-      })) as IEvent[],
-      totalDocuments,
+      data: data,
+      totalDocuments: metadata.total,
       page,
       limit,
-      totalPages: Math.ceil(totalDocuments / limit) || 0,
+      totalPages: Math.ceil(metadata.total / limit) || 0,
     };
+  }
+
+  private static buildPopulationStages(): PipelineStage[] {
+    const userProject = userSelectFields.split(' ').reduce(
+      (acc, field) => {
+        acc[field] = 1;
+        return acc;
+      },
+      {} as Record<string, 1>,
+    );
+
+    return [
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'createdBy',
+          foreignField: '_id',
+          as: 'createdBy',
+          pipeline: [{ $project: userProject }],
+        },
+      },
+      {
+        $addFields: {
+          createdBy: {
+            $cond: {
+              if: { $gt: [{ $size: '$createdBy' }, 0] },
+              then: { $arrayElemAt: ['$createdBy', 0] },
+              else: null,
+            },
+          },
+        },
+      },
+      {
+        $lookup: {
+          from: 'turfs',
+          localField: 'turf',
+          foreignField: '_id',
+          as: 'turf',
+          pipeline: [
+            {
+              $project: {
+                _id: 1,
+                name: 1,
+                location: 1,
+                images: 1,
+              },
+            },
+          ],
+        },
+      },
+      {
+        $addFields: {
+          turf: {
+            $cond: {
+              if: { $gt: [{ $size: '$turf' }, 0] },
+              then: { $arrayElemAt: ['$turf', 0] },
+              else: null,
+            },
+          },
+        },
+      },
+    ];
   }
 
   async getPublishedEventForBooking(eventId: string): Promise<EventDocument> {

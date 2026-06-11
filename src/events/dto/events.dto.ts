@@ -1,6 +1,11 @@
 import { z } from 'zod';
 import { createZodDto, type ZodDto } from 'nestjs-zod';
-import { date, geoLocationSchema, geoLocationPartialSchema } from '../../core/dto';
+import {
+  date,
+  geoLocationSchema,
+  geoLocationPartialSchema,
+  nearbyLocationQuerySchema,
+} from '../../core/dto';
 import { EventStatus } from '../interfaces/event.interface';
 
 const eventStatusSchema = z.enum(EventStatus);
@@ -34,9 +39,10 @@ export const SearchEventSchema = z.object({
   status: eventStatusSchema.optional(),
   minPrice: z.coerce.number().min(0).optional(),
   maxPrice: z.coerce.number().min(0).optional(),
+  location: nearbyLocationQuerySchema.optional(),
   page: z.coerce.number().min(1).default(1),
   limit: z.coerce.number().min(1).max(100).default(10),
-  sortBy: z.string().default('eventDate').optional(),
+  sortBy: z.string().optional(),
   sortOrder: z.enum(['asc', 'desc']).default('asc').optional(),
 });
 

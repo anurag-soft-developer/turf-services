@@ -29,6 +29,7 @@ export interface IEvent {
   rejectionReason?: string;
   createdAt: Date;
   updatedAt: Date;
+  distance?: number;
 }
 
 export enum EventStatus {

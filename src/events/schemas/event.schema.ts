@@ -119,3 +119,4 @@ export const EventSchema = SchemaFactory.createForClass(Event);
 
 EventSchema.index({ status: 1, eventDate: 1 });
 EventSchema.index({ createdBy: 1, createdAt: -1 });
+EventSchema.index({ 'location.coordinates': '2dsphere' });
