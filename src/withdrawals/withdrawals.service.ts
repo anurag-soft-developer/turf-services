@@ -25,6 +25,7 @@ import { resolveId } from '../core/utils/mongo-ref.util';
 import { WalletService } from '../wallet/wallet.service';
 import { WalletUtility } from '../wallet/utility/wallet.utility';
 import { UserRole } from '../auth/decorators/roles.decorator';
+import { StorageLifecycleService } from '../storage/storage-lifecycle.service';
 
 @Injectable()
 export class WithdrawalsService {
@@ -38,6 +39,7 @@ export class WithdrawalsService {
     @InjectModel(Withdrawal.name)
     private readonly withdrawalModel: Model<WithdrawalDocument>,
     private readonly walletService: WalletService,
+    private readonly storageLifecycle: StorageLifecycleService,
   ) {}
 
   private toWithdrawalResponse(
@@ -282,6 +284,7 @@ export class WithdrawalsService {
     //   );
     // }
 
+    const previousAttachments = [...request.attachments];
     const mergedAttachments = [...request.attachments, ...dto.attachments];
     if (mergedAttachments.length > 10) {
       throw new BadRequestException('A maximum of 10 attachments are allowed');
@@ -289,6 +292,14 @@ export class WithdrawalsService {
 
     request.attachments = mergedAttachments;
     await request.save();
+
+    await this.storageLifecycle.syncUrlArrayOnEntitySave({
+      userId: request.requestedBy.toString(),
+      entityType: 'withdrawal',
+      entityId: withdrawalId,
+      previousUrls: previousAttachments,
+      nextUrls: mergedAttachments,
+    });
 
     const populated = (await request.populate(
       WithdrawalsService.populateOptions,

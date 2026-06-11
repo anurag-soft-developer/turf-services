@@ -7,6 +7,7 @@ import {
 import { Team, TeamSchema } from '../team/schemas/team.schema';
 import { TeamModule } from '../team/team.module';
 import { TeamMemberModule } from '../team-member/team-member.module';
+import { StorageModule } from '../storage/storage.module';
 import { AnnouncedPlayersController } from './announcedPlayers/announced-players.controller';
 import { AnnouncedPlayersService } from './announcedPlayers/announced-players.service';
 import { MatchmakingController } from './matchmaking.controller';
@@ -22,6 +23,7 @@ import { TeamMatch, TeamMatchSchema } from './schemas/team-match.schema';
     ]),
     TeamModule,
     TeamMemberModule,
+    StorageModule,
   ],
   controllers: [MatchmakingController, AnnouncedPlayersController],
   providers: [MatchmakingService, AnnouncedPlayersService],

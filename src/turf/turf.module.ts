@@ -5,11 +5,13 @@ import { TurfApprovalService } from './turf-approval.service';
 import { TurfController } from './turf.controller';
 import { Turf, TurfSchema } from './schemas/turf.schema';
 import { UsersModule } from '../users/users.module';
+import { StorageModule } from '../storage/storage.module';
 
 @Module({
   imports: [
     MongooseModule.forFeature([{ name: Turf.name, schema: TurfSchema }]),
     UsersModule,
+    StorageModule,
   ],
   controllers: [TurfController],
   providers: [TurfService, TurfApprovalService],

@@ -18,6 +18,7 @@ import { UsersService } from '../users/users.service';
 import { UserRole } from '../auth/decorators/roles.decorator';
 import { EventSlugUtility } from './utility/event-slug.utility';
 import { EventBookingService } from '../event-booking/event-booking.service';
+import { StorageLifecycleService } from '../storage/storage-lifecycle.service';
 
 export interface EventViewer {
   userId: string;
@@ -49,6 +50,7 @@ export class EventsService {
     private readonly usersService: UsersService,
     @Inject(forwardRef(() => EventBookingService))
     private readonly eventBookingService: EventBookingService,
+    private readonly storageLifecycle: StorageLifecycleService,
   ) {}
 
   async create(
@@ -74,7 +76,19 @@ export class EventsService {
       currency: dto.currency ?? 'INR',
     });
 
-    return (await event.save()).populate(EventsService.populateOptions);
+    const saved = await (await event.save()).populate(
+      EventsService.populateOptions,
+    );
+
+    await this.storageLifecycle.syncUrlArrayOnEntitySave({
+      userId: createdBy,
+      entityType: 'event',
+      entityId: saved._id.toString(),
+      previousUrls: [],
+      nextUrls: dto.coverImages ?? [],
+    });
+
+    return saved;
   }
 
   async findMine(
@@ -244,8 +258,24 @@ export class EventsService {
       delete patch.location;
     }
 
+    const previousCoverImages = existing.coverImages ?? [];
+
     Object.assign(existing, patch);
-    return (await existing.save()).populate(EventsService.populateOptions);
+    const saved = await (await existing.save()).populate(
+      EventsService.populateOptions,
+    );
+
+    if (dto.coverImages !== undefined) {
+      await this.storageLifecycle.syncUrlArrayOnEntitySave({
+        userId: viewer.userId,
+        entityType: 'event',
+        entityId: saved._id.toString(),
+        previousUrls: previousCoverImages,
+        nextUrls: dto.coverImages ?? [],
+      });
+    }
+
+    return saved;
   }
 
   async delete(id: string, viewer: EventViewer): Promise<void> {
@@ -259,6 +289,11 @@ export class EventsService {
     if (!result) {
       throw new NotFoundException('Event not found');
     }
+
+    await this.storageLifecycle.deleteUrlsForUser(
+      existing.createdBy.toString(),
+      existing.coverImages ?? [],
+    );
   }
 
   async closeEvent(id: string, viewer: EventViewer): Promise<EventDocument> {

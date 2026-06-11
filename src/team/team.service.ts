@@ -39,6 +39,7 @@ import {
   buildTeamTextSearchClause,
   distinctOpponentsWithSentRequest,
 } from './util/team.helpers';
+import { StorageLifecycleService } from '../storage/storage-lifecycle.service';
 
 @Injectable()
 export class TeamService {
@@ -53,6 +54,7 @@ export class TeamService {
     private teamMatchModel: Model<TeamMatchDocument>,
     @Inject(forwardRef(() => TeamMemberService))
     private teamMemberService: TeamMemberService,
+    private readonly storageLifecycle: StorageLifecycleService,
   ) {}
 
   async create(userId: string, dto: CreateTeamDto): Promise<TeamDocument> {
@@ -74,9 +76,26 @@ export class TeamService {
       saved._id.toString(),
       userId,
     );
-    return (await saved.populate(
+
+    const populated = (await saved.populate(
       TeamService.populate,
     )) as TeamDocument;
+
+    const nextUrls = [
+      ...(dto.logo ? [dto.logo] : []),
+      ...(dto.coverImages ?? []),
+    ];
+    if (nextUrls.length > 0) {
+      await this.storageLifecycle.syncUrlArrayOnEntitySave({
+        userId,
+        entityType: 'team',
+        entityId: saved._id.toString(),
+        previousUrls: [],
+        nextUrls,
+      });
+    }
+
+    return populated;
   }
 
   async findById(id: string, viewerId: string): Promise<TeamDocument> {
@@ -257,6 +276,9 @@ export class TeamService {
     const team = await this.requireTeam(id);
     this.assertOwner(team, userId);
 
+    const previousLogo = team.logo;
+    const previousCoverImages = team.coverImages ?? [];
+
     const { location, status, ...scalarPatch } = dto;
 
     Object.assign(team, omitEmpty(scalarPatch));
@@ -290,6 +312,27 @@ export class TeamService {
     }
 
     await team.save();
+
+    if (dto.logo !== undefined || dto.coverImages !== undefined) {
+      const previousUrls: string[] = [];
+      const nextUrls: string[] = [];
+      if (dto.logo !== undefined) {
+        if (previousLogo) previousUrls.push(previousLogo);
+        if (dto.logo) nextUrls.push(dto.logo);
+      }
+      if (dto.coverImages !== undefined) {
+        previousUrls.push(...previousCoverImages);
+        nextUrls.push(...(dto.coverImages ?? []));
+      }
+      await this.storageLifecycle.syncUrlArrayOnEntitySave({
+        userId,
+        entityType: 'team',
+        entityId: team._id.toString(),
+        previousUrls,
+        nextUrls,
+      });
+    }
+
     return (await team.populate(TeamService.populate)) as TeamDocument;
   }
 
@@ -298,7 +341,14 @@ export class TeamService {
     if (team.createdBy.toString() !== userId) {
       throw new ForbiddenException('Only the creator can delete this team');
     }
+    const urls = [
+      ...(team.logo ? [team.logo] : []),
+      ...(team.coverImages ?? []),
+    ];
     await this.teamModel.findByIdAndDelete(id);
+    if (urls.length > 0) {
+      await this.storageLifecycle.deleteUrlsForUser(userId, urls);
+    }
   }
 
   async promoteOwner(

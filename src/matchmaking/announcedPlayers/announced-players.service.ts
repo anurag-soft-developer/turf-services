@@ -24,6 +24,7 @@ import {
   RemoveAnnouncedPlayersDto,
   UpdateAnnouncedPlayersDto,
 } from './dto/announced-players.dto';
+import { StorageLifecycleService } from '../../storage/storage-lifecycle.service';
 
 @Injectable()
 export class AnnouncedPlayersService {
@@ -32,6 +33,7 @@ export class AnnouncedPlayersService {
     private readonly teamMatchModel: Model<TeamMatchDocument>,
     private readonly teamService: TeamService,
     private readonly teamMemberService: TeamMemberService,
+    private readonly storageLifecycle: StorageLifecycleService,
   ) {}
 
   async addAnnouncedPlayers(
@@ -104,6 +106,20 @@ export class AnnouncedPlayersService {
 
     match.announcedPlayers = [...existing, ...additions];
     await match.save();
+
+    const addedAvatars = additions
+      .map((p) => p.avatar)
+      .filter((avatar): avatar is string => !!avatar);
+    if (addedAvatars.length > 0) {
+      await this.storageLifecycle.syncUrlArrayOnEntitySave({
+        userId,
+        entityType: 'announced_player',
+        entityId: matchId,
+        previousUrls: [],
+        nextUrls: addedAvatars,
+      });
+    }
+
     return this.announcedPlayersForTeam(match, actorOid);
   }
 
@@ -141,6 +157,15 @@ export class AnnouncedPlayersService {
       }
     }
     const removeSet = new Set(dto.userIds.map((id) => id.toString()));
+    const removedAvatars = existing
+      .filter(
+        (p) =>
+          p.teamId.toString() === actorStr &&
+          removeSet.has(p.userId.toString()) &&
+          p.avatar,
+      )
+      .map((p) => p.avatar as string);
+
     match.announcedPlayers = existing.filter(
       (p) =>
         !(
@@ -149,6 +174,11 @@ export class AnnouncedPlayersService {
         ),
     );
     await match.save();
+
+    if (removedAvatars.length > 0) {
+      await this.storageLifecycle.deleteUrlsForUser(userId, removedAvatars);
+    }
+
     return this.announcedPlayersForTeam(match, actorOid);
   }
 
@@ -185,8 +215,18 @@ export class AnnouncedPlayersService {
         );
       }
       const row = existing[idx];
+      if (u.avatar !== undefined) {
+        const previousAvatar = row.avatar;
+        row.avatar = u.avatar;
+        await this.storageLifecycle.syncUrlArrayOnEntitySave({
+          userId,
+          entityType: 'announced_player',
+          entityId: `${matchId}:${u.userId}`,
+          previousUrls: previousAvatar ? [previousAvatar] : [],
+          nextUrls: u.avatar ? [u.avatar] : [],
+        });
+      }
       if (u.name !== undefined) row.name = u.name;
-      if (u.avatar !== undefined) row.avatar = u.avatar;
       if (u.email !== undefined) row.email = u.email;
       if (u.is_substitute !== undefined) row.is_substitute = u.is_substitute;
       if (u.role !== undefined) row.role = u.role as AnnouncedPlayerRole;

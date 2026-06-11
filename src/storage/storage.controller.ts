@@ -19,7 +19,11 @@ import {
 } from '../post/dto/media-upload.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { DeleteObjectsBodyDto } from './dto/delete-objects.dto';
+import { ReconcileStorageBodyDto } from './dto/reconcile-storage.dto';
 import { StorageService } from './storage.service';
+import { StorageLifecycleService } from './storage-lifecycle.service';
+import { Roles, UserRole } from '../auth/decorators/roles.decorator';
+import { RolesGuard } from '../auth/guards/roles.guard';
 
 type UploadedFilePayload = {
   originalname: string;
@@ -30,7 +34,10 @@ type UploadedFilePayload = {
 @Controller('storage')
 @UseGuards(JwtAuthGuard)
 export class StorageController {
-  constructor(private readonly storageService: StorageService) {}
+  constructor(
+    private readonly storageService: StorageService,
+    private readonly storageLifecycle: StorageLifecycleService,
+  ) {}
 
   @Post('upload-url')
   @HttpCode(HttpStatus.CREATED)
@@ -82,6 +89,20 @@ export class StorageController {
     return this.storageService.deleteObjects({
       userId: userId.toString(),
       objectKeys: dto.objectKeys,
+    });
+  }
+
+  @Post('admin/reconcile')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.PLATFORM_ADMIN)
+  @HttpCode(HttpStatus.OK)
+  async reconcileStorage(
+    @Body() dto: ReconcileStorageBodyDto,
+    @CurrentUser('_id') adminUserId: Types.ObjectId,
+  ) {
+    return this.storageLifecycle.reconcileStorage({
+      dryRun: dto.dryRun,
+      adminUserId: adminUserId.toString(),
     });
   }
 }
