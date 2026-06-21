@@ -15,6 +15,7 @@ import { TurfStatus } from './schemas/turf.schema';
 import { PaginatedResult } from '../core/interfaces/common';
 import { userSelectFields } from '../users/schemas/user.schema';
 import { buildMongoSortOptions } from '../core/utils/mongo-sort.util';
+import { resolveId } from '../core/utils/mongo-ref.util';
 import { UsersService } from '../users/users.service';
 import { StorageLifecycleService } from '../storage/storage-lifecycle.service';
 import { UserRole } from '../auth/decorators/roles.decorator';
@@ -104,7 +105,7 @@ export class TurfService {
     if (viewer.role === UserRole.PLATFORM_ADMIN) {
       return true;
     }
-    return turf.postedBy.toString() === viewer.userId;
+    return resolveId(turf.postedBy) === resolveId(viewer.userId);
   }
 
   async update(
@@ -401,7 +402,7 @@ export class TurfService {
   }
 
   private assertOwnerOrAdmin(turf: TurfDocument, viewer: TurfViewer): void {
-    const isOwner = turf.postedBy.toString() === viewer.userId;
+    const isOwner = resolveId(turf.postedBy) === resolveId(viewer.userId);
     const isAdmin = viewer.role === UserRole.PLATFORM_ADMIN;
     if (!isOwner && !isAdmin) {
       throw new ForbiddenException(

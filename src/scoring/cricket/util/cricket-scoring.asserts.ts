@@ -5,6 +5,7 @@ import { TeamMatchDocument } from '../../../matchmaking/schemas/team-match.schem
 import { TeamService } from '../../../team/team.service';
 import { TeamMemberService } from '../../../team-member/team-member.service';
 import { CreateCricketSessionDto } from '../dto/cricket-scoring.dto';
+import { resolveId } from '../../../core/utils/mongo-ref.util';
 
 export async function assertUserOnTeam(
   teamMemberService: TeamMemberService,
@@ -80,12 +81,10 @@ export function assertAnnouncedPlayingLineup(
     userId: Types.ObjectId,
     teamId: Types.ObjectId,
   ): void => {
-    const uid = userId.toString();
-    const tid = teamId.toString();
     const ok = players.some(
       (p) =>
-        p.userId.toString() === uid &&
-        p.teamId.toString() === tid &&
+        resolveId(p.userId) === resolveId(userId) &&
+        resolveId(p.teamId) === resolveId(teamId) &&
         !p.is_substitute,
     );
     if (!ok) {

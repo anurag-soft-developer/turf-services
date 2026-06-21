@@ -45,6 +45,7 @@ import {
 import { NotificationService } from '../notification/notification.service';
 import { WalletService } from '../wallet/wallet.service';
 import { WalletType } from '../wallet/interfaces/wallet.interface';
+import { resolveId } from '../core/utils/mongo-ref.util';
 @Injectable()
 export class TurfBookingService {
   static populateOptions: PopulateOptions[] = [
@@ -200,7 +201,7 @@ export class TurfBookingService {
       throw new NotFoundException('Booking not found');
     }
 
-    if (booking.bookedBy.toString() !== userId) {
+    if (resolveId(booking.bookedBy) !== resolveId(userId)) {
       throw new ForbiddenException(
         'You can only verify your own booking payment',
       );
@@ -256,14 +257,14 @@ export class TurfBookingService {
     }
 
     booking.razorpayOrderId = razorpay_order_id;
-    booking.paymentId = razorpay_payment_id;
+    booking.razorpayPaymentId = razorpay_payment_id;
     booking.paymentStatus = PaymentStatus.PAID;
     booking.status = TurfBookingStatus.CONFIRMED;
     booking.slotHoldStatus = SlotHoldStatus.RELEASED;
     booking.paymentExpiresAt = undefined;
     booking.confirmedAt = new Date();
     booking.paidAt = new Date();
-    booking.invoiceId = TurfBookingUtility.generateInvoiceId(
+    booking.bookingId = TurfBookingUtility.generateBookingId(
       booking._id.toString(),
     );
 
@@ -317,8 +318,8 @@ export class TurfBookingService {
 
     // Check if user is the booker or turf owner
     const turf = await this.turfModel.findById(booking.turf);
-    const isBooker = booking.bookedBy.toString() === userId;
-    const isTurfOwner = turf?.postedBy.toString() === userId;
+    const isBooker = resolveId(booking.bookedBy) === resolveId(userId);
+    const isTurfOwner = turf && resolveId(turf.postedBy) === resolveId(userId);
 
     if (!isBooker && !isTurfOwner) {
       throw new ForbiddenException('You can only update your own bookings');
@@ -1071,8 +1072,8 @@ export class TurfBookingService {
 
     // Only allow deletion by the booker or turf owner
     const turf = await this.turfModel.findById(booking.turf);
-    const isBooker = booking.bookedBy.toString() === userId;
-    const isTurfOwner = turf?.postedBy.toString() === userId;
+    const isBooker = resolveId(booking.bookedBy) === resolveId(userId);
+    const isTurfOwner = turf && resolveId(turf.postedBy) === resolveId(userId);
 
     if (!isBooker && !isTurfOwner) {
       throw new ForbiddenException('You can only delete your own bookings');

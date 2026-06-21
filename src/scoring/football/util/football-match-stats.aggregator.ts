@@ -1,4 +1,5 @@
 import { Types } from 'mongoose';
+import { resolveId } from '../../../core/utils/mongo-ref.util';
 import type { FootballPlayerStats } from '../../../core/sports/sport-stats';
 import { TeamMatchDocument } from '../../../matchmaking/schemas/team-match.schema';
 import type { FootballStats } from '../../../team/schemas/team.schema';
@@ -33,17 +34,13 @@ type PlayerAccum = FootballPlayerStats & {
   goalsThisMatch: number;
 };
 
-function uid(id: Types.ObjectId): string {
-  return id.toString();
-}
-
 function teamFromAnnounced(
   match: TeamMatchDocument,
   userId: string,
 ): string | undefined {
   for (const p of match.announcedPlayers ?? []) {
-    if (p.userId.toString() === userId) {
-      return p.teamId.toString();
+    if (resolveId(p.userId) === resolveId(userId)) {
+      return resolveId(p.teamId);
     }
   }
   return undefined;
@@ -62,7 +59,7 @@ function resolvePlayerTeam(
   if (fromEvent) {
     return fromEvent;
   }
-  return match.fromTeam.toString();
+  return resolveId(match.fromTeam);
 }
 
 function ensurePlayer(
@@ -88,8 +85,8 @@ export function aggregateFootballMatchStats(
   winnerTeamId: string | null,
   isDraw: boolean,
 ): FootballMatchStatsSnapshot {
-  const fromId = match.fromTeam.toString();
-  const toId = match.toTeam.toString();
+  const fromId = resolveId(match.fromTeam);
+  const toId = resolveId(match.toTeam);
   const fs = match.footballState!;
   const scoreOne = fs.scoreTeamOne;
   const scoreTwo = fs.scoreTeamTwo;
@@ -116,27 +113,27 @@ export function aggregateFootballMatchStats(
   const eventTeamByUser = new Map<string, string>();
 
   for (const e of events) {
-    const benTeam = uid(e.beneficiaryTeamId);
+    const benTeam = resolveId(e.beneficiaryTeamId);
     if (e.primaryUserId) {
-      const primary = uid(e.primaryUserId);
+      const primary = resolveId(e.primaryUserId);
       eventTeamByUser.set(primary, benTeam);
     }
     if (e.secondaryUserId) {
-      const secondary = uid(e.secondaryUserId);
+      const secondary = resolveId(e.secondaryUserId);
       eventTeamByUser.set(secondary, benTeam);
     }
 
     switch (e.kind) {
       case FootballEventKind.GOAL: {
         if (e.primaryUserId) {
-          const userId = uid(e.primaryUserId);
+          const userId = resolveId(e.primaryUserId);
           const teamId = resolvePlayerTeam(match, userId, eventTeamByUser);
           const acc = ensurePlayer(players, userId, teamId);
           acc.goalsScored += 1;
           acc.goalsThisMatch += 1;
         }
         if (e.secondaryUserId) {
-          const userId = uid(e.secondaryUserId);
+          const userId = resolveId(e.secondaryUserId);
           const teamId = resolvePlayerTeam(match, userId, eventTeamByUser);
           const acc = ensurePlayer(players, userId, teamId);
           acc.assists += 1;
@@ -145,7 +142,7 @@ export function aggregateFootballMatchStats(
       }
       case FootballEventKind.OWN_GOAL: {
         if (e.primaryUserId) {
-          const userId = uid(e.primaryUserId);
+          const userId = resolveId(e.primaryUserId);
           const concedingTeam =
             benTeam === fromId ? toId : fromId;
           eventTeamByUser.set(userId, concedingTeam);
@@ -156,7 +153,7 @@ export function aggregateFootballMatchStats(
       }
       case FootballEventKind.YELLOW_CARD: {
         if (e.primaryUserId) {
-          const userId = uid(e.primaryUserId);
+          const userId = resolveId(e.primaryUserId);
           const teamId = resolvePlayerTeam(match, userId, eventTeamByUser);
           const acc = ensurePlayer(players, userId, teamId);
           acc.yellowCards += 1;
@@ -170,7 +167,7 @@ export function aggregateFootballMatchStats(
       }
       case FootballEventKind.RED_CARD: {
         if (e.primaryUserId) {
-          const userId = uid(e.primaryUserId);
+          const userId = resolveId(e.primaryUserId);
           const teamId = resolvePlayerTeam(match, userId, eventTeamByUser);
           const acc = ensurePlayer(players, userId, teamId);
           acc.redCards += 1;
@@ -184,7 +181,7 @@ export function aggregateFootballMatchStats(
       }
       case FootballEventKind.PENALTY_SCORED: {
         if (e.primaryUserId) {
-          const userId = uid(e.primaryUserId);
+          const userId = resolveId(e.primaryUserId);
           const teamId = resolvePlayerTeam(match, userId, eventTeamByUser);
           const acc = ensurePlayer(players, userId, teamId);
           acc.penaltiesScored += 1;
@@ -200,7 +197,7 @@ export function aggregateFootballMatchStats(
       }
       case FootballEventKind.PENALTY_MISSED: {
         if (e.primaryUserId) {
-          const userId = uid(e.primaryUserId);
+          const userId = resolveId(e.primaryUserId);
           const teamId = resolvePlayerTeam(match, userId, eventTeamByUser);
           const acc = ensurePlayer(players, userId, teamId);
           acc.penaltiesMissed += 1;

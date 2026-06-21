@@ -75,14 +75,15 @@ export class TurfBookingWebhookService {
       return;
     }
 
-    booking.paymentId = paymentId;
+    booking.razorpayPaymentId = paymentId;
     booking.paymentStatus = PaymentStatus.PAID;
     booking.status = TurfBookingStatus.CONFIRMED;
     booking.confirmedAt = new Date();
     booking.paidAt = new Date();
     booking.slotHoldStatus = SlotHoldStatus.RELEASED;
     booking.paymentExpiresAt = undefined;
-    booking.invoiceId = booking.invoiceId || this.generateInvoiceId(booking._id.toString());
+    booking.bookingId =
+      booking.bookingId || this.generateBookingId(booking._id.toString());
     await booking.save();
 
     const turf = await this.turfModel.findById(booking.turf).select('postedBy').lean();
@@ -148,7 +149,7 @@ export class TurfBookingWebhookService {
       return;
     }
 
-    const booking = await this.turfBookingModel.findOne({ paymentId });
+    const booking = await this.turfBookingModel.findOne({ razorpayPaymentId: paymentId });
     if (!booking) {
       return;
     }
@@ -169,7 +170,7 @@ export class TurfBookingWebhookService {
     await booking.save();
   }
 
-  private generateInvoiceId(bookingId: string): string {
+  private generateBookingId(bookingId: string): string {
     const now = new Date();
     const datePrefix = `${now.getFullYear()}${`${now.getMonth() + 1}`.padStart(
       2,

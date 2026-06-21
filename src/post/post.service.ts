@@ -19,6 +19,7 @@ import { PaginatedResult } from '../core/interfaces/common';
 import { userSelectFields } from '../users/schemas/user.schema';
 import { GeoLocation } from '../core/schemas/geo-location.schema';
 import { StorageLifecycleService } from '../storage/storage-lifecycle.service';
+import { resolveId } from '../core/utils/mongo-ref.util';
 
 @Injectable()
 export class PostService {
@@ -316,7 +317,7 @@ export class PostService {
     if (post.status !== PostStatus.DRAFT) {
       return;
     }
-    if (post.postedBy.toString() === userId) {
+    if (resolveId(post.postedBy) === resolveId(userId)) {
       return;
     }
     if (post.team) {
@@ -332,7 +333,7 @@ export class PostService {
     post: ContentPostDocument,
     userId: string,
   ): Promise<void> {
-    if (post.postedBy.toString() === userId) {
+    if (resolveId(post.postedBy) === resolveId(userId)) {
       return;
     }
     if (post.team) {

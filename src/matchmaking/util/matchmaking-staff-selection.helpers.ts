@@ -6,6 +6,7 @@ import {
   MatchProposalStatus,
   TeamMatchDocument,
 } from '../schemas/team-match.schema';
+import { resolveId } from '../../core/utils/mongo-ref.util';
 
 async function isUserAffiliatedWithMatchTeam(
   teamId: Types.ObjectId,
@@ -34,7 +35,10 @@ export async function resolveSelfAcceptTeamId(
 ): Promise<Types.ObjectId> {
   if (selfAcceptTeamId) {
     const tid = new Types.ObjectId(selfAcceptTeamId);
-    if (!tid.equals(match.fromTeam) && !tid.equals(match.toTeam)) {
+    if (
+      resolveId(tid) !== resolveId(match.fromTeam) &&
+      resolveId(tid) !== resolveId(match.toTeam)
+    ) {
       throw new BadRequestException(
         'selfAcceptTeamId must be the challenging or receiving team id',
       );

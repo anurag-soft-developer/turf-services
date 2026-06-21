@@ -67,10 +67,19 @@ export class EventBooking extends Document implements EventBookingDocument {
   paymentStatus!: PaymentStatus;
 
   @Prop({ type: String })
-  paymentId?: string;
+  razorpayPaymentId?: string;
 
   @Prop({ type: String })
   razorpayOrderId?: string;
+
+  @Prop({ type: String })
+  razorpayPaymentLinkId?: string;
+
+  @Prop({ type: String })
+  razorpayPaymentLinkShortUrl?: string;
+
+  @Prop({ type: String })
+  razorpayPaymentLinkCallbackUrl?: string;
 
   @Prop({ type: Number, min: 0 })
   platformFeeAmount?: number;
@@ -79,7 +88,7 @@ export class EventBooking extends Document implements EventBookingDocument {
   organizerPayoutAmount?: number;
 
   @Prop({ type: String })
-  invoiceId?: string;
+  bookingId?: string;
 
   @Prop({ type: Date })
   paidAt?: Date;
@@ -123,7 +132,8 @@ export const EventBookingSchema = SchemaFactory.createForClass(EventBooking);
 EventBookingSchema.index({ event: 1, status: 1, createdAt: -1 });
 EventBookingSchema.index({ bookedBy: 1, createdAt: -1 });
 EventBookingSchema.index({ razorpayOrderId: 1 });
-EventBookingSchema.index({ paymentId: 1 });
+EventBookingSchema.index({ razorpayPaymentLinkId: 1 });
+EventBookingSchema.index({ razorpayPaymentId: 1 });
 EventBookingSchema.index({
   event: 1,
   escrowCreditedAt: 1,

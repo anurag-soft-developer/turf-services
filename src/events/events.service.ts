@@ -9,7 +9,11 @@ import {
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, PipelineStage, PopulateOptions, Types } from 'mongoose';
 import { Event, EventDocument } from './schemas/event.schema';
-import { CreateEventDto, SearchEventDto, UpdateEventDto } from './dto/events.dto';
+import {
+  CreateEventDto,
+  SearchEventDto,
+  UpdateEventDto,
+} from './dto/events.dto';
 import { EventStatus, IEvent } from './interfaces/event.interface';
 import { PaginatedResult } from '../core/interfaces/common';
 import { userSelectFields } from '../users/schemas/user.schema';
@@ -19,6 +23,7 @@ import { UserRole } from '../auth/decorators/roles.decorator';
 import { EventSlugUtility } from './utility/event-slug.utility';
 import { EventBookingService } from '../event-booking/event-booking.service';
 import { StorageLifecycleService } from '../storage/storage-lifecycle.service';
+import { resolveId } from '../core/utils/mongo-ref.util';
 
 export interface EventViewer {
   userId: string;
@@ -53,10 +58,7 @@ export class EventsService {
     private readonly storageLifecycle: StorageLifecycleService,
   ) {}
 
-  async create(
-    createdBy: string,
-    dto: CreateEventDto,
-  ): Promise<EventDocument> {
+  async create(createdBy: string, dto: CreateEventDto): Promise<EventDocument> {
     const owner = await this.usersService.findById(createdBy);
     if (!owner) {
       throw new NotFoundException('User not found');
@@ -76,9 +78,9 @@ export class EventsService {
       currency: dto.currency ?? 'INR',
     });
 
-    const saved = await (await event.save()).populate(
-      EventsService.populateOptions,
-    );
+    const saved = await (
+      await event.save()
+    ).populate(EventsService.populateOptions);
 
     await this.storageLifecycle.syncUrlArrayOnEntitySave({
       userId: createdBy,
@@ -226,7 +228,7 @@ export class EventsService {
     if (viewer.role === UserRole.PLATFORM_ADMIN) {
       return true;
     }
-    return event.createdBy.toString() === viewer.userId;
+    return resolveId(event.createdBy) === resolveId(viewer.userId);
   }
 
   async update(
@@ -261,9 +263,9 @@ export class EventsService {
     const previousCoverImages = existing.coverImages ?? [];
 
     Object.assign(existing, patch);
-    const saved = await (await existing.save()).populate(
-      EventsService.populateOptions,
-    );
+    const saved = await (
+      await existing.save()
+    ).populate(EventsService.populateOptions);
 
     if (dto.coverImages !== undefined) {
       await this.storageLifecycle.syncUrlArrayOnEntitySave({
@@ -327,7 +329,7 @@ export class EventsService {
   async searchEvents(
     searchDto: SearchEventDto,
     options: { publicFeed?: boolean } = {},
-  ){
+  ) {
     const {
       location,
       page = 1,
@@ -443,7 +445,7 @@ export class EventsService {
     page: number;
     limit: number;
     skip: number;
-  }){
+  }) {
     const geoMatch = {
       ...query,
       'location.coordinates': { $exists: true, $ne: null },
@@ -575,7 +577,10 @@ export class EventsService {
     return event;
   }
 
-  async incrementRegisteredCount(eventId: string, delta: number): Promise<void> {
+  async incrementRegisteredCount(
+    eventId: string,
+    delta: number,
+  ): Promise<void> {
     await this.eventModel.findByIdAndUpdate(eventId, {
       $inc: { registeredCount: delta },
     });
@@ -585,7 +590,8 @@ export class EventsService {
     event: EventDocument,
     viewer: EventViewer,
   ): void {
-    const isOrganizer = event.createdBy.toString() === viewer.userId;
+    const isOrganizer =
+      resolveId(event.createdBy) === resolveId(viewer.userId);
     const isAdmin = viewer.role === UserRole.PLATFORM_ADMIN;
     if (!isOrganizer && !isAdmin) {
       throw new ForbiddenException('Access denied');

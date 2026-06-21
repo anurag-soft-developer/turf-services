@@ -12,6 +12,7 @@ import { Model, PipelineStage, Types } from 'mongoose';
 import { teamLeaderboardStatsFromTeam } from '../core/points/leaderboard-stats.helpers';
 import type { TeamLeaderboardRow } from '../core/points/ranking-points.types';
 import type { PaginatedResult } from '../core/interfaces/common';
+import { resolveId } from '../core/utils/mongo-ref.util';
 import {
   Team,
   TeamDocument,
@@ -338,7 +339,7 @@ export class TeamService {
 
   async delete(id: string, userId: string): Promise<void> {
     const team = await this.requireTeam(id);
-    if (team.createdBy.toString() !== userId) {
+    if (resolveId(team.createdBy) !== resolveId(userId)) {
       throw new ForbiddenException('Only the creator can delete this team');
     }
     const urls = [
@@ -371,7 +372,7 @@ export class TeamService {
       );
     }
 
-    if (team.ownerIds.some((o) => o.toString() === targetId)) {
+    if (team.ownerIds.some((o) => resolveId(o) === resolveId(targetId))) {
       throw new ConflictException('User is already an owner');
     }
 
@@ -388,13 +389,15 @@ export class TeamService {
     const team = await this.requireTeam(teamId);
     this.assertOwner(team, ownerUserId);
 
-    if (targetUserId === team.createdBy.toString()) {
+    if (resolveId(targetUserId) === resolveId(team.createdBy)) {
       throw new ForbiddenException(
         'Cannot remove the original creator as owner',
       );
     }
 
-    const idx = team.ownerIds.findIndex((o) => o.toString() === targetUserId);
+    const idx = team.ownerIds.findIndex(
+      (o) => resolveId(o) === resolveId(targetUserId),
+    );
     if (idx === -1) {
       throw new NotFoundException('User is not an owner');
     }
@@ -423,7 +426,7 @@ export class TeamService {
   }
 
   isOwner(team: TeamDocument, userId: string): boolean {
-    return team.ownerIds.some((o) => o.toString() === userId);
+    return team.ownerIds.some((o) => resolveId(o) === resolveId(userId));
   }
 
   async getLeaderboard(

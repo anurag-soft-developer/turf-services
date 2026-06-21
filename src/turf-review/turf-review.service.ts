@@ -23,6 +23,7 @@ import {
 } from './dto/turf-review.dto';
 import { TurfStatus } from '../turf/schemas/turf.schema';
 import { PaginatedResult } from '../core/interfaces/common';
+import { resolveId } from '../core/utils/mongo-ref.util';
 import { buildMongoSortOptions } from '../core/utils/mongo-sort.util';
 import { userSelectFields } from '../users/schemas/user.schema';
 import { StorageLifecycleService } from '../storage/storage-lifecycle.service';
@@ -118,7 +119,7 @@ export class TurfReviewService {
     }
 
     // Only allow the reviewer to update their own review
-    if (review.reviewedBy.toString() !== userId) {
+    if (resolveId(review.reviewedBy) !== resolveId(userId)) {
       throw new ForbiddenException('You can only update your own reviews');
     }
 
@@ -321,7 +322,7 @@ export class TurfReviewService {
     }
 
     // Only allow the reviewer to delete their own review
-    if (review.reviewedBy.toString() !== userId.toString()) {
+    if (resolveId(review.reviewedBy) !== resolveId(userId)) {
       throw new ForbiddenException('You can only delete your own reviews');
     }
 

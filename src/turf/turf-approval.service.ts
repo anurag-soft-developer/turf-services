@@ -12,6 +12,7 @@ import { ReviewTurfDto } from './dto/turf-approval.dto';
 import { SearchTurfDto } from './dto/turf.filter.dto';
 import { TurfService } from './turf.service';
 import { PaginatedResult } from '../core/interfaces/common';
+import { resolveId } from '../core/utils/mongo-ref.util';
 import { ITurf } from './interfaces/turf.interface';
 
 @Injectable()
@@ -95,7 +96,7 @@ export class TurfApprovalService {
     if (!turf) {
       throw new NotFoundException('Turf not found');
     }
-    if (turf.postedBy.toString() !== ownerId.toString()) {
+    if (resolveId(turf.postedBy) !== resolveId(ownerId)) {
       throw new ForbiddenException('You do not own this turf');
     }
     return turf;

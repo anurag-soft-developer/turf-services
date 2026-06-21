@@ -8,6 +8,7 @@ import {
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { PaginatedResult } from '../core/interfaces/common';
+import { resolveId } from '../core/utils/mongo-ref.util';
 import { Team, TeamDocument } from '../team/schemas/team.schema';
 import { TeamService } from '../team/team.service';
 import { TeamMemberService } from '../team-member/team-member.service';
@@ -294,7 +295,7 @@ export class MatchmakingService {
         'Response is only allowed while status is requested',
       );
     }
-    if (actorTeam._id.toString() !== match.toTeam.toString()) {
+    if (resolveId(actorTeam._id) !== resolveId(match.toTeam)) {
       throw new ForbiddenException(
         'Only the receiving team can accept or reject the request',
       );
@@ -387,7 +388,7 @@ export class MatchmakingService {
     if (dto.action === 'withdraw') {
       assertMatchAllowsProposalWithdraw(match);
       const proposal = match.proposedSlots.find(
-        (p) => p.proposalId.toString() === dto.proposalId,
+        (p) => resolveId(p.proposalId) === resolveId(dto.proposalId),
       );
       if (!proposal) {
         throw new NotFoundException('Slot proposal not found');
@@ -416,12 +417,12 @@ export class MatchmakingService {
     }
 
     const proposal = match.proposedSlots.find(
-      (p) => p.proposalId.toString() === dto.proposalId,
+      (p) => resolveId(p.proposalId) === resolveId(dto.proposalId),
     );
     if (!proposal) {
       throw new NotFoundException('Slot proposal not found');
     }
-    if (proposal.proposedByTeamId.toString() === actorTeam._id.toString()) {
+    if (resolveId(proposal.proposedByTeamId) === resolveId(actorTeam._id)) {
       throw new ForbiddenException(
         'Proposer cannot decide its own slot proposal',
       );
@@ -459,7 +460,7 @@ export class MatchmakingService {
     if (dto.action === 'withdraw') {
       assertMatchAllowsProposalWithdraw(match);
       const proposal = match.proposedTurfs.find(
-        (p) => p.proposalId.toString() === dto.proposalId,
+        (p) => resolveId(p.proposalId) === resolveId(dto.proposalId),
       );
       if (!proposal) {
         throw new NotFoundException('Turf proposal not found');
@@ -489,12 +490,12 @@ export class MatchmakingService {
     }
 
     const proposal = match.proposedTurfs.find(
-      (p) => p.proposalId.toString() === dto.proposalId,
+      (p) => resolveId(p.proposalId) === resolveId(dto.proposalId),
     );
     if (!proposal) {
       throw new NotFoundException('Turf proposal not found');
     }
-    if (proposal.proposedByTeamId.toString() === actorTeam._id.toString()) {
+    if (resolveId(proposal.proposedByTeamId) === resolveId(actorTeam._id)) {
       throw new ForbiddenException(
         'Proposer cannot decide its own turf proposal',
       );
@@ -537,10 +538,10 @@ export class MatchmakingService {
     }
 
     const slotProposal = match.proposedSlots.find(
-      (p) => p.proposalId.toString() === dto.slotProposalId,
+      (p) => resolveId(p.proposalId) === resolveId(dto.slotProposalId),
     );
     const turfProposal = match.proposedTurfs.find(
-      (p) => p.proposalId.toString() === dto.turfProposalId,
+      (p) => resolveId(p.proposalId) === resolveId(dto.turfProposalId),
     );
     if (!slotProposal || !turfProposal) {
       throw new BadRequestException(
@@ -647,8 +648,8 @@ export class MatchmakingService {
       }
       const wid = new Types.ObjectId(dto.winnerTeam);
       if (
-        wid.toString() !== match.fromTeam.toString() &&
-        wid.toString() !== match.toTeam.toString()
+        resolveId(wid) !== resolveId(match.fromTeam) &&
+        resolveId(wid) !== resolveId(match.toTeam)
       ) {
         throw new BadRequestException('Winner must be one of the two teams');
       }

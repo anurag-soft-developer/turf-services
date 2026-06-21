@@ -1,4 +1,5 @@
 import { Types } from 'mongoose';
+import { resolveId } from '../../core/utils/mongo-ref.util';
 import type {
   MatchRankingPointsSnapshot,
   RankingPointsBreakdownEntry,
@@ -47,17 +48,13 @@ export type ComputeCricketRankingOptions = {
   includeResultBonuses?: boolean;
 };
 
-function uid(id: Types.ObjectId): string {
-  return id.toString();
-}
-
 function teamFromAnnounced(
   match: TeamMatchDocument,
   userId: string,
 ): string | undefined {
   for (const p of match.announcedPlayers ?? []) {
-    if (p.userId.toString() === userId) {
-      return p.teamId.toString();
+    if (resolveId(p.userId) === resolveId(userId)) {
+      return resolveId(p.teamId);
     }
   }
   return undefined;
@@ -76,7 +73,7 @@ function resolvePlayerTeam(
   if (fromBall) {
     return fromBall;
   }
-  return match.fromTeam.toString();
+  return resolveId(match.fromTeam);
 }
 
 function playerResultBonus(
@@ -119,8 +116,8 @@ export function computeCricketMatchRankingPoints(
   options: ComputeCricketRankingOptions = {},
 ): CricketMatchRankingPointsResult {
   const includeResultBonuses = options.includeResultBonuses ?? true;
-  const fromId = match.fromTeam.toString();
-  const toId = match.toTeam.toString();
+  const fromId = resolveId(match.fromTeam);
+  const toId = resolveId(match.toTeam);
   const slices: CricketOverPointsSlice[] = overs.map((o) => ({
     bowlerUserId: o.bowlerUserId,
     ballEvents: o.ballEvents,
@@ -133,7 +130,7 @@ export function computeCricketMatchRankingPoints(
     for (let i = 0; i < cs.inningsSummaries.length; i++) {
       const inn = cs.inningsSummaries[i];
       if (inn?.battingTeamId) {
-        battingTeamByInnings.set(i + 1, inn.battingTeamId.toString());
+        battingTeamByInnings.set(i + 1, resolveId(inn.battingTeamId));
       }
     }
   }
@@ -165,15 +162,15 @@ export function computeCricketMatchRankingPoints(
   };
 
   for (const over of slices) {
-    const bowler = uid(over.bowlerUserId);
+    const bowler = resolveId(over.bowlerUserId);
     const innings = over.innings ?? 1;
     const battingTeamId =
       battingTeamByInnings.get(innings) ?? fromId;
     const bowlingTeamId = battingTeamId === fromId ? toId : fromId;
 
     for (const e of over.ballEvents) {
-      const striker = uid(e.strikerUserId);
-      const nonStriker = uid(e.nonStrikerUserId);
+      const striker = resolveId(e.strikerUserId);
+      const nonStriker = resolveId(e.nonStrikerUserId);
 
       inningsTeamByUser.set(striker, battingTeamId);
       inningsTeamByUser.set(nonStriker, battingTeamId);
@@ -217,7 +214,7 @@ export function computeCricketMatchRankingPoints(
       if (e.isWicket && e.wicketsFallen > 0) {
         if (e.wicketKind === CricketWicketKind.CAUGHT && e.primaryFielderUserId) {
           add(
-            uid(e.primaryFielderUserId),
+            resolveId(e.primaryFielderUserId),
             'catch',
             CRICKET_POINT_WEIGHTS.fieldingCatch,
           );
@@ -227,7 +224,7 @@ export function computeCricketMatchRankingPoints(
           e.primaryFielderUserId
         ) {
           add(
-            uid(e.primaryFielderUserId),
+            resolveId(e.primaryFielderUserId),
             'stumping',
             CRICKET_POINT_WEIGHTS.fieldingStumping,
           );
@@ -235,7 +232,7 @@ export function computeCricketMatchRankingPoints(
         } else if (e.wicketKind === CricketWicketKind.RUN_OUT) {
           if (e.primaryFielderUserId) {
             add(
-              uid(e.primaryFielderUserId),
+              resolveId(e.primaryFielderUserId),
               'run_out_assist',
               CRICKET_POINT_WEIGHTS.fieldingRunOutThrow,
             );
@@ -255,7 +252,7 @@ export function computeCricketMatchRankingPoints(
         }
 
         if (e.dismissedUserId) {
-          const outId = uid(e.dismissedUserId);
+          const outId = resolveId(e.dismissedUserId);
           const outTeam = resolvePlayerTeam(match, outId, inningsTeamByUser);
           userTeams.set(outId, outTeam);
           inningsTeamByUser.set(outId, outTeam);

@@ -11,11 +11,14 @@ export interface IEventBooking {
   totalAmount: number;
   status: EventBookingStatus;
   paymentStatus: PaymentStatus;
-  paymentId?: string;
+  razorpayPaymentId?: string;
   razorpayOrderId?: string;
+  razorpayPaymentLinkId?: string;
+  razorpayPaymentLinkShortUrl?: string;
+  razorpayPaymentLinkCallbackUrl?: string;
   platformFeeAmount?: number;
   organizerPayoutAmount?: number;
-  invoiceId?: string;
+  bookingId?: string;
   paidAt?: string | Date;
   escrowCreditedAt?: string | Date;
   escrowReleasedAt?: string | Date;

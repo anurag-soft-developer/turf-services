@@ -96,7 +96,7 @@ export class TurfBooking extends Document implements TurfBookingDocument {
   @Prop({
     type: String,
   })
-  paymentId?: string;
+  razorpayPaymentId?: string;
 
   @Prop({
     type: String,
@@ -123,7 +123,7 @@ export class TurfBooking extends Document implements TurfBookingDocument {
   @Prop({
     type: String,
   })
-  invoiceId?: string;
+  bookingId?: string;
 
   @Prop({
     type: Date,
@@ -220,7 +220,7 @@ TurfBookingSchema.index({ turf: 1, createdAt: -1 });
 
 // Index for resolving bookings from payment webhooks
 TurfBookingSchema.index({ razorpayOrderId: 1 });
-TurfBookingSchema.index({ paymentId: 1 });
+TurfBookingSchema.index({ razorpayPaymentId: 1 });
 
 // Index on timeSlots for efficient overlap detection
 TurfBookingSchema.index({

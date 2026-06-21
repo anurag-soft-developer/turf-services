@@ -16,6 +16,7 @@ import {
 import { ChatMessage, ChatMessageDocument } from './schemas/chat-message.schema';
 import { TeamMemberService } from '../team-member/team-member.service';
 import { TeamMatch, TeamMatchDocument } from '../matchmaking/schemas/team-match.schema';
+import { resolveId } from '../core/utils/mongo-ref.util';
 
 export interface BatchPersistResult {
   insertedCount: number;
@@ -139,9 +140,10 @@ export class ChatService {
       }
 
       const activeTeamIds = await this.teamMemberService.distinctActiveTeamIds(userId);
-      const activeSet = new Set(activeTeamIds.map((id) => id.toString()));
+      const activeSet = new Set(activeTeamIds.map((id) => resolveId(id)));
       const isRelated =
-        activeSet.has(match.fromTeam.toString()) || activeSet.has(match.toTeam.toString());
+        activeSet.has(resolveId(match.fromTeam)) ||
+        activeSet.has(resolveId(match.toTeam));
 
       if (!isRelated) {
         throw new ForbiddenException('User is not part of this match');

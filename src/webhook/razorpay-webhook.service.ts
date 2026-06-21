@@ -54,6 +54,19 @@ export class RazorpayWebhookService {
     }
 
     const orderId = this.extractOrderId(webhookPayload);
+    const paymentLinkId = this.extractPaymentLinkId(webhookPayload);
+
+    if (paymentLinkId) {
+      const eventBooking = await this.eventBookingModel.exists({
+        razorpayPaymentLinkId: paymentLinkId,
+      });
+      if (eventBooking) {
+        return this.eventBookingWebhookService.processWebhookEvent(
+          webhookPayload,
+        );
+      }
+    }
+
     if (orderId) {
       const turfBooking = await this.turfBookingModel.exists({
         razorpayOrderId: orderId,
@@ -89,5 +102,17 @@ export class RazorpayWebhookService {
     )?.entity;
     const orderId = paymentEntity?.order_id;
     return typeof orderId === 'string' ? orderId : undefined;
+  }
+
+  private extractPaymentLinkId(
+    payload: RazorpayWebhookPayloadDto,
+  ): string | undefined {
+    const linkEntity = (
+      payload.payload?.payment_link as
+        | { entity?: Record<string, unknown> }
+        | undefined
+    )?.entity;
+    const paymentLinkId = linkEntity?.id;
+    return typeof paymentLinkId === 'string' ? paymentLinkId : undefined;
   }
 }

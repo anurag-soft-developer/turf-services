@@ -29,7 +29,7 @@ const UpdateTurfBookingSchema = z.object({
   notes: z.string().max(500).optional(),
   status: z.enum(TurfBookingStatus).optional(),
   paymentStatus: z.enum(PaymentStatus).optional(),
-  paymentId: z.string().optional(),
+  razorpayPaymentId: z.string().optional(),
   cancelReason: z.string().max(200).optional(),
 });
 

@@ -19,7 +19,7 @@ export class TurfBookingUtility {
     return now;
   }
 
-  static generateInvoiceId(bookingId: string): string {
+  static generateBookingId(bookingId: string): string {
     const now = new Date();
     const datePrefix = `${now.getFullYear()}${`${now.getMonth() + 1}`.padStart(
       2,
