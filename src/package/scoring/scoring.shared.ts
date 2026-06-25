@@ -1,6 +1,7 @@
 import z from 'zod';
+import { scoringSportTypeSchema } from '../../core/sports/sport-types';
 
-export const scoringSportSchema = z.enum(['cricket', 'football']);
+export const scoringSportSchema = scoringSportTypeSchema;
 export type ScoringSport = z.infer<typeof scoringSportSchema>;
 
 export const scoringActionSchema = z.enum([

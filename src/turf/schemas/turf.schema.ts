@@ -11,6 +11,7 @@ import {
   GeoLocation,
   GeoLocationSchema,
 } from '../../core/schemas/geo-location.schema';
+import { SportType } from '../../core/sports/sport-types';
 
 export type TurfDocument = Omit<
   ITurf,
@@ -112,8 +113,9 @@ export class Turf extends Document implements TurfDocument {
   @Prop({
     type: [String],
     required: true,
+    enum: Object.values(SportType),
   })
-  sportType!: string[];
+  sportType!: SportType[];
 
   @Prop({
     type: Pricing,

@@ -5,10 +5,10 @@ import {
   geoLocationSchema,
   nearbyLocationQuerySchema,
 } from '../../core/dto';
+import { sportTypeSchema } from '../../core/sports/sport-types';
 
 const visibilitySchema = z.enum(['public', 'private']);
 const joinModeSchema = z.enum(['open', 'approval']);
-const sportTypeSchema = z.enum(['cricket', 'football']);
 const teamStatusSchema = z.enum(['active', 'inactive', 'archived']);
 const genderCategorySchema = z.enum(['male', 'female', 'mixed']);
 const preferredTimeSlotSchema = z.enum(['morning', 'afternoon', 'evening']);

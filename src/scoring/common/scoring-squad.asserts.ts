@@ -1,8 +1,12 @@
 import { BadRequestException } from '@nestjs/common';
 import { TeamMatchDocument } from '../../matchmaking/schemas/team-match.schema';
-import { SportType, SPORT_ROSTER_CONFIG } from '../../team/schemas/team.schema';
+import {
+  RankingSportType,
+  SPORT_ROSTER_CONFIG,
+  SportType,
+} from '../../core/sports/sport-types';
 
-const SPORT_SCORING_LABEL: Record<SportType, string> = {
+const SPORT_SCORING_LABEL: Record<RankingSportType, string> = {
   [SportType.CRICKET]: 'cricket',
   [SportType.FOOTBALL]: 'football',
 };
@@ -11,14 +15,14 @@ const SPORT_SCORING_LABEL: Record<SportType, string> = {
  * Minimum playing (non-substitute) announced players per team when starting live scoring.
  * Keys match [SPORT_ROSTER_CONFIG] min roster sizes.
  */
-export const SCORING_MIN_ANNOUNCED_PLAYERS: Record<SportType, number> = {
+export const SCORING_MIN_ANNOUNCED_PLAYERS: Record<RankingSportType, number> = {
   [SportType.CRICKET]: SPORT_ROSTER_CONFIG[SportType.CRICKET].min,
   [SportType.FOOTBALL]: SPORT_ROSTER_CONFIG[SportType.FOOTBALL].min,
 };
 
 export function assertAnnouncedSquadsForSport(
   match: TeamMatchDocument,
-  sportType: SportType,
+  sportType: RankingSportType,
 ): void {
   const players = match.announcedPlayers ?? [];
   const sportLabel = SPORT_SCORING_LABEL[sportType];

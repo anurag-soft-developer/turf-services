@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { createZodDto, type ZodDto } from 'nestjs-zod';
 import { geoLocationSchema } from '../../core/dto';
+import { sportTypeSchema } from '../../core/sports/sport-types';
 
 export const dimensionUnitSchema = z.enum(['meters', 'feet']);
 
@@ -35,7 +36,7 @@ export const CreateTurfSchema = z.object({
   images: z.array(z.string()).optional(),
   amenities: z.array(z.string()).optional(),
   dimensions: DimensionsSchema.optional(),
-  sportType: z.array(z.string()).min(1, 'At least one sport type is required'),
+  sportType: z.array(sportTypeSchema).min(1, 'At least one sport type is required'),
   pricing: PricingSchema,
   operatingHours: OperatingHoursSchema.optional(),
   isAvailable: z.boolean().optional(),

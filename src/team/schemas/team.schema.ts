@@ -6,14 +6,14 @@ import {
   GeoLocationSchema,
 } from '../../core/schemas/geo-location.schema';
 import type { EarnedBadge } from '../../core/badges/badges';
+import { SportType } from '../../core/sports/sport-types';
 
 export type TeamDocument = Team & Document;
 
-/** Stored as string; extend when adding sports. */
-export enum SportType {
-  CRICKET = 'cricket',
-  FOOTBALL = 'football',
-}
+export {
+  SportType,
+  SPORT_ROSTER_CONFIG,
+} from '../../core/sports/sport-types';
 
 export enum TeamVisibility {
   PUBLIC = 'public',
@@ -88,20 +88,6 @@ export type SportStatsMap = {
 
 export type { EarnedBadge, BadgeDefinition } from '../../core/badges/badges';
 export { BADGE_DEFINITIONS, evaluateBadges } from '../../core/badges/badges';
-
-/**
- * Sport-specific roster bounds for India.
- * Cricket: playing XI (11) + up to 4 extras = 15.
- * Football: covers 5-a-side through 11-a-side + 7 substitutes = 18.
- * Use these in DTOs/services to validate and default rosterSize values.
- */
-export const SPORT_ROSTER_CONFIG: Record<
-  SportType,
-  { min: number; max: number }
-> = {
-  [SportType.CRICKET]: { min: 5, max: 15 },
-  [SportType.FOOTBALL]: { min: 5, max: 18 },
-};
 
 /** Fields loaded when populating `team` on memberships (e.g. roster lists). */
 export const teamPopulateSelectFields =

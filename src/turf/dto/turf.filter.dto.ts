@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { createZodDto, type ZodDto } from 'nestjs-zod';
 import { nearbyLocationQuerySchema } from '../../core/dto';
+import { sportTypeSchema } from '../../core/sports/sport-types';
 import { TurfStatus } from '../schemas/turf.schema';
 
 const turfStatusSchema = z.enum(TurfStatus);
@@ -18,8 +19,11 @@ export const SearchTurfSchema = z.object({
   globalSearchText: z.string().optional(),
   sportTypes: z
     .union([
-      z.string().transform((val) => val.split(',').map((v) => v.trim())),
-      z.array(z.string()),
+      z
+        .string()
+        .transform((val) => val.split(',').map((v) => v.trim()))
+        .pipe(z.array(sportTypeSchema)),
+      z.array(sportTypeSchema),
     ])
     .optional(),
   amenities: z
