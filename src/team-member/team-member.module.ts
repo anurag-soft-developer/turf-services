@@ -8,6 +8,7 @@ import {
 } from './team-member.controller';
 import { TeamModule } from '../team/team.module';
 import { ConnectionsModule } from '../connections/connections.module';
+import { NotificationModule } from '../notification/notification.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { ConnectionsModule } from '../connections/connections.module';
     ]),
     forwardRef(() => TeamModule),
     ConnectionsModule,
+    NotificationModule,
   ],
   controllers: [TeamMemberController, TeamMembershipSelfController],
   providers: [TeamMemberService],

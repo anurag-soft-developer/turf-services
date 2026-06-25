@@ -21,6 +21,7 @@ import type { PlayerSportEntry } from '../core/sports/sport-stats';
 import type { PaginatedResult } from '../core/interfaces/common';
 import type { UpdateNotificationSettingsDto } from './dto/users.dto';
 import type { FcmTokenEntryPayload } from './dto/fcm-devices.dto';
+import { UserRole } from '../auth/decorators/roles.decorator';
 
 @Injectable()
 export class UsersService {
@@ -57,6 +58,14 @@ export class UsersService {
     id: string,
   ): Promise<UserDocument | null> {
     return this.userModel.findById(id).select('+fcmTokens').exec();
+  }
+
+  async findIdsByRoles(roles: UserRole[]): Promise<string[]> {
+    if (!roles.length) {
+      return [];
+    }
+    const ids = await this.userModel.distinct('_id', { role: { $in: roles } });
+    return ids.map((id) => id.toString());
   }
 
   async findByEmail(email: string): Promise<UserDocument | null> {

@@ -11,6 +11,19 @@ import { PaginatedResult } from '../core/interfaces/common';
 import { Team, TeamDocument } from '../team/schemas/team.schema';
 import { TeamService } from '../team/team.service';
 import { TeamMemberService } from '../team-member/team-member.service';
+import { TeamMember } from '../team-member/schemas/team-member.schema';
+import { NotificationService } from '../notification/notification.service';
+import {
+  notifyMatchCancelled,
+  notifyMatchRequestReceived,
+  notifyMatchRequestResponded,
+  notifyMatchResultRecorded,
+  notifyMatchScheduleFinalized,
+  notifyMatchScheduleProposed,
+  notifyMatchSlotDecided,
+  notifyMatchTurfDecided,
+  notifyMatchUpdated,
+} from './util/matchmaking-notification.utility';
 import {
   CancelNegotiationDto,
   DecideSlotProposalDto,
@@ -66,6 +79,9 @@ export class MatchmakingService {
     private readonly teamModel: Model<TeamDocument>,
     private readonly teamService: TeamService,
     private readonly teamMemberService: TeamMemberService,
+    @InjectModel(TeamMember.name)
+    private readonly teamMemberModel: Model<TeamMember>,
+    private readonly notificationService: NotificationService,
   ) {}
 
   async sendRequest(
@@ -120,6 +136,14 @@ export class MatchmakingService {
             }
           : {}),
       });
+      await notifyMatchRequestReceived(
+        this.notificationService,
+        this.teamMemberModel,
+        this.teamService,
+        created,
+        fromTeam,
+        userId,
+      );
       return populateTeamMatch(created);
     } catch {
       throw new ConflictException(
@@ -308,6 +332,15 @@ export class MatchmakingService {
     }
 
     await match.save();
+    await notifyMatchRequestResponded(
+      this.notificationService,
+      this.teamMemberModel,
+      this.teamService,
+      match,
+      actorTeam,
+      dto.action !== 'reject',
+      userId,
+    );
     return populateTeamMatch(match);
   }
 
@@ -364,6 +397,14 @@ export class MatchmakingService {
     applyStatusUpdate(match, TeamMatchStatus.NEGOTIATING, userId);
     match.notes = dto.notes ?? match.notes;
     await match.save();
+    await notifyMatchScheduleProposed(
+      this.notificationService,
+      this.teamMemberModel,
+      this.teamService,
+      match,
+      actorTeam._id.toString(),
+      userId,
+    );
     return populateTeamMatch(match);
   }
 
@@ -436,6 +477,15 @@ export class MatchmakingService {
     proposal.reason = dto.reason;
     proposal.updatedAt = new Date();
     await match.save();
+    await notifyMatchSlotDecided(
+      this.notificationService,
+      this.teamMemberModel,
+      this.teamService,
+      match,
+      proposal.proposedByTeamId.toString(),
+      dto.action === 'accept',
+      userId,
+    );
     return populateTeamMatch(match);
   }
 
@@ -509,6 +559,15 @@ export class MatchmakingService {
     proposal.reason = dto.reason;
     proposal.updatedAt = new Date();
     await match.save();
+    await notifyMatchTurfDecided(
+      this.notificationService,
+      this.teamMemberModel,
+      this.teamService,
+      match,
+      proposal.proposedByTeamId.toString(),
+      dto.action === 'accept',
+      userId,
+    );
     return populateTeamMatch(match);
   }
 
@@ -561,6 +620,13 @@ export class MatchmakingService {
     applyStatusUpdate(match, TeamMatchStatus.SCHEDULE_FINALIZED, userId);
     match.notes = dto.notes ?? match.notes;
     await match.save();
+    await notifyMatchScheduleFinalized(
+      this.notificationService,
+      this.teamMemberModel,
+      this.teamService,
+      match,
+      userId,
+    );
     return populateTeamMatch(match);
   }
 
@@ -598,6 +664,14 @@ export class MatchmakingService {
       match.notes = dto.reason;
     }
     await match.save();
+    await notifyMatchCancelled(
+      this.notificationService,
+      this.teamMemberModel,
+      this.teamService,
+      match,
+      actorTeam._id.toString(),
+      userId,
+    );
     return populateTeamMatch(match);
   }
 
@@ -658,6 +732,13 @@ export class MatchmakingService {
     }
 
     await match.save();
+    await notifyMatchResultRecorded(
+      this.notificationService,
+      this.teamMemberModel,
+      this.teamService,
+      match,
+      userId,
+    );
     return populateTeamMatch(match);
   }
 
@@ -699,6 +780,9 @@ export class MatchmakingService {
         )
       : undefined;
 
+    const hadScheduleFinalized =
+      match.status === TeamMatchStatus.SCHEDULE_FINALIZED;
+
     if (dto.slot) {
       appendSelfAcceptedSlotProposal(
         match,
@@ -731,6 +815,25 @@ export class MatchmakingService {
     }
 
     await match.save();
+
+    const becameFinalized =
+      !hadScheduleFinalized &&
+      match.status === TeamMatchStatus.SCHEDULE_FINALIZED;
+    if (dto.slot || dto.turfId || dto.turfBookingId !== undefined || becameFinalized) {
+      const actorTeamId =
+        selfTeam?.toString() ?? match.fromTeam.toString();
+      await notifyMatchUpdated(
+        this.notificationService,
+        this.teamMemberModel,
+        this.teamService,
+        match,
+        actorTeamId,
+        userId,
+        becameFinalized,
+        dto.turfBookingId !== undefined,
+      );
+    }
+
     return populateTeamMatch(match);
   }
 }

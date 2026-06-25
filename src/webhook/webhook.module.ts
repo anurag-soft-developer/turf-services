@@ -16,6 +16,7 @@ import { RazorpayWebhookController } from './razorpay-webhook.controller';
 import { Turf, TurfSchema } from '../turf/schemas/turf.schema';
 import { Event, EventSchema } from '../events/schemas/event.schema';
 import { WalletModule } from '../wallet/wallet.module';
+import { NotificationModule } from '../notification/notification.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { WalletModule } from '../wallet/wallet.module';
     EventBookingModule,
     EventsModule,
     WalletModule,
+    NotificationModule,
   ],
   controllers: [RazorpayWebhookController],
   providers: [

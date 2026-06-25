@@ -30,6 +30,12 @@ import { WalletType } from '../wallet/interfaces/wallet.interface';
 import { EventBookingUtility } from './utility/event-booking.utility';
 import { IRajorpayOrder } from '../core/interfaces/rajorpay.interface';
 import { UserRole } from '../auth/decorators/roles.decorator';
+import { NotificationService } from '../notification/notification.service';
+import {
+  notifyBookerEventPaymentFailed,
+  notifyEventBookingCancelledParty,
+  notifyEventBookingConfirmedParties,
+} from './utility/event-booking-notification.utility';
 
 @Injectable()
 export class EventBookingService {
@@ -46,6 +52,7 @@ export class EventBookingService {
     private readonly eventsService: EventsService,
     private readonly rajorpayService: RajorpayService,
     private readonly walletService: WalletService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   async createBookingOrder(
@@ -85,6 +92,11 @@ export class EventBookingService {
       saved.paymentExpiresAt = undefined;
       await saved.save();
       await this.eventsService.incrementRegisteredCount(eventId, 1);
+      await notifyEventBookingConfirmedParties(
+        this.notificationService,
+        this.eventModel,
+        saved,
+      );
       return {
         booking: (await saved.populate(
           EventBookingService.populateOptions,
@@ -187,6 +199,12 @@ export class EventBookingService {
 
     await this.eventsService.incrementRegisteredCount(eventId, 1);
 
+    await notifyEventBookingConfirmedParties(
+      this.notificationService,
+      this.eventModel,
+      booking,
+    );
+
     return (await booking.populate(
       EventBookingService.populateOptions,
     )) as EventBookingDocument;
@@ -255,6 +273,26 @@ export class EventBookingService {
 
     if (becomingCancelled && wasConfirmed) {
       await this.eventsService.incrementRegisteredCount(eventId, -1);
+    }
+
+    if (becomingCancelled) {
+      if (isOrganizer && !isBooker) {
+        await notifyEventBookingCancelledParty(this.notificationService, {
+          recipientUserId: booking.bookedBy.toString(),
+          bookingId: booking._id.toString(),
+          eventId,
+          eventTitle: event.title,
+          cancelledBy: 'organizer',
+        });
+      } else if (isBooker && !isOrganizer) {
+        await notifyEventBookingCancelledParty(this.notificationService, {
+          recipientUserId: event.createdBy.toString(),
+          bookingId: booking._id.toString(),
+          eventId,
+          eventTitle: event.title,
+          cancelledBy: 'booker',
+        });
+      }
     }
 
     return (await booking.populate(
@@ -382,6 +420,19 @@ export class EventBookingService {
       booking.cancelReason = 'Payment hold expired';
       booking.paymentExpiresAt = undefined;
       await booking.save();
+
+      const event = await this.eventModel
+        .findById(booking.event)
+        .select('title')
+        .lean();
+      if (event) {
+        await notifyBookerEventPaymentFailed(
+          this.notificationService,
+          booking,
+          event.title,
+          'hold_expired',
+        );
+      }
     }
   }
 

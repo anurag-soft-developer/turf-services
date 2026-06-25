@@ -9,6 +9,7 @@ import { EventBookingController } from './event-booking.controller';
 import { EventBookingService } from './event-booking.service';
 import { EventsModule } from '../events/events.module';
 import { WalletModule } from '../wallet/wallet.module';
+import { NotificationModule } from '../notification/notification.module';
 import { RajorpayService } from '../core/services/rajorpay/rajorpay.service';
 
 @Module({
@@ -19,6 +20,7 @@ import { RajorpayService } from '../core/services/rajorpay/rajorpay.service';
     ]),
     forwardRef(() => EventsModule),
     WalletModule,
+    NotificationModule,
   ],
   controllers: [EventBookingController],
   providers: [EventBookingService, RajorpayService],

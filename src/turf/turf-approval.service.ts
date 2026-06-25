@@ -13,12 +13,20 @@ import { SearchTurfDto } from './dto/turf.filter.dto';
 import { TurfService } from './turf.service';
 import { PaginatedResult } from '../core/interfaces/common';
 import { ITurf } from './interfaces/turf.interface';
+import { NotificationService } from '../notification/notification.service';
+import { UsersService } from '../users/users.service';
+import {
+  notifyTurfReviewed,
+  notifyTurfSubmittedForApproval,
+} from './utility/turf-approval-notification.utility';
 
 @Injectable()
 export class TurfApprovalService {
   constructor(
     @InjectModel(Turf.name) private readonly turfModel: Model<Turf>,
     private readonly turfService: TurfService,
+    private readonly notificationService: NotificationService,
+    private readonly usersService: UsersService,
   ) {}
 
   async submitForApproval(
@@ -36,7 +44,14 @@ export class TurfApprovalService {
     turf.rejectionReason = undefined;
     turf.submittedAt = new Date();
 
-    return (await turf.save()).populate(TurfService.populateOptions);
+    const saved = await turf.save();
+    await notifyTurfSubmittedForApproval(
+      this.notificationService,
+      this.usersService,
+      saved,
+      ownerId,
+    );
+    return saved.populate(TurfService.populateOptions);
   }
 
   async withdrawSubmission(
@@ -75,7 +90,14 @@ export class TurfApprovalService {
       turf.rejectionReason = undefined;
     }
 
-    return (await turf.save()).populate(TurfService.populateOptions);
+    const saved = await turf.save();
+    await notifyTurfReviewed(
+      this.notificationService,
+      saved,
+      dto.action === 'publish',
+      dto.rejectionReason,
+    );
+    return saved.populate(TurfService.populateOptions);
   }
 
   async listPendingForAdmin(

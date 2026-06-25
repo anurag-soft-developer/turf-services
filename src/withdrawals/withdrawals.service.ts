@@ -25,6 +25,12 @@ import { resolveId } from '../core/utils/mongo-ref.util';
 import { WalletService } from '../wallet/wallet.service';
 import { WalletUtility } from '../wallet/utility/wallet.utility';
 import { UserRole } from '../auth/decorators/roles.decorator';
+import { NotificationService } from '../notification/notification.service';
+import { UsersService } from '../users/users.service';
+import {
+  notifyWithdrawalStatusChanged,
+  notifyWithdrawalSubmitted,
+} from './utility/withdrawals-notification.utility';
 
 @Injectable()
 export class WithdrawalsService {
@@ -38,6 +44,8 @@ export class WithdrawalsService {
     @InjectModel(Withdrawal.name)
     private readonly withdrawalModel: Model<WithdrawalDocument>,
     private readonly walletService: WalletService,
+    private readonly notificationService: NotificationService,
+    private readonly usersService: UsersService,
   ) {}
 
   private toWithdrawalResponse(
@@ -91,6 +99,13 @@ export class WithdrawalsService {
       const populated = (await created.populate(
         WithdrawalsService.populateOptions,
       )) as WithdrawalDocument;
+
+      await notifyWithdrawalSubmitted(this.notificationService, this.usersService, {
+        withdrawalId: created._id.toString(),
+        amount: dto.amount,
+        walletType: dto.walletType,
+        hostUserId: userId,
+      });
 
       return this.toWithdrawalResponse(populated, { forHost: true });
     } catch (error) {
@@ -363,6 +378,15 @@ export class WithdrawalsService {
     await request.save();
 
     const hostUserId = resolveId(request.requestedBy);
+
+    await notifyWithdrawalStatusChanged(this.notificationService, {
+      recipientUserId: hostUserId,
+      withdrawalId: request._id.toString(),
+      status: dto.status,
+      amount: request.amount,
+      walletType: request.walletType,
+      rejectionReason: dto.rejectionReason,
+    });
 
     if (shouldReleaseHold) {
       await this.walletService.releaseWithdrawalHold(

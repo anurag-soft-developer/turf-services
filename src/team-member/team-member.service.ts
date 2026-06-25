@@ -32,6 +32,11 @@ import {
   SuspendTeamMemberDto,
   UpdateTeamMemberDto,
 } from './dto/team-member.dto';
+import { NotificationService } from '../notification/notification.service';
+import {
+  notifyTeamJoinRequest,
+  notifyTeamJoinResolved,
+} from './utility/team-member-notification.utility';
 
 @Injectable()
 export class TeamMemberService {
@@ -47,6 +52,7 @@ export class TeamMemberService {
     @Inject(forwardRef(() => TeamService))
     private teamService: TeamService,
     private connectionsService: ConnectionsService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   async seedCreatorMembership(
@@ -231,6 +237,12 @@ export class TeamMemberService {
       lineupCategory: LineupCategory.STARTER,
     });
     const saved = await doc.save();
+    await notifyTeamJoinRequest(
+      this.notificationService,
+      team,
+      saved._id.toString(),
+      userId,
+    );
     return (await saved.populate(
       TeamMemberService.populate,
     )) as TeamMemberDocument;
@@ -256,6 +268,13 @@ export class TeamMemberService {
     m.reviewedBy = new Types.ObjectId(ownerUserId);
     m.reviewedAt = new Date();
     await m.save();
+    await notifyTeamJoinResolved(this.notificationService, {
+      recipientUserId: m.user.toString(),
+      teamId,
+      teamName: team.name,
+      membershipId,
+      accepted: true,
+    });
     return (await m.populate(
       TeamMemberService.populate,
     )) as TeamMemberDocument;
@@ -279,6 +298,13 @@ export class TeamMemberService {
     m.reviewedBy = new Types.ObjectId(ownerUserId);
     m.reviewedAt = new Date();
     await m.save();
+    await notifyTeamJoinResolved(this.notificationService, {
+      recipientUserId: m.user.toString(),
+      teamId,
+      teamName: team.name,
+      membershipId,
+      accepted: false,
+    });
     return (await m.populate(
       TeamMemberService.populate,
     )) as TeamMemberDocument;

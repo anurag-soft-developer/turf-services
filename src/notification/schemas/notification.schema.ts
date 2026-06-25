@@ -6,6 +6,11 @@ export type NotificationDocument = Notification & Document;
 export enum NotificationModule {
   TURF_BOOKING = 'turfBooking',
   MATCHMAKING = 'matchmaking',
+  EVENT_BOOKING = 'eventBooking',
+  TEAMS = 'teams',
+  CONNECTIONS = 'connections',
+  WITHDRAWALS = 'withdrawals',
+  TURF_APPROVAL = 'turfApproval',
 }
 
 

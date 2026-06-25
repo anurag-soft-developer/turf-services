@@ -40,7 +40,6 @@ export class NotificationService {
     realtimeDispatched: boolean;
   }> {
     const doc = await this.notificationModel.create(dto);
-
     const mergedDataStrings = buildPushDataStrings(doc);
 
     const realtimeDispatched = await this.dispatchToRealtime(doc);

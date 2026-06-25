@@ -16,6 +16,11 @@ import { ConnectionFilterDto, SendConnectionRequestDto } from './dto/connection.
 import { PaginatedResult } from '../core/interfaces/common';
 import { buildMongoSortOptions } from '../core/utils/mongo-sort.util';
 import { userSelectFields } from '../users/schemas/user.schema';
+import { NotificationService } from '../notification/notification.service';
+import {
+  notifyConnectionRequest,
+  notifyConnectionResolved,
+} from './utility/connections-notification.utility';
 
 const REJECTED_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -29,6 +34,7 @@ export class ConnectionsService {
   constructor(
     @InjectModel(Connection.name)
     private connectionModel: Model<ConnectionDocument>,
+    private readonly notificationService: NotificationService,
   ) {}
 
   async sendRequest(
@@ -82,6 +88,12 @@ export class ConnectionsService {
       status: ConnectionStatus.PENDING,
     });
 
+    await notifyConnectionRequest(this.notificationService, {
+      recipientUserId: dto.recipientId,
+      connectionId: doc._id.toString(),
+      requesterUserId: userId,
+    });
+
     return (await doc.populate(ConnectionsService.userPopulate)) as ConnectionDocument;
   }
 
@@ -112,6 +124,12 @@ export class ConnectionsService {
     }
 
     await conn.save();
+
+    await notifyConnectionResolved(this.notificationService, {
+      recipientUserId: conn.requester.toString(),
+      connectionId: conn._id.toString(),
+      accepted: status === ConnectionStatus.ACCEPTED,
+    });
 
     return (await conn.populate(ConnectionsService.userPopulate)) as ConnectionDocument;
   }

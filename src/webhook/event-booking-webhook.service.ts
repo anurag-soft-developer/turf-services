@@ -16,6 +16,11 @@ import { WalletType } from '../wallet/interfaces/wallet.interface';
 import { RajorpayService } from '../core/services/rajorpay/rajorpay.service';
 import { EventsService } from '../events/events.service';
 import { EventBookingUtility } from '../event-booking/utility/event-booking.utility';
+import { NotificationService } from '../notification/notification.service';
+import {
+  notifyBookerEventPaymentFailed,
+  notifyEventBookingConfirmedParties,
+} from '../event-booking/utility/event-booking-notification.utility';
 
 @Injectable()
 export class EventBookingWebhookService {
@@ -27,6 +32,7 @@ export class EventBookingWebhookService {
     private readonly walletService: WalletService,
     private readonly rajorpayService: RajorpayService,
     private readonly eventsService: EventsService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   async processWebhookEvent(eventPayload: RazorpayWebhookPayloadDto): Promise<{
@@ -123,6 +129,12 @@ export class EventBookingWebhookService {
       1,
     );
 
+    await notifyEventBookingConfirmedParties(
+      this.notificationService,
+      this.eventModel,
+      booking,
+    );
+
     return true;
   }
 
@@ -153,6 +165,17 @@ export class EventBookingWebhookService {
     booking.cancelReason = 'Payment failed via Razorpay webhook';
     booking.paymentExpiresAt = undefined;
     await booking.save();
+
+    const event = await this.eventModel.findById(booking.event).select('title').lean();
+    if (event) {
+      await notifyBookerEventPaymentFailed(
+        this.notificationService,
+        booking,
+        event.title,
+        'payment_failed',
+      );
+    }
+
     return true;
   }
 

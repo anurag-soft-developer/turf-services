@@ -24,6 +24,8 @@ import {
   RemoveAnnouncedPlayersDto,
   UpdateAnnouncedPlayersDto,
 } from './dto/announced-players.dto';
+import { NotificationService } from '../../notification/notification.service';
+import { notifyAnnouncedPlayers } from '../util/matchmaking-notification.utility';
 
 @Injectable()
 export class AnnouncedPlayersService {
@@ -32,6 +34,7 @@ export class AnnouncedPlayersService {
     private readonly teamMatchModel: Model<TeamMatchDocument>,
     private readonly teamService: TeamService,
     private readonly teamMemberService: TeamMemberService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   async addAnnouncedPlayers(
@@ -104,6 +107,12 @@ export class AnnouncedPlayersService {
 
     match.announcedPlayers = [...existing, ...additions];
     await match.save();
+    await notifyAnnouncedPlayers(this.notificationService, {
+      userIds: incomingIds,
+      matchId,
+      added: true,
+      excludeUserId: userId,
+    });
     return this.announcedPlayersForTeam(match, actorOid);
   }
 
@@ -149,6 +158,12 @@ export class AnnouncedPlayersService {
         ),
     );
     await match.save();
+    await notifyAnnouncedPlayers(this.notificationService, {
+      userIds: dto.userIds,
+      matchId,
+      added: false,
+      excludeUserId: userId,
+    });
     return this.announcedPlayersForTeam(match, actorOid);
   }
 

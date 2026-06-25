@@ -40,7 +40,8 @@ import { RajorpayService } from '../core/services/rajorpay/rajorpay.service';
 import { TurfBookingUtility } from './utility/turf-booking.utility';
 import {
   notifyBookingCancelledParty,
-  notifyOwnerNewPaidBooking,
+  notifyBookerPaymentFailed,
+  notifyTurfBookingConfirmedParties,
 } from './utility/turf-booking-notification.utility';
 import { NotificationService } from '../notification/notification.service';
 import { WalletService } from '../wallet/wallet.service';
@@ -271,24 +272,16 @@ export class TurfBookingService {
     if (booking.ownerPayoutAmount && booking.ownerPayoutAmount > 0) {
       const turfDoc = await this.turfModel.findById(booking.turf).select('postedBy');
       if (turfDoc) {
-        const credited = await this.walletService.moveAmountToEscrow(
+        await this.walletService.moveAmountToEscrow(
           WalletType.TURF,
           booking._id.toString(),
           turfDoc.postedBy.toString(),
           booking.ownerPayoutAmount,
         );
-        if (!credited) {
-          await notifyOwnerNewPaidBooking(
-            this.notificationService,
-            this.turfModel,
-            booking,
-          );
-          return await booking.populate(TurfBookingService.populateOptions);
-        }
       }
     }
 
-    await notifyOwnerNewPaidBooking(
+    await notifyTurfBookingConfirmedParties(
       this.notificationService,
       this.turfModel,
       booking,
@@ -1090,11 +1083,19 @@ export class TurfBookingService {
 
   async releaseExpiredSlotHolds(): Promise<void> {
     const now = new Date();
+    const expired = await this.turfBookingModel.find({
+      status: TurfBookingStatus.PENDING,
+      slotHoldStatus: SlotHoldStatus.ACTIVE,
+      paymentExpiresAt: { $lte: now },
+    });
+
+    if (!expired.length) {
+      return;
+    }
+
     await this.turfBookingModel.updateMany(
       {
-        status: TurfBookingStatus.PENDING,
-        slotHoldStatus: SlotHoldStatus.ACTIVE,
-        paymentExpiresAt: { $lte: now },
+        _id: { $in: expired.map((b) => b._id) },
       },
       {
         $set: {
@@ -1106,5 +1107,20 @@ export class TurfBookingService {
         },
       },
     );
+
+    for (const booking of expired) {
+      const turf = await this.turfModel
+        .findById(booking.turf)
+        .select('name')
+        .lean();
+      if (turf) {
+        await notifyBookerPaymentFailed(
+          this.notificationService,
+          booking,
+          turf.name,
+          'hold_expired',
+        );
+      }
+    }
   }
 }

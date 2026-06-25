@@ -10,6 +10,11 @@ import {
   TurfBooking,
   TurfBookingDocument,
 } from '../turf-booking/schemas/turf-booking.schema';
+import {
+  notifyBookerPaymentFailed,
+  notifyTurfBookingConfirmedParties,
+} from '../turf-booking/utility/turf-booking-notification.utility';
+import { NotificationService } from '../notification/notification.service';
 import { RazorpayWebhookPayloadDto } from './dto/razorpay-webhook.dto';
 import { Turf, TurfDocument } from '../turf/schemas/turf.schema';
 import { WalletService } from '../wallet/wallet.service';
@@ -25,6 +30,7 @@ export class TurfBookingWebhookService {
     private turfModel: Model<TurfDocument>,
     private readonly walletService: WalletService,
     private readonly rajorpayService: RajorpayService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   async processWebhookEvent(eventPayload: RazorpayWebhookPayloadDto): Promise<{
@@ -85,7 +91,7 @@ export class TurfBookingWebhookService {
     booking.invoiceId = booking.invoiceId || this.generateInvoiceId(booking._id.toString());
     await booking.save();
 
-    const turf = await this.turfModel.findById(booking.turf).select('postedBy').lean();
+    const turf = await this.turfModel.findById(booking.turf).select('postedBy name').lean();
     if (!turf) return;
     const payout =
       booking.ownerPayoutAmount ??
@@ -96,6 +102,12 @@ export class TurfBookingWebhookService {
       booking._id.toString(),
       turf.postedBy.toString(),
       payout,
+    );
+
+    await notifyTurfBookingConfirmedParties(
+      this.notificationService,
+      this.turfModel,
+      booking,
     );
   }
 
@@ -127,6 +139,16 @@ export class TurfBookingWebhookService {
     booking.slotHoldStatus = SlotHoldStatus.RELEASED;
     booking.paymentExpiresAt = undefined;
     await booking.save();
+
+    const turf = await this.turfModel.findById(booking.turf).select('name').lean();
+    if (turf) {
+      await notifyBookerPaymentFailed(
+        this.notificationService,
+        booking,
+        turf.name,
+        'payment_failed',
+      );
+    }
   }
 
   private async applyRefundWebhook(
