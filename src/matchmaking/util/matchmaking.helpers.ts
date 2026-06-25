@@ -25,6 +25,7 @@ import {
   TERMINAL_ALL_STATUSES,
   TERMINAL_PRE_PLAY_STATUSES,
 } from './matchmaking.constants';
+import { resolveId } from '../../core/utils/mongo-ref.util';
 
 /** Blocks squad edits once the match is terminal or cricket scoring has started. */
 export function assertMatchAllowsAnnouncedPlayerEdits(
@@ -112,8 +113,8 @@ export function ensureMatchHasTeam(
   teamId: Types.ObjectId,
 ): void {
   if (
-    match.fromTeam.toString() !== teamId.toString() &&
-    match.toTeam.toString() !== teamId.toString()
+    resolveId(match.fromTeam) !== resolveId(teamId) &&
+    resolveId(match.toTeam) !== resolveId(teamId)
   ) {
     throw new ForbiddenException('Team is not part of this match');
   }
@@ -146,7 +147,7 @@ export function isSlotProposalWithdrawable(
     match.status === TeamMatchStatus.SCHEDULE_FINALIZED &&
     proposal.status === MatchProposalStatus.ACCEPTED &&
     match.selectedSlotProposalId &&
-    match.selectedSlotProposalId.toString() === proposal.proposalId.toString()
+    resolveId(match.selectedSlotProposalId) === resolveId(proposal.proposalId)
   ) {
     return true;
   }
@@ -164,7 +165,7 @@ export function isTurfProposalWithdrawable(
     match.status === TeamMatchStatus.SCHEDULE_FINALIZED &&
     proposal.status === MatchProposalStatus.ACCEPTED &&
     match.selectedTurfProposalId &&
-    match.selectedTurfProposalId.toString() === proposal.proposalId.toString()
+    resolveId(match.selectedTurfProposalId) === resolveId(proposal.proposalId)
   ) {
     return true;
   }

@@ -12,6 +12,7 @@ import { ReviewEventDto } from './dto/event-approval.dto';
 import { SearchEventDto } from '../dto/events.dto';
 import { EventsService } from '../events.service';
 import { PaginatedResult } from '../../core/interfaces/common';
+import { resolveId } from '../../core/utils/mongo-ref.util';
 import { IEvent } from '../interfaces/event.interface';
 
 @Injectable()
@@ -95,7 +96,7 @@ export class EventApprovalService {
     if (!event) {
       throw new NotFoundException('Event not found');
     }
-    if (event.createdBy.toString() !== organizerId.toString()) {
+    if (resolveId(event.createdBy) !== resolveId(organizerId)) {
       throw new ForbiddenException('You do not own this event');
     }
     return event;

@@ -11,16 +11,9 @@ import {
 } from '../event-booking/schemas/event-booking.schema';
 import { Event, EventDocument } from '../events/schemas/event.schema';
 import { RazorpayWebhookPayloadDto } from './dto/razorpay-webhook.dto';
-import { WalletService } from '../wallet/wallet.service';
-import { WalletType } from '../wallet/interfaces/wallet.interface';
-import { RajorpayService } from '../core/services/rajorpay/rajorpay.service';
-import { EventsService } from '../events/events.service';
-import { EventBookingUtility } from '../event-booking/utility/event-booking.utility';
+import { EventBookingService } from '../event-booking/event-booking.service';
 import { NotificationService } from '../notification/notification.service';
-import {
-  notifyBookerEventPaymentFailed,
-  notifyEventBookingConfirmedParties,
-} from '../event-booking/utility/event-booking-notification.utility';
+import { notifyBookerEventPaymentFailed } from '../event-booking/utility/event-booking-notification.utility';
 
 @Injectable()
 export class EventBookingWebhookService {
@@ -29,9 +22,7 @@ export class EventBookingWebhookService {
     private readonly eventBookingModel: Model<EventBookingDocument>,
     @InjectModel(Event.name)
     private readonly eventModel: Model<EventDocument>,
-    private readonly walletService: WalletService,
-    private readonly rajorpayService: RajorpayService,
-    private readonly eventsService: EventsService,
+    private readonly eventBookingService: EventBookingService,
     private readonly notificationService: NotificationService,
   ) {}
 
@@ -40,6 +31,15 @@ export class EventBookingWebhookService {
     message: string;
   }> {
     const eventType = eventPayload.event;
+
+    if (eventType === 'payment_link.paid') {
+      const applied = await this.applyPaymentLinkPaidWebhook(eventPayload);
+      return {
+        processed: applied,
+        message: applied ? `${eventType} processed` : `${eventType} not matched`,
+      };
+    }
+
     if (eventType === 'payment.captured' || eventType === 'order.paid') {
       const applied = await this.applyCapturedPaymentWebhook(eventPayload);
       return {
@@ -67,6 +67,42 @@ export class EventBookingWebhookService {
     return { processed: false, message: `Event ${eventType} ignored` };
   }
 
+  private async applyPaymentLinkPaidWebhook(
+    payload: RazorpayWebhookPayloadDto,
+  ): Promise<boolean> {
+    const linkEntity = (
+      payload.payload?.payment_link as
+        | { entity?: Record<string, unknown> }
+        | undefined
+    )?.entity;
+    const paymentEntity = (
+      payload.payload?.payment as { entity?: Record<string, unknown> } | undefined
+    )?.entity;
+
+    const paymentLinkId =
+      typeof linkEntity?.id === 'string' ? linkEntity.id : undefined;
+    const paymentId =
+      typeof paymentEntity?.id === 'string' ? paymentEntity.id : undefined;
+
+    if (!paymentLinkId || !paymentId) {
+      return false;
+    }
+
+    const bookingExists = await this.eventBookingModel.exists({
+      razorpayPaymentLinkId: paymentLinkId,
+    });
+    if (!bookingExists) {
+      return false;
+    }
+
+    await this.eventBookingService.confirmPaidBookingByPaymentLinkId(
+      paymentLinkId,
+      paymentId,
+    );
+
+    return true;
+  }
+
   private async applyCapturedPaymentWebhook(
     payload: RazorpayWebhookPayloadDto,
   ): Promise<boolean> {
@@ -83,56 +119,16 @@ export class EventBookingWebhookService {
       return false;
     }
 
-    const booking = await this.eventBookingModel.findOne({
+    const bookingExists = await this.eventBookingModel.exists({
       razorpayOrderId: orderId,
     });
-    if (!booking || booking.paymentStatus === PaymentStatus.PAID) {
+    if (!bookingExists) {
       return false;
     }
 
-    if (booking.status !== EventBookingStatus.PENDING) {
-      return false;
-    }
-
-    const event = await this.eventModel.findById(booking.event);
-    if (!event) {
-      return false;
-    }
-
-    booking.paymentId = paymentId;
-    booking.paymentStatus = PaymentStatus.PAID;
-    booking.status = EventBookingStatus.CONFIRMED;
-    booking.confirmedAt = new Date();
-    booking.paidAt = new Date();
-    booking.paymentExpiresAt = undefined;
-    booking.invoiceId =
-      booking.invoiceId ||
-      EventBookingUtility.generateInvoiceId(booking._id.toString());
-    await booking.save();
-
-    const payout =
-      booking.organizerPayoutAmount ??
-      this.rajorpayService.calculateOwnerPayoutAmount(booking.totalAmount)
-        .ownerPayoutAmount;
-
-    if (payout > 0) {
-      await this.walletService.moveAmountToEscrow(
-        WalletType.EVENT,
-        booking._id.toString(),
-        event.createdBy.toString(),
-        payout,
-      );
-    }
-
-    await this.eventsService.incrementRegisteredCount(
-      booking.event.toString(),
-      1,
-    );
-
-    await notifyEventBookingConfirmedParties(
-      this.notificationService,
-      this.eventModel,
-      booking,
+    await this.eventBookingService.confirmPaidBookingByOrderId(
+      orderId,
+      paymentId,
     );
 
     return true;
@@ -198,7 +194,7 @@ export class EventBookingWebhookService {
       return false;
     }
 
-    const booking = await this.eventBookingModel.findOne({ paymentId });
+    const booking = await this.eventBookingModel.findOne({ razorpayPaymentId: paymentId });
     if (!booking) {
       return false;
     }

@@ -31,6 +31,7 @@ import {
   notifyWithdrawalStatusChanged,
   notifyWithdrawalSubmitted,
 } from './utility/withdrawals-notification.utility';
+import { StorageLifecycleService } from '../storage/storage-lifecycle.service';
 
 @Injectable()
 export class WithdrawalsService {
@@ -46,6 +47,7 @@ export class WithdrawalsService {
     private readonly walletService: WalletService,
     private readonly notificationService: NotificationService,
     private readonly usersService: UsersService,
+    private readonly storageLifecycle: StorageLifecycleService,
   ) {}
 
   private toWithdrawalResponse(
@@ -297,6 +299,7 @@ export class WithdrawalsService {
     //   );
     // }
 
+    const previousAttachments = [...request.attachments];
     const mergedAttachments = [...request.attachments, ...dto.attachments];
     if (mergedAttachments.length > 10) {
       throw new BadRequestException('A maximum of 10 attachments are allowed');
@@ -304,6 +307,14 @@ export class WithdrawalsService {
 
     request.attachments = mergedAttachments;
     await request.save();
+
+    await this.storageLifecycle.syncUrlArrayOnEntitySave({
+      userId: request.requestedBy.toString(),
+      entityType: 'withdrawal',
+      entityId: withdrawalId,
+      previousUrls: previousAttachments,
+      nextUrls: mergedAttachments,
+    });
 
     const populated = (await request.populate(
       WithdrawalsService.populateOptions,

@@ -19,10 +19,12 @@ const UpdateEventBookingSchema = z.object({
 });
 
 const EventBookingFilterSchema = z.object({
+  event: z.string().optional(),
   status: z.enum(EventBookingStatus).optional(),
   paymentStatus: z.enum(PaymentStatus).optional(),
   page: z.coerce.number().min(1).default(1),
   limit: z.coerce.number().min(1).default(10),
+  sortOrder: z.enum(['asc', 'desc']).default('desc').optional(),
 });
 
 const VerifyRazorpayPaymentSchema = z.object({
@@ -34,6 +36,22 @@ const VerifyRazorpayPaymentSchema = z.object({
 
 const CheckCapacitySchema = z.object({
   playerCount: z.number().int().min(1).max(50).default(1),
+});
+
+const CreateOrderQuerySchema = z.object({
+  paymentLink: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((value) => value === 'true'),
+});
+
+const VerifyRazorpayHostedPaymentSchema = z.object({
+  bookingId: z.string().min(1),
+  razorpay_payment_link_id: z.string().min(1),
+  razorpay_payment_link_reference_id: z.string().min(1),
+  razorpay_payment_link_status: z.string().min(1),
+  razorpay_payment_id: z.string().min(1),
+  razorpay_signature: z.string().min(1),
 });
 
 export class CreateEventBookingDto extends createZodDto(
@@ -48,4 +66,8 @@ export class EventBookingFilterDto extends createZodDto(
 export class VerifyEventRazorpayPaymentDto extends createZodDto(
   VerifyRazorpayPaymentSchema,
 ) {}
+export class VerifyEventRazorpayHostedPaymentDto extends createZodDto(
+  VerifyRazorpayHostedPaymentSchema,
+) {}
 export class CheckEventCapacityDto extends createZodDto(CheckCapacitySchema) {}
+export class CreateOrderQueryDto extends createZodDto(CreateOrderQuerySchema) {}

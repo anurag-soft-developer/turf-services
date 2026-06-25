@@ -1,6 +1,7 @@
-import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Inject, Injectable, forwardRef } from '@nestjs/common';
 import {
   DeleteObjectsCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
@@ -8,6 +9,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { randomUUID } from 'crypto';
 import { config } from '../core/config/env.config';
 import { MediaUploadPurpose } from '../post/dto/media-upload.dto';
+import { StorageLifecycleService } from './storage-lifecycle.service';
 
 
 interface SignUploadParams {
@@ -56,6 +58,11 @@ export class StorageService {
     },
   });
 
+  constructor(
+    @Inject(forwardRef(() => StorageLifecycleService))
+    private readonly storageLifecycle: StorageLifecycleService,
+  ) {}
+
   async createSignedUploadUrl(params: SignUploadParams): Promise<{
     uploadUrl: string;
     fileUrl: string;
@@ -86,7 +93,7 @@ export class StorageService {
       expiresIn: ttlSeconds,
     });
 
-    return {
+    const result = {
       uploadUrl,
       fileUrl: this.getPublicUrl(objectKey),
       objectKey,
@@ -96,6 +103,15 @@ export class StorageService {
         'x-amz-acl': OBJECT_ACL_PUBLIC_READ,
       },
     };
+
+    await this.storageLifecycle.registerPendingUpload({
+      userId: params.userId,
+      objectKey,
+      fileUrl: result.fileUrl,
+      purpose: params.purpose,
+    });
+
+    return result;
   }
 
   async uploadBuffer(params: DirectUploadParams): Promise<{
@@ -122,8 +138,17 @@ export class StorageService {
       }),
     );
 
+    const fileUrl = this.getPublicUrl(objectKey);
+
+    await this.storageLifecycle.registerPendingUpload({
+      userId: params.userId,
+      objectKey,
+      fileUrl,
+      purpose: params.purpose,
+    });
+
     return {
-      fileUrl: this.getPublicUrl(objectKey),
+      fileUrl,
       objectKey,
     };
   }
@@ -177,6 +202,83 @@ export class StorageService {
     }
 
     return { deleted, failed };
+  }
+
+  async deleteObjectsAdmin(objectKeys: string[]): Promise<{
+    deleted: string[];
+    failed: { objectKey: string; code?: string; message?: string }[];
+  }> {
+    const normalized = [...new Set(objectKeys.map((k) => k.replace(/^\/+/, '')))];
+    for (const key of normalized) {
+      if (key.includes('..')) {
+        throw new BadRequestException('Invalid object key');
+      }
+      if (!key.startsWith('users/')) {
+        throw new ForbiddenException('Admin delete limited to users/ prefix');
+      }
+    }
+
+    const deleted: string[] = [];
+    const failed: { objectKey: string; code?: string; message?: string }[] = [];
+
+    for (let i = 0; i < normalized.length; i += DELETE_OBJECTS_BATCH_SIZE) {
+      const batch = normalized.slice(i, i + DELETE_OBJECTS_BATCH_SIZE);
+      const result = await this.s3.send(
+        new DeleteObjectsCommand({
+          Bucket: config.SPACES_BUCKET,
+          Delete: {
+            Objects: batch.map((Key) => ({ Key })),
+            Quiet: false,
+          },
+        }),
+      );
+      for (const d of result.Deleted ?? []) {
+        if (d.Key) {
+          deleted.push(d.Key);
+        }
+      }
+      for (const err of result.Errors ?? []) {
+        if (err.Key) {
+          failed.push({
+            objectKey: err.Key,
+            code: err.Code,
+            message: err.Message,
+          });
+        }
+      }
+    }
+
+    return { deleted, failed };
+  }
+
+  async listObjectKeys(
+    prefix: string,
+  ): Promise<{ key: string; sizeBytes?: number }[]> {
+    const normalizedPrefix = prefix.replace(/^\/+/, '');
+    const objects: { key: string; sizeBytes?: number }[] = [];
+    let continuationToken: string | undefined;
+
+    do {
+      const result = await this.s3.send(
+        new ListObjectsV2Command({
+          Bucket: config.SPACES_BUCKET,
+          Prefix: normalizedPrefix,
+          ContinuationToken: continuationToken,
+        }),
+      );
+
+      for (const item of result.Contents ?? []) {
+        if (item.Key) {
+          objects.push({ key: item.Key, sizeBytes: item.Size });
+        }
+      }
+
+      continuationToken = result.IsTruncated
+        ? result.NextContinuationToken
+        : undefined;
+    } while (continuationToken);
+
+    return objects;
   }
 
   private createObjectKey(

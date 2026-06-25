@@ -18,6 +18,8 @@ import { TeamService } from '../team/team.service';
 import { PaginatedResult } from '../core/interfaces/common';
 import { userSelectFields } from '../users/schemas/user.schema';
 import { GeoLocation } from '../core/schemas/geo-location.schema';
+import { StorageLifecycleService } from '../storage/storage-lifecycle.service';
+import { resolveId } from '../core/utils/mongo-ref.util';
 
 @Injectable()
 export class PostService {
@@ -36,6 +38,7 @@ export class PostService {
     @InjectModel(Media.name)
     private mediaModel: Model<MediaDocument>,
     private teamService: TeamService,
+    private readonly storageLifecycle: StorageLifecycleService,
   ) {}
 
   async registerMedia(
@@ -74,6 +77,18 @@ export class PostService {
     });
 
     const saved = await doc.save();
+
+    const mediaUrls = dto.media?.map((m) => m.url) ?? [];
+    if (mediaUrls.length > 0) {
+      await this.storageLifecycle.syncUrlArrayOnEntitySave({
+        userId,
+        entityType: 'post',
+        entityId: saved._id.toString(),
+        previousUrls: [],
+        nextUrls: mediaUrls,
+      });
+    }
+
     return (await saved.populate(PostService.populate)) as ContentPostDocument;
   }
 
@@ -154,10 +169,27 @@ export class PostService {
 
     if (dto.media !== undefined) {
       const oldIds = post.media.map((m) => m.toString());
+      let previousUrls: string[] = [];
       if (oldIds.length) {
+        const oldMedia = await this.mediaModel
+          .find({ _id: { $in: oldIds } })
+          .select('url')
+          .lean();
+        previousUrls = oldMedia.map((m) => m.url);
         await this.mediaModel.deleteMany({ _id: { $in: oldIds } });
       }
       post.media = await this.createMediaFromInputs(userId, dto.media);
+
+      await post.save();
+      await this.storageLifecycle.syncUrlArrayOnEntitySave({
+        userId,
+        entityType: 'post',
+        entityId: post._id.toString(),
+        previousUrls,
+        nextUrls: dto.media.map((m) => m.url),
+      });
+
+      return (await post.populate(PostService.populate)) as ContentPostDocument;
     } else if (dto.mediaIds !== undefined) {
       await this.assertMediaOwnedByUser(dto.mediaIds, userId);
       post.media = dto.mediaIds.map((id) => new Types.ObjectId(id));
@@ -174,9 +206,17 @@ export class PostService {
     }
     await this.assertCanEditPost(post, userId);
     const mediaIds = post.media.map((m) => m.toString());
+    const mediaDocs = mediaIds.length
+      ? await this.mediaModel.find({ _id: { $in: mediaIds } }).select('url').lean()
+      : [];
+    const mediaUrls = mediaDocs.map((m) => m.url);
+
     await this.postModel.findByIdAndDelete(id);
     if (mediaIds.length) {
       await this.mediaModel.deleteMany({ _id: { $in: mediaIds } });
+    }
+    if (mediaUrls.length > 0) {
+      await this.storageLifecycle.deleteUrlsForUser(userId, mediaUrls);
     }
   }
 
@@ -277,7 +317,7 @@ export class PostService {
     if (post.status !== PostStatus.DRAFT) {
       return;
     }
-    if (post.postedBy.toString() === userId) {
+    if (resolveId(post.postedBy) === resolveId(userId)) {
       return;
     }
     if (post.team) {
@@ -293,7 +333,7 @@ export class PostService {
     post: ContentPostDocument,
     userId: string,
   ): Promise<void> {
-    if (post.postedBy.toString() === userId) {
+    if (resolveId(post.postedBy) === resolveId(userId)) {
       return;
     }
     if (post.team) {

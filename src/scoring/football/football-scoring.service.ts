@@ -24,6 +24,7 @@ import {
 } from '../common/scoring.helpers';
 import { assertAnnouncedSquadsForSport } from '../common/scoring-squad.asserts';
 import { ScoringRealtimeDispatcher } from '../common/scoring-realtime-dispatcher.service';
+import { resolveId } from '../../core/utils/mongo-ref.util';
 import {
   FOOTBALL_EVENT_POPULATE,
   FootballEventKind,
@@ -652,9 +653,8 @@ export class FootballScoringService {
     match: TeamMatchDocument,
     teamId: Types.ObjectId,
   ): Types.ObjectId {
-    const t = teamId.toString();
-    if (t === match.fromTeam.toString()) return match.toTeam;
-    if (t === match.toTeam.toString()) return match.fromTeam;
+    if (resolveId(teamId) === resolveId(match.fromTeam)) return match.toTeam;
+    if (resolveId(teamId) === resolveId(match.toTeam)) return match.fromTeam;
     throw new BadRequestException('Invalid team id');
   }
 }

@@ -5,6 +5,7 @@ import {
   SPORT_ROSTER_CONFIG,
   SportType,
 } from '../../core/sports/sport-types';
+import { resolveId } from '../../core/utils/mongo-ref.util';
 
 const SPORT_SCORING_LABEL: Record<RankingSportType, string> = {
   [SportType.CRICKET]: 'cricket',
@@ -34,11 +35,11 @@ export function assertAnnouncedSquadsForSport(
     );
   }
 
-  const t1 = match.fromTeam.toString();
-  const t2 = match.toTeam.toString();
+  const t1 = resolveId(match.fromTeam);
+  const t2 = resolveId(match.toTeam);
 
   for (const p of players) {
-    const tid = p.teamId.toString();
+    const tid = resolveId(p.teamId);
     if (tid !== t1 && tid !== t2) {
       throw new BadRequestException(
         'Each announced player teamId must be one of the two teams on this match',
@@ -48,7 +49,7 @@ export function assertAnnouncedSquadsForSport(
 
   const playing = players.filter((p) => !p.is_substitute);
   const countFor = (tid: string) =>
-    playing.filter((p) => p.teamId.toString() === tid).length;
+    playing.filter((p) => resolveId(p.teamId) === tid).length;
 
   const n1 = countFor(t1);
   const n2 = countFor(t2);

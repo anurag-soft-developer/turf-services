@@ -6,12 +6,14 @@ import { WithdrawalsService } from './withdrawals.service';
 import { WalletModule } from '../wallet/wallet.module';
 import { UsersModule } from '../users/users.module';
 import { NotificationModule } from '../notification/notification.module';
+import { StorageModule } from '../storage/storage.module';
 
 @Module({
   imports: [
     WalletModule,
     UsersModule,
     NotificationModule,
+    StorageModule,
     MongooseModule.forFeature([{ name: Withdrawal.name, schema: WithdrawalSchema }]),
   ],
   controllers: [WithdrawalsController],

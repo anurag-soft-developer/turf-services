@@ -22,10 +22,14 @@ import type { PaginatedResult } from '../core/interfaces/common';
 import type { UpdateNotificationSettingsDto } from './dto/users.dto';
 import type { FcmTokenEntryPayload } from './dto/fcm-devices.dto';
 import { UserRole } from '../auth/decorators/roles.decorator';
+import { StorageLifecycleService } from '../storage/storage-lifecycle.service';
 
 @Injectable()
 export class UsersService {
-  constructor(@InjectModel(User.name) private userModel: Model<User>) {}
+  constructor(
+    @InjectModel(User.name) private userModel: Model<User>,
+    private readonly storageLifecycle: StorageLifecycleService,
+  ) {}
 
   async create(userData: Partial<IUser>): Promise<UserDocument> {
     if (userData.password) {
@@ -113,6 +117,23 @@ export class UsersService {
     id: string,
     updateData: UpdateProfileDto,
   ): Promise<UserDocument> {
+    if (updateData.avatar !== undefined) {
+      const existing = await this.findById(id);
+      if (!existing) {
+        throw new NotFoundException('User not found');
+      }
+
+      const user = await this.updateById(id, updateData);
+      await this.storageLifecycle.syncUrlArrayOnEntitySave({
+        userId: id,
+        entityType: 'user',
+        entityId: id,
+        previousUrls: existing.avatar ? [existing.avatar] : [],
+        nextUrls: updateData.avatar ? [updateData.avatar] : [],
+      });
+      return user;
+    }
+
     return await this.updateById(id, updateData);
   }
 

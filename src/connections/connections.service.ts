@@ -13,6 +13,7 @@ import {
   ConnectionStatus,
 } from './schemas/connection.schema';
 import { ConnectionFilterDto, SendConnectionRequestDto } from './dto/connection.dto';
+import { resolveId } from '../core/utils/mongo-ref.util';
 import { PaginatedResult } from '../core/interfaces/common';
 import { buildMongoSortOptions } from '../core/utils/mongo-sort.util';
 import { userSelectFields } from '../users/schemas/user.schema';
@@ -107,7 +108,7 @@ export class ConnectionsService {
       throw new NotFoundException('Connection request not found');
     }
 
-    if (conn.recipient.toString() !== userId) {
+    if (resolveId(conn.recipient) !== resolveId(userId)) {
       throw new ForbiddenException('Only the recipient can resolve this request');
     }
 
@@ -142,8 +143,8 @@ export class ConnectionsService {
     }
 
     const isParticipant =
-      conn.requester.toString() === userId ||
-      conn.recipient.toString() === userId;
+      resolveId(conn.requester) === resolveId(userId) ||
+      resolveId(conn.recipient) === resolveId(userId);
 
     if (!isParticipant) {
       throw new ForbiddenException('Not a participant in this connection');

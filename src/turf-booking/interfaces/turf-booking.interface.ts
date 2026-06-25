@@ -22,12 +22,12 @@ export interface ITurfBooking {
   totalAmount: number;
   status: TurfBookingStatus;
   paymentStatus: PaymentStatus;
-  paymentId?: string;
+  razorpayPaymentId?: string;
   razorpayOrderId?: string;
   platformFeeAmount?: number;
   ownerPayoutAmount?: number;
   razorpayTransferId?: string;
-  invoiceId?: string;
+  bookingId?: string;
   paidAt?: string | Date;
   escrowCreditedAt?: string | Date;
   escrowReleasedAt?: string | Date;

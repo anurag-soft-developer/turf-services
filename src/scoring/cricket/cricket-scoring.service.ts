@@ -22,6 +22,7 @@ import {
 } from '../common/scoring.helpers';
 import { assertAnnouncedSquadsForSport } from '../common/scoring-squad.asserts';
 import { ScoringRealtimeDispatcher } from '../common/scoring-realtime-dispatcher.service';
+import { resolveId } from '../../core/utils/mongo-ref.util';
 import {
   CRICKET_OVER_EVENT_POPULATE,
   CricketBallEvent,
@@ -242,10 +243,10 @@ export class CricketScoringService {
       if (!dismissed) {
         throw new BadRequestException('Dismissed batsman not set for wicket');
       }
-      if (dismissed.toString() === striker.toString()) {
+      if (resolveId(dismissed) === resolveId(striker)) {
         cs.strikerUserId = incoming;
         cs.nonStrikerUserId = nonStriker;
-      } else if (dismissed.toString() === nonStriker.toString()) {
+      } else if (resolveId(dismissed) === resolveId(nonStriker)) {
         cs.strikerUserId = striker;
         cs.nonStrikerUserId = incoming;
       } else {
@@ -307,7 +308,7 @@ export class CricketScoringService {
         ballEvents: [ballPayload],
       });
     } else {
-      if (overDoc.bowlerUserId.toString() !== bowler.toString()) {
+      if (resolveId(overDoc.bowlerUserId) !== resolveId(bowler)) {
         throw new BadRequestException(
           'bowlerUserId must match the bowler for this over',
         );
@@ -668,7 +669,7 @@ export class CricketScoringService {
       );
     }
 
-    if (nextStriker.toString() === nextNonStriker.toString()) {
+    if (resolveId(nextStriker) === resolveId(nextNonStriker)) {
       throw new BadRequestException(
         'Striker and non-striker must be different players',
       );

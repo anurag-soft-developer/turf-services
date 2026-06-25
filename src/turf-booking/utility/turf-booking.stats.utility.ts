@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { Model, Types } from 'mongoose';
 import { TurfDocument } from '../../turf/schemas/turf.schema';
+import { resolveId } from '../../core/utils/mongo-ref.util';
 
 class TurfBookingStatsUtility {
   static formatTrendPercentage(current: number, previous: number): string {
@@ -59,7 +60,7 @@ class TurfBookingStatsUtility {
     }
 
     const unauthorizedTurf = turfs.find(
-      (turf) => turf.postedBy.toString() !== ownerId,
+      (turf) => resolveId(turf.postedBy) !== resolveId(ownerId),
     );
     if (unauthorizedTurf) {
       throw new ForbiddenException(

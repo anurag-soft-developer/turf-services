@@ -29,6 +29,7 @@
     "@nestjs/mongoose": "^11.0.4",
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.0.1",
+    "@nestjs/schedule": "^6.1.3",
     "@react-email/components": "^1.0.8",
     "@turf-services/shared": "file:../turf-services-shared",
     "@types/morgan": "^1.9.10",

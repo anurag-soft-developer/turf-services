@@ -1,4 +1,5 @@
 import { Types } from 'mongoose';
+import { resolveId } from '../../../core/utils/mongo-ref.util';
 import type {
   CricketBattingStats,
   CricketBowlingStats,
@@ -55,10 +56,6 @@ type PlayerAccum = {
   battedInnings: Set<number>;
   bowlerWicketsThisMatch: number;
 };
-
-function uid(id: Types.ObjectId): string {
-  return id.toString();
-}
 
 function extrasOnDelivery(ball: CricketBallEvent): number {
   return (
@@ -143,8 +140,8 @@ function teamFromAnnounced(
   userId: string,
 ): string | undefined {
   for (const p of match.announcedPlayers ?? []) {
-    if (p.userId.toString() === userId) {
-      return p.teamId.toString();
+    if (resolveId(p.userId) === resolveId(userId)) {
+      return resolveId(p.teamId);
     }
   }
   return undefined;
@@ -163,7 +160,7 @@ function resolvePlayerTeam(
   if (fromBall) {
     return fromBall;
   }
-  return match.fromTeam.toString();
+  return resolveId(match.fromTeam);
 }
 
 export function aggregateCricketMatchStats(
@@ -172,8 +169,8 @@ export function aggregateCricketMatchStats(
   winnerTeamId: string | null,
 ): CricketMatchStatsSnapshot {
   const cs = match.cricketState as CricketState;
-  const fromId = match.fromTeam.toString();
-  const toId = match.toTeam.toString();
+  const fromId = resolveId(match.fromTeam);
+  const toId = resolveId(match.toTeam);
 
   const teamStats = new Map<string, CricketStats>([
     [fromId, emptyTeamCricketStats()],
@@ -209,18 +206,18 @@ export function aggregateCricketMatchStats(
   for (let i = 0; i < cs.inningsSummaries.length; i++) {
     const inn = cs.inningsSummaries[i];
     if (inn?.battingTeamId) {
-      battingTeamByInnings.set(i + 1, inn.battingTeamId.toString());
+      battingTeamByInnings.set(i + 1, resolveId(inn.battingTeamId));
     }
   }
 
   for (const over of overs) {
     const inn = over.innings;
     const battingTeamId =
-      battingTeamByInnings.get(inn) ?? cs.battingTeamId.toString();
+      battingTeamByInnings.get(inn) ?? resolveId(cs.battingTeamId);
     const bowlingTeamId =
       battingTeamId === fromId ? toId : fromId;
 
-    const bowlerId = uid(over.bowlerUserId);
+    const bowlerId = resolveId(over.bowlerUserId);
     inningsTeamByUser.set(bowlerId, bowlingTeamId);
     const bowlerAcc = getPlayer(bowlerId, bowlingTeamId);
 
@@ -228,8 +225,8 @@ export function aggregateCricketMatchStats(
     let runsInOver = 0;
 
     for (const ball of over.ballEvents) {
-      const strikerId = uid(ball.strikerUserId);
-      const nonStrikerId = uid(ball.nonStrikerUserId);
+      const strikerId = resolveId(ball.strikerUserId);
+      const nonStrikerId = resolveId(ball.nonStrikerUserId);
       inningsTeamByUser.set(strikerId, battingTeamId);
       inningsTeamByUser.set(nonStrikerId, battingTeamId);
 
@@ -294,14 +291,14 @@ export function aggregateCricketMatchStats(
           ball.wicketKind === CricketWicketKind.CAUGHT &&
           ball.primaryFielderUserId
         ) {
-          const fid = uid(ball.primaryFielderUserId);
+          const fid = resolveId(ball.primaryFielderUserId);
           inningsTeamByUser.set(fid, bowlingTeamId);
           getPlayer(fid, bowlingTeamId).fielding.catches += 1;
         } else if (
           ball.wicketKind === CricketWicketKind.STUMPED &&
           ball.primaryFielderUserId
         ) {
-          const fid = uid(ball.primaryFielderUserId);
+          const fid = resolveId(ball.primaryFielderUserId);
           inningsTeamByUser.set(fid, bowlingTeamId);
           getPlayer(fid, bowlingTeamId).fielding.stumpings += 1;
         }
@@ -317,13 +314,13 @@ export function aggregateCricketMatchStats(
         ball.wicketKind === CricketWicketKind.RUN_OUT &&
         ball.primaryFielderUserId
       ) {
-        const fid = uid(ball.primaryFielderUserId);
+        const fid = resolveId(ball.primaryFielderUserId);
         inningsTeamByUser.set(fid, bowlingTeamId);
         getPlayer(fid, bowlingTeamId).fielding.runOuts += 1;
       }
 
       if (ball.isWicket && ball.dismissedUserId && ball.wicketsFallen > 0) {
-        const outId = uid(ball.dismissedUserId);
+        const outId = resolveId(ball.dismissedUserId);
         const outTeam = resolvePlayerTeam(match, outId, inningsTeamByUser);
         inningsTeamByUser.set(outId, outTeam);
         const outAcc = getPlayer(outId, outTeam);
@@ -374,7 +371,7 @@ export function aggregateCricketMatchStats(
     if (!inn?.battingTeamId) {
       continue;
     }
-    const batId = inn.battingTeamId.toString();
+    const batId = resolveId(inn.battingTeamId);
     const bowlId = batId === fromId ? toId : fromId;
     const batStats = teamStats.get(batId)!;
     const bowlStats = teamStats.get(bowlId)!;

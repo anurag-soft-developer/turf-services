@@ -15,7 +15,9 @@ import { TurfStatus } from './schemas/turf.schema';
 import { PaginatedResult } from '../core/interfaces/common';
 import { userSelectFields } from '../users/schemas/user.schema';
 import { buildMongoSortOptions } from '../core/utils/mongo-sort.util';
+import { resolveId } from '../core/utils/mongo-ref.util';
 import { UsersService } from '../users/users.service';
+import { StorageLifecycleService } from '../storage/storage-lifecycle.service';
 import { UserRole } from '../auth/decorators/roles.decorator';
 
 const TURF_SEARCH_SORT_FIELD_MAP: Record<string, string> = {
@@ -42,6 +44,7 @@ export class TurfService {
   constructor(
     @InjectModel(Turf.name) private turfModel: Model<Turf>,
     private readonly usersService: UsersService,
+    private readonly storageLifecycle: StorageLifecycleService,
   ) {}
 
   async create(
@@ -62,7 +65,17 @@ export class TurfService {
     }
 
     const turf = new this.turfModel({ ...createTurfDto, postedBy });
-    return await (await turf.save()).populate(TurfService.populateOptions);
+    const saved = await (await turf.save()).populate(TurfService.populateOptions);
+
+    await this.storageLifecycle.syncUrlArrayOnEntitySave({
+      userId: postedBy,
+      entityType: 'turf',
+      entityId: saved._id.toString(),
+      previousUrls: [],
+      nextUrls: createTurfDto.images ?? [],
+    });
+
+    return saved;
   }
 
   async findById(id: string, viewer?: TurfViewer): Promise<TurfDocument> {
@@ -92,7 +105,7 @@ export class TurfService {
     if (viewer.role === UserRole.PLATFORM_ADMIN) {
       return true;
     }
-    return turf.postedBy.toString() === viewer.userId;
+    return resolveId(turf.postedBy) === resolveId(viewer.userId);
   }
 
   async update(
@@ -116,6 +129,8 @@ export class TurfService {
       }
     }
 
+    const previousImages = existing.images ?? [];
+
     const turf = await this.turfModel
       .findByIdAndUpdate(id, updateTurfDto, {
         new: true,
@@ -126,6 +141,16 @@ export class TurfService {
 
     if (!turf) {
       throw new NotFoundException('Turf not found');
+    }
+
+    if (updateTurfDto.images !== undefined) {
+      await this.storageLifecycle.syncUrlArrayOnEntitySave({
+        userId: viewer.userId,
+        entityType: 'turf',
+        entityId: turf._id.toString(),
+        previousUrls: previousImages,
+        nextUrls: updateTurfDto.images ?? [],
+      });
     }
 
     return turf;
@@ -142,6 +167,11 @@ export class TurfService {
     if (!result) {
       throw new NotFoundException('Turf not found');
     }
+
+    await this.storageLifecycle.deleteUrlsForUser(
+      existing.postedBy.toString(),
+      existing.images ?? [],
+    );
   }
 
   async getStats() {
@@ -372,7 +402,7 @@ export class TurfService {
   }
 
   private assertOwnerOrAdmin(turf: TurfDocument, viewer: TurfViewer): void {
-    const isOwner = turf.postedBy.toString() === viewer.userId;
+    const isOwner = resolveId(turf.postedBy) === resolveId(viewer.userId);
     const isAdmin = viewer.role === UserRole.PLATFORM_ADMIN;
     if (!isOwner && !isAdmin) {
       throw new ForbiddenException(

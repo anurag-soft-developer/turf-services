@@ -12,6 +12,7 @@ import { Model, PipelineStage, Types } from 'mongoose';
 import { teamLeaderboardStatsFromTeam } from '../core/points/leaderboard-stats.helpers';
 import type { TeamLeaderboardRow } from '../core/points/ranking-points.types';
 import type { PaginatedResult } from '../core/interfaces/common';
+import { resolveId } from '../core/utils/mongo-ref.util';
 import {
   Team,
   TeamDocument,
@@ -39,6 +40,7 @@ import {
   buildTeamTextSearchClause,
   distinctOpponentsWithSentRequest,
 } from './util/team.helpers';
+import { StorageLifecycleService } from '../storage/storage-lifecycle.service';
 
 @Injectable()
 export class TeamService {
@@ -53,6 +55,7 @@ export class TeamService {
     private teamMatchModel: Model<TeamMatchDocument>,
     @Inject(forwardRef(() => TeamMemberService))
     private teamMemberService: TeamMemberService,
+    private readonly storageLifecycle: StorageLifecycleService,
   ) {}
 
   async create(userId: string, dto: CreateTeamDto): Promise<TeamDocument> {
@@ -74,9 +77,26 @@ export class TeamService {
       saved._id.toString(),
       userId,
     );
-    return (await saved.populate(
+
+    const populated = (await saved.populate(
       TeamService.populate,
     )) as TeamDocument;
+
+    const nextUrls = [
+      ...(dto.logo ? [dto.logo] : []),
+      ...(dto.coverImages ?? []),
+    ];
+    if (nextUrls.length > 0) {
+      await this.storageLifecycle.syncUrlArrayOnEntitySave({
+        userId,
+        entityType: 'team',
+        entityId: saved._id.toString(),
+        previousUrls: [],
+        nextUrls,
+      });
+    }
+
+    return populated;
   }
 
   async findById(id: string, viewerId: string): Promise<TeamDocument> {
@@ -257,6 +277,9 @@ export class TeamService {
     const team = await this.requireTeam(id);
     this.assertOwner(team, userId);
 
+    const previousLogo = team.logo;
+    const previousCoverImages = team.coverImages ?? [];
+
     const { location, status, ...scalarPatch } = dto;
 
     Object.assign(team, omitEmpty(scalarPatch));
@@ -290,15 +313,43 @@ export class TeamService {
     }
 
     await team.save();
+
+    if (dto.logo !== undefined || dto.coverImages !== undefined) {
+      const previousUrls: string[] = [];
+      const nextUrls: string[] = [];
+      if (dto.logo !== undefined) {
+        if (previousLogo) previousUrls.push(previousLogo);
+        if (dto.logo) nextUrls.push(dto.logo);
+      }
+      if (dto.coverImages !== undefined) {
+        previousUrls.push(...previousCoverImages);
+        nextUrls.push(...(dto.coverImages ?? []));
+      }
+      await this.storageLifecycle.syncUrlArrayOnEntitySave({
+        userId,
+        entityType: 'team',
+        entityId: team._id.toString(),
+        previousUrls,
+        nextUrls,
+      });
+    }
+
     return (await team.populate(TeamService.populate)) as TeamDocument;
   }
 
   async delete(id: string, userId: string): Promise<void> {
     const team = await this.requireTeam(id);
-    if (team.createdBy.toString() !== userId) {
+    if (resolveId(team.createdBy) !== resolveId(userId)) {
       throw new ForbiddenException('Only the creator can delete this team');
     }
+    const urls = [
+      ...(team.logo ? [team.logo] : []),
+      ...(team.coverImages ?? []),
+    ];
     await this.teamModel.findByIdAndDelete(id);
+    if (urls.length > 0) {
+      await this.storageLifecycle.deleteUrlsForUser(userId, urls);
+    }
   }
 
   async promoteOwner(
@@ -321,7 +372,7 @@ export class TeamService {
       );
     }
 
-    if (team.ownerIds.some((o) => o.toString() === targetId)) {
+    if (team.ownerIds.some((o) => resolveId(o) === resolveId(targetId))) {
       throw new ConflictException('User is already an owner');
     }
 
@@ -338,13 +389,15 @@ export class TeamService {
     const team = await this.requireTeam(teamId);
     this.assertOwner(team, ownerUserId);
 
-    if (targetUserId === team.createdBy.toString()) {
+    if (resolveId(targetUserId) === resolveId(team.createdBy)) {
       throw new ForbiddenException(
         'Cannot remove the original creator as owner',
       );
     }
 
-    const idx = team.ownerIds.findIndex((o) => o.toString() === targetUserId);
+    const idx = team.ownerIds.findIndex(
+      (o) => resolveId(o) === resolveId(targetUserId),
+    );
     if (idx === -1) {
       throw new NotFoundException('User is not an owner');
     }
@@ -373,7 +426,7 @@ export class TeamService {
   }
 
   isOwner(team: TeamDocument, userId: string): boolean {
-    return team.ownerIds.some((o) => o.toString() === userId);
+    return team.ownerIds.some((o) => resolveId(o) === resolveId(userId));
   }
 
   async getLeaderboard(

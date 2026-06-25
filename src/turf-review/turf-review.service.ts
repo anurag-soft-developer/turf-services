@@ -23,8 +23,10 @@ import {
 } from './dto/turf-review.dto';
 import { TurfStatus } from '../turf/schemas/turf.schema';
 import { PaginatedResult } from '../core/interfaces/common';
+import { resolveId } from '../core/utils/mongo-ref.util';
 import { buildMongoSortOptions } from '../core/utils/mongo-sort.util';
 import { userSelectFields } from '../users/schemas/user.schema';
+import { StorageLifecycleService } from '../storage/storage-lifecycle.service';
 
 @Injectable()
 export class TurfReviewService {
@@ -47,6 +49,7 @@ export class TurfReviewService {
     private turfReviewModel: Model<TurfReviewDocument>,
     @InjectModel(Turf.name)
     private turfModel: Model<TurfDocument>,
+    private readonly storageLifecycle: StorageLifecycleService,
   ) {}
 
   async createReview(
@@ -92,6 +95,14 @@ export class TurfReviewService {
       await review.save()
     ).populate(TurfReviewService.populateOptions);
 
+    await this.storageLifecycle.syncUrlArrayOnEntitySave({
+      userId,
+      entityType: 'turf_review',
+      entityId: savedReview._id.toString(),
+      previousUrls: [],
+      nextUrls: createReviewDto.images ?? [],
+    });
+
     await this.updateTurfRatingStats(turf);
 
     return savedReview;
@@ -108,17 +119,28 @@ export class TurfReviewService {
     }
 
     // Only allow the reviewer to update their own review
-    if (review.reviewedBy.toString() !== userId) {
+    if (resolveId(review.reviewedBy) !== resolveId(userId)) {
       throw new ForbiddenException('You can only update your own reviews');
     }
 
     const updateData = { ...updateReviewDto };
+    const previousImages = review.images ?? [];
 
     Object.assign(review, updateData);
 
     const updatedReview = await (
       await review.save()
     ).populate(TurfReviewService.populateOptions);
+
+    if (updateReviewDto.images !== undefined) {
+      await this.storageLifecycle.syncUrlArrayOnEntitySave({
+        userId,
+        entityType: 'turf_review',
+        entityId: updatedReview._id.toString(),
+        previousUrls: previousImages,
+        nextUrls: updateReviewDto.images ?? [],
+      });
+    }
 
     // Update turf's average rating if rating changed
     if (updateReviewDto.rating !== undefined) {
@@ -300,12 +322,17 @@ export class TurfReviewService {
     }
 
     // Only allow the reviewer to delete their own review
-    if (review.reviewedBy.toString() !== userId.toString()) {
+    if (resolveId(review.reviewedBy) !== resolveId(userId)) {
       throw new ForbiddenException('You can only delete your own reviews');
     }
 
     const turfId = review.turf.toString();
+    const reviewImages = review.images ?? [];
     await this.turfReviewModel.findByIdAndDelete(id);
+
+    if (reviewImages.length > 0) {
+      await this.storageLifecycle.deleteUrlsForUser(userId, reviewImages);
+    }
 
     // Update turf's rating stats after deletion
     await this.updateTurfRatingStats(turfId);

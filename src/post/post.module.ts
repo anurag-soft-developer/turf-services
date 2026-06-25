@@ -6,6 +6,7 @@ import { PostService } from './post.service';
 import { PostController } from './post.controller';
 import { MediaController } from './media.controller';
 import { TeamModule } from '../team/team.module';
+import { StorageModule } from '../storage/storage.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { TeamModule } from '../team/team.module';
       { name: ContentPost.name, schema: ContentPostSchema },
     ]),
     TeamModule,
+    StorageModule,
   ],
   controllers: [PostController, MediaController],
   providers: [PostService],

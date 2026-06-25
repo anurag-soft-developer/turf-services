@@ -27,6 +27,7 @@ import {
 } from '../team/schemas/team.schema';
 import { ConnectionsService } from '../connections/connections.service';
 import { PaginatedResult } from '../core/interfaces/common';
+import { resolveId } from '../core/utils/mongo-ref.util';
 import { userSelectFields } from '../users/schemas/user.schema';
 import {
   SuspendTeamMemberDto,
@@ -321,7 +322,7 @@ export class TeamMemberService {
       throw new BadRequestException('You are not an active member of this team');
     }
 
-    const isOwner = team.ownerIds.some((o) => o.toString() === userId);
+    const isOwner = team.ownerIds.some((o) => resolveId(o) === resolveId(userId));
     if (isOwner && team.ownerIds.length === 1) {
       throw new ForbiddenException(
         'You are the only owner; assign another owner before leaving',
@@ -329,7 +330,9 @@ export class TeamMemberService {
     }
 
     if (isOwner) {
-      team.ownerIds = team.ownerIds.filter((o) => o.toString() !== userId);
+      team.ownerIds = team.ownerIds.filter(
+        (o) => resolveId(o) !== resolveId(userId),
+      );
       await team.save();
     }
 
@@ -347,7 +350,7 @@ export class TeamMemberService {
     const team = await this.teamService.requireTeam(teamId);
     this.teamService.assertOwner(team, ownerUserId);
 
-    if (targetUserId === team.createdBy.toString()) {
+    if (resolveId(targetUserId) === resolveId(team.createdBy)) {
       throw new ForbiddenException('Cannot remove the team creator');
     }
 
@@ -360,7 +363,9 @@ export class TeamMemberService {
       throw new NotFoundException('Active membership not found');
     }
 
-    const idx = team.ownerIds.findIndex((o) => o.toString() === targetUserId);
+    const idx = team.ownerIds.findIndex(
+      (o) => resolveId(o) === resolveId(targetUserId),
+    );
     if (idx !== -1) {
       team.ownerIds.splice(idx, 1);
       await team.save();
@@ -439,7 +444,7 @@ export class TeamMemberService {
       throw new BadRequestException('Only active members can be suspended');
     }
 
-    if (m.user.toString() === team.createdBy.toString()) {
+    if (resolveId(m.user) === resolveId(team.createdBy)) {
       throw new ForbiddenException('Cannot suspend the team creator');
     }
 
@@ -494,7 +499,7 @@ export class TeamMemberService {
     teamId: string,
   ): Promise<TeamMemberDocument> {
     const m = await this.teamMemberModel.findById(id);
-    if (!m || m.team.toString() !== teamId) {
+    if (!m || resolveId(m.team) !== resolveId(teamId)) {
       throw new NotFoundException('Team membership not found');
     }
     return m;

@@ -26,6 +26,8 @@ import {
 } from './dto/announced-players.dto';
 import { NotificationService } from '../../notification/notification.service';
 import { notifyAnnouncedPlayers } from '../util/matchmaking-notification.utility';
+import { StorageLifecycleService } from '../../storage/storage-lifecycle.service';
+import { resolveId } from '../../core/utils/mongo-ref.util';
 
 @Injectable()
 export class AnnouncedPlayersService {
@@ -35,6 +37,7 @@ export class AnnouncedPlayersService {
     private readonly teamService: TeamService,
     private readonly teamMemberService: TeamMemberService,
     private readonly notificationService: NotificationService,
+    private readonly storageLifecycle: StorageLifecycleService,
   ) {}
 
   async addAnnouncedPlayers(
@@ -56,7 +59,7 @@ export class AnnouncedPlayersService {
     ensureMatchHasTeam(match, actorOid);
 
     const existing = [...(match.announcedPlayers ?? [])];
-    const actorStr = actorOid.toString();
+    const actorStr = resolveId(actorOid);
 
     const incomingIds = dto.players.map((p) => p.userId);
     if (new Set(incomingIds).size !== incomingIds.length) {
@@ -72,8 +75,8 @@ export class AnnouncedPlayersService {
       if (
         existing.some(
           (p) =>
-            p.teamId.toString() === actorStr &&
-            p.userId.toString() === uid,
+            resolveId(p.teamId) === actorStr &&
+            resolveId(p.userId) === resolveId(uid),
         )
       ) {
         throw new ConflictException(
@@ -83,8 +86,8 @@ export class AnnouncedPlayersService {
       if (
         existing.some(
           (p) =>
-            p.teamId.toString() !== actorStr &&
-            p.userId.toString() === uid,
+            resolveId(p.teamId) !== actorStr &&
+            resolveId(p.userId) === resolveId(uid),
         )
       ) {
         throw new ConflictException(
@@ -113,6 +116,20 @@ export class AnnouncedPlayersService {
       added: true,
       excludeUserId: userId,
     });
+
+    const addedAvatars = additions
+      .map((p) => p.avatar)
+      .filter((avatar): avatar is string => !!avatar);
+    if (addedAvatars.length > 0) {
+      await this.storageLifecycle.syncUrlArrayOnEntitySave({
+        userId,
+        entityType: 'announced_player',
+        entityId: matchId,
+        previousUrls: [],
+        nextUrls: addedAvatars,
+      });
+    }
+
     return this.announcedPlayersForTeam(match, actorOid);
   }
 
@@ -135,13 +152,13 @@ export class AnnouncedPlayersService {
     ensureMatchHasTeam(match, actorOid);
 
     const existing = [...(match.announcedPlayers ?? [])];
-    const actorStr = actorOid.toString();
+    const actorStr = resolveId(actorOid);
 
     for (const uid of dto.userIds) {
       const ok = existing.some(
         (p) =>
-          p.teamId.toString() === actorStr &&
-          p.userId.toString() === uid,
+          resolveId(p.teamId) === actorStr &&
+          resolveId(p.userId) === resolveId(uid),
       );
       if (!ok) {
         throw new BadRequestException(
@@ -149,12 +166,21 @@ export class AnnouncedPlayersService {
         );
       }
     }
-    const removeSet = new Set(dto.userIds.map((id) => id.toString()));
+    const removeSet = new Set(dto.userIds.map((id) => resolveId(id)));
+    const removedAvatars = existing
+      .filter(
+        (p) =>
+          resolveId(p.teamId) === actorStr &&
+          removeSet.has(resolveId(p.userId)) &&
+          p.avatar,
+      )
+      .map((p) => p.avatar as string);
+
     match.announcedPlayers = existing.filter(
       (p) =>
         !(
-          p.teamId.toString() === actorStr &&
-          removeSet.has(p.userId.toString())
+          resolveId(p.teamId) === actorStr &&
+          removeSet.has(resolveId(p.userId))
         ),
     );
     await match.save();
@@ -164,6 +190,11 @@ export class AnnouncedPlayersService {
       added: false,
       excludeUserId: userId,
     });
+
+    if (removedAvatars.length > 0) {
+      await this.storageLifecycle.deleteUrlsForUser(userId, removedAvatars);
+    }
+
     return this.announcedPlayersForTeam(match, actorOid);
   }
 
@@ -186,13 +217,13 @@ export class AnnouncedPlayersService {
     ensureMatchHasTeam(match, actorOid);
 
     const existing = [...(match.announcedPlayers ?? [])];
-    const actorStr = actorOid.toString();
+    const actorStr = resolveId(actorOid);
 
     for (const u of dto.updates) {
       const idx = existing.findIndex(
         (p) =>
-          p.teamId.toString() === actorStr &&
-          p.userId.toString() === u.userId,
+          resolveId(p.teamId) === actorStr &&
+          resolveId(p.userId) === resolveId(u.userId),
       );
       if (idx === -1) {
         throw new BadRequestException(
@@ -200,8 +231,18 @@ export class AnnouncedPlayersService {
         );
       }
       const row = existing[idx];
+      if (u.avatar !== undefined) {
+        const previousAvatar = row.avatar;
+        row.avatar = u.avatar;
+        await this.storageLifecycle.syncUrlArrayOnEntitySave({
+          userId,
+          entityType: 'announced_player',
+          entityId: `${matchId}:${u.userId}`,
+          previousUrls: previousAvatar ? [previousAvatar] : [],
+          nextUrls: u.avatar ? [u.avatar] : [],
+        });
+      }
       if (u.name !== undefined) row.name = u.name;
-      if (u.avatar !== undefined) row.avatar = u.avatar;
       if (u.email !== undefined) row.email = u.email;
       if (u.is_substitute !== undefined) row.is_substitute = u.is_substitute;
       if (u.role !== undefined) row.role = u.role as AnnouncedPlayerRole;
@@ -240,9 +281,9 @@ export class AnnouncedPlayersService {
     match: TeamMatchDocument,
     teamId: Types.ObjectId,
   ): AnnouncedPlayer[] {
-    const tid = teamId.toString();
+    const tid = resolveId(teamId);
     return (match.announcedPlayers ?? []).filter(
-      (p) => p.teamId.toString() === tid,
+      (p) => resolveId(p.teamId) === tid,
     );
   }
 
