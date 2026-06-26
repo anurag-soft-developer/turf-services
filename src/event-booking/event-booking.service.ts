@@ -111,7 +111,11 @@ export class EventBookingService {
       existingBooking.playerCount = dto.playerCount;
       booking = await existingBooking.save();
     } else {
-      await this.assertCapacityAvailable(event, 1);
+      await EventBookingUtility.assertCapacityAvailable(
+        this.eventBookingModel,
+        event,
+        1,
+      );
 
       const totalAmount = event.price;
       const { ownerPayoutAmount: organizerPayoutAmount, platformFeeAmount } =
@@ -264,9 +268,16 @@ export class EventBookingService {
     }
 
     const event = await this.eventsService.getPublishedEventForBooking(eventId);
-    await this.assertCapacityAvailable(event, 1, booking._id.toString());
+    await EventBookingUtility.assertCapacityAvailable(
+      this.eventBookingModel,
+      event,
+      1,
+      booking._id.toString(),
+    );
 
-    await this.confirmPaidBooking(
+    await EventBookingUtility.confirmPaidBooking(
+      this.walletService,
+      this.eventsService,
       booking,
       event,
       dto.razorpay_order_id,
@@ -340,7 +351,12 @@ export class EventBookingService {
       throw new BadRequestException('Invalid payment signature');
     }
 
-    const confirmed = await this.confirmPaidBookingFromPaymentLink(
+    const confirmed = await EventBookingUtility.confirmPaidBookingFromPaymentLink(
+      this.eventBookingModel,
+      this.eventModel,
+      this.rajorpayService,
+      this.walletService,
+      this.eventsService,
       booking,
       dto.razorpay_payment_link_id,
       dto.razorpay_payment_id,
@@ -367,7 +383,12 @@ export class EventBookingService {
       return;
     }
 
-    await this.confirmPaidBookingFromPaymentLink(
+    await EventBookingUtility.confirmPaidBookingFromPaymentLink(
+      this.eventBookingModel,
+      this.eventModel,
+      this.rajorpayService,
+      this.walletService,
+      this.eventsService,
       booking,
       paymentLinkId,
       razorpayPaymentId,
@@ -401,7 +422,14 @@ export class EventBookingService {
       return;
     }
 
-    await this.confirmPaidBooking(booking, event, orderId, razorpayPaymentId);
+    await EventBookingUtility.confirmPaidBooking(
+      this.walletService,
+      this.eventsService,
+      booking,
+      event,
+      orderId,
+      razorpayPaymentId,
+    );
 
     await notifyEventBookingConfirmedParties(
       this.notificationService,
@@ -702,7 +730,8 @@ export class EventBookingService {
       throw new NotFoundException('Booking not found');
     }
 
-    await this.assertOrganizerAccess(
+    await EventBookingUtility.assertOrganizerAccess(
+      this.eventModel,
       booking.event.toString(),
       userId,
       userRole,
@@ -724,7 +753,8 @@ export class EventBookingService {
       throw new NotFoundException('Booking not found');
     }
 
-    await this.assertOrganizerAccess(
+    await EventBookingUtility.assertOrganizerAccess(
+      this.eventModel,
       booking.event.toString(),
       userId,
       userRole,
@@ -744,7 +774,10 @@ export class EventBookingService {
     playerCount: number,
   ): Promise<{ available: boolean; remaining: number }> {
     const event = await this.eventsService.getPublishedEventForBooking(eventId);
-    const pending = await this.countActivePendingBookings(eventId);
+    const pending = await EventBookingUtility.countActivePendingBookings(
+      this.eventBookingModel,
+      eventId,
+    );
     const used = event.registeredCount + pending;
     const remaining = Math.max(0, event.maxParticipants - used);
     return {
@@ -781,123 +814,5 @@ export class EventBookingService {
         );
       }
     }
-  }
-
-  private async confirmPaidBookingFromPaymentLink(
-    booking: EventBookingDocument,
-    paymentLinkId: string,
-    razorpayPaymentId?: string,
-  ): Promise<boolean> {
-    if (booking.paymentStatus === PaymentStatus.PAID) {
-      return true;
-    }
-
-    if (booking.status !== EventBookingStatus.PENDING) {
-      return false;
-    }
-
-    const resolved =
-      await this.rajorpayService.resolveCapturedPaymentForLink(paymentLinkId);
-    if (!resolved) {
-      return false;
-    }
-
-    const paymentId = razorpayPaymentId ?? resolved.paymentId;
-    const event = await this.eventModel.findById(booking.event);
-    if (!event) {
-      return false;
-    }
-
-    await this.assertCapacityAvailable(event, 1, booking._id.toString());
-
-    await this.confirmPaidBooking(
-      booking,
-      event,
-      resolved.orderId,
-      paymentId,
-    );
-
-    return true;
-  }
-
-  private async confirmPaidBooking(
-    booking: EventBookingDocument,
-    event: EventDocument,
-    orderId: string,
-    razorpayPaymentId: string,
-  ): Promise<void> {
-    if (booking.paymentStatus === PaymentStatus.PAID) {
-      return;
-    }
-
-    booking.razorpayOrderId = orderId;
-    booking.razorpayPaymentId = razorpayPaymentId;
-    booking.paymentStatus = PaymentStatus.PAID;
-    booking.status = EventBookingStatus.CONFIRMED;
-    booking.paymentExpiresAt = undefined;
-    booking.confirmedAt = new Date();
-    booking.paidAt = new Date();
-    booking.bookingId =
-      booking.bookingId ||
-      EventBookingUtility.generateBookingId(booking._id.toString());
-    await booking.save();
-
-    if (booking.organizerPayoutAmount && booking.organizerPayoutAmount > 0) {
-      await this.walletService.moveAmountToEscrow(
-        WalletType.EVENT,
-        booking._id.toString(),
-        event.createdBy.toString(),
-        booking.organizerPayoutAmount,
-      );
-    }
-
-    await this.eventsService.incrementRegisteredCount(event._id.toString(), 1);
-  }
-
-  private async assertCapacityAvailable(
-    event: EventDocument,
-    slots: number,
-    excludeBookingId?: string,
-  ): Promise<void> {
-    const pending = await this.countActivePendingBookings(
-      event._id.toString(),
-      excludeBookingId,
-    );
-    if (event.registeredCount + pending + slots > event.maxParticipants) {
-      throw new BadRequestException('Event is at full capacity');
-    }
-  }
-
-  private async assertOrganizerAccess(
-    eventId: string,
-    userId: string,
-    userRole: string,
-  ): Promise<void> {
-    if (userRole === UserRole.PLATFORM_ADMIN) {
-      return;
-    }
-
-    const event = await this.eventModel.findById(eventId).select('createdBy');
-    if (!event) {
-      throw new NotFoundException('Event not found');
-    }
-
-    if (resolveId(event.createdBy) !== resolveId(userId)) {
-      throw new ForbiddenException('Access denied');
-    }
-  }
-
-  private async countActivePendingBookings(
-    eventId: string,
-    excludeBookingId?: string,
-  ): Promise<number> {
-    const now = new Date();
-    return this.eventBookingModel.countDocuments({
-      event: eventId,
-      status: EventBookingStatus.PENDING,
-      paymentStatus: PaymentStatus.PENDING,
-      paymentExpiresAt: { $gt: now },
-      ...(excludeBookingId ? { _id: { $ne: excludeBookingId } } : {}),
-    });
   }
 }
