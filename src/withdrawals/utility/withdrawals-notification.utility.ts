@@ -4,6 +4,7 @@ import { NotificationService } from '../../notification/notification.service';
 import { NotificationModule } from '../../notification/schemas/notification.schema';
 import { UsersService } from '../../users/users.service';
 import { UserRole } from '../../auth/decorators/roles.decorator';
+import { WalletType } from '../../wallet/interfaces/wallet.interface';
 import { WithdrawalStatus } from '../interfaces/withdrawal.interface';
 
 const logger = new Logger('WithdrawalsNotification');
@@ -21,7 +22,7 @@ export async function notifyWithdrawalSubmitted(
   params: {
     withdrawalId: string;
     amount: number;
-    walletType: string;
+    walletType: WalletType;
     hostUserId: string;
   },
 ): Promise<void> {
@@ -59,7 +60,7 @@ export async function notifyWithdrawalStatusChanged(
     withdrawalId: string;
     status: WithdrawalStatus;
     amount: number;
-    walletType: string;
+    walletType: WalletType;
     rejectionReason?: string;
   },
 ): Promise<void> {

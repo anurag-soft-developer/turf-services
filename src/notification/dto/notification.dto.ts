@@ -1,6 +1,15 @@
 import { createZodDto, type ZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 import { NotificationModule } from '../schemas/notification.schema';
+import type {
+  ConnectionNotificationData,
+  EventBookingNotificationData,
+  MatchmakingNotificationData,
+  TeamNotificationData,
+  TurfApprovalNotificationData,
+  TurfBookingNotificationData,
+  WithdrawalNotificationData,
+} from '../types/notification-data.types';
 
 const createNotificationSchema = z.object({
   recipientUserId: z.string().trim().min(1),
@@ -28,3 +37,52 @@ export class CreateNotificationDto extends createZodDto(
 export class ListNotificationsQueryDto extends createZodDto(
   listNotificationsQuerySchema,
 ) {}
+
+type NotificationPayloadBase = {
+  title: string;
+  body: string;
+  sourceType?: string;
+  sourceId?: string;
+};
+
+export type CreateNotificationInput =
+  | (NotificationPayloadBase & {
+      recipientUserId: string;
+      module: NotificationModule.TURF_BOOKING;
+      data: TurfBookingNotificationData;
+    })
+  | (NotificationPayloadBase & {
+      recipientUserId: string;
+      module: NotificationModule.EVENT_BOOKING;
+      data: EventBookingNotificationData;
+    })
+  | (NotificationPayloadBase & {
+      recipientUserId: string;
+      module: NotificationModule.MATCHMAKING;
+      data: MatchmakingNotificationData;
+    })
+  | (NotificationPayloadBase & {
+      recipientUserId: string;
+      module: NotificationModule.TEAMS;
+      data: TeamNotificationData;
+    })
+  | (NotificationPayloadBase & {
+      recipientUserId: string;
+      module: NotificationModule.CONNECTIONS;
+      data: ConnectionNotificationData;
+    })
+  | (NotificationPayloadBase & {
+      recipientUserId: string;
+      module: NotificationModule.WITHDRAWALS;
+      data: WithdrawalNotificationData;
+    })
+  | (NotificationPayloadBase & {
+      recipientUserId: string;
+      module: NotificationModule.TURF_APPROVAL;
+      data: TurfApprovalNotificationData;
+    });
+
+export type NotificationBaseDto = Omit<
+  CreateNotificationInput,
+  'recipientUserId'
+>;

@@ -10,9 +10,10 @@ import { config } from '../core/config/env.config';
 import { UsersService } from '../users/users.service';
 import { FcmService } from './fcm.service';
 import type {
-  CreateNotificationDto,
+  CreateNotificationInput,
   ListNotificationsQueryDto,
 } from './dto/notification.dto';
+// import { parseNotificationData } from './schemas/notification-data.schema';
 import {
   Notification,
   NotificationDocument,
@@ -34,7 +35,7 @@ export class NotificationService {
    * Persists the notification, pushes to realtime WebSocket, then may send FCM
    * when `notificationsEnabled` and `notificationModules[module]` allow device push.
    */
-  async createAndDispatch(dto: CreateNotificationDto): Promise<{
+  async createAndDispatch(dto: CreateNotificationInput): Promise<{
     notification: NotificationDocument;
     fcm?: { successCount: number; failureCount: number };
     realtimeDispatched: boolean;

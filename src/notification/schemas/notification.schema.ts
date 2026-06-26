@@ -1,5 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema } from 'mongoose';
+import type { NotificationData } from '../types/notification-data.types';
 
 export type NotificationDocument = Notification & Document;
 
@@ -38,7 +39,7 @@ export class Notification {
   body!: string;
 
   @Prop({ type: MongooseSchema.Types.Mixed, default: {} })
-  data?: Record<string, unknown>;
+  data?: NotificationData;
 
   @Prop({ type: String, trim: true, index: true })
   sourceType?: string;

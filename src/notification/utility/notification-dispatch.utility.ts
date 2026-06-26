@@ -7,21 +7,21 @@ import {
 } from '../../team-member/schemas/team-member.schema';
 import type { TeamDocument } from '../../team/schemas/team.schema';
 import { User } from '../../users/schemas/user.schema';
-import type { CreateNotificationDto } from '../dto/notification.dto';
+import type {
+  CreateNotificationInput,
+  NotificationBaseDto,
+} from '../dto/notification.dto';
 import { NotificationService } from '../notification.service';
 
-export type NotificationBaseDto = Omit<
-  CreateNotificationDto,
-  'recipientUserId'
->;
+export type { NotificationBaseDto };
 
 /**
  * Fan-out a notification to multiple users (deduped). Optionally excludes the actor.
  */
-export async function dispatchToUsers(
+export async function dispatchToUsers<T extends NotificationBaseDto>(
   notificationService: NotificationService,
   recipientUserIds: string[],
-  baseDto: NotificationBaseDto,
+  baseDto: T,
   excludeUserId?: string,
 ): Promise<void> {
   const unique = [
@@ -37,7 +37,7 @@ export async function dispatchToUsers(
       notificationService.createAndDispatch({
         ...baseDto,
         recipientUserId,
-      }),
+      } as CreateNotificationInput),
     ),
   );
 }
