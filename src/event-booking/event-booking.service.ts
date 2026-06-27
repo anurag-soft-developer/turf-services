@@ -45,6 +45,19 @@ import { config } from '../core/config/env.config';
 import { resolveId } from '../core/utils/mongo-ref.util';
 import * as UserInterface from '../users/interfaces/user.interface';
 
+function emptyPaginatedResult(
+  page: number,
+  limit: number,
+): PaginatedResult<EventBookingDocument> {
+  return {
+    data: [],
+    totalDocuments: 0,
+    page,
+    limit,
+    totalPages: 0,
+  };
+}
+
 @Injectable()
 export class EventBookingService {
   static populateOptions: PopulateOptions[] = [
@@ -351,16 +364,17 @@ export class EventBookingService {
       throw new BadRequestException('Invalid payment signature');
     }
 
-    const confirmed = await EventBookingUtility.confirmPaidBookingFromPaymentLink(
-      this.eventBookingModel,
-      this.eventModel,
-      this.rajorpayService,
-      this.walletService,
-      this.eventsService,
-      booking,
-      dto.razorpay_payment_link_id,
-      dto.razorpay_payment_id,
-    );
+    const confirmed =
+      await EventBookingUtility.confirmPaidBookingFromPaymentLink(
+        this.eventBookingModel,
+        this.eventModel,
+        this.rajorpayService,
+        this.walletService,
+        this.eventsService,
+        booking,
+        dto.razorpay_payment_link_id,
+        dto.razorpay_payment_id,
+      );
     if (!confirmed) {
       throw new BadRequestException('Payment was not completed');
     }
@@ -669,34 +683,38 @@ export class EventBookingService {
 
     const { page = 1, limit = 10 } = filter;
     if (eventIds.length === 0) {
-      return {
-        data: [],
-        totalDocuments: 0,
-        page,
-        limit,
-        totalPages: 0,
-      };
+      return emptyPaginatedResult(page, limit);
     }
 
-    const { status, paymentStatus, event, sortOrder = 'desc' } = filter;
+    const {
+      status,
+      paymentStatus,
+      event,
+      startDate,
+      endDate,
+      sortOrder = 'desc',
+    } = filter;
     const query: Record<string, unknown> = { event: { $in: eventIds } };
+    const ownedEventIdSet = new Set(eventIds.map((id) => resolveId(id)));
 
-    if (status) query.status = status;
+    if (status?.length) {
+      query.status = status.length === 1 ? status[0] : { $in: status };
+    }
     if (paymentStatus) query.paymentStatus = paymentStatus;
-    if (event) {
-      const isOwned = eventIds.some(
-        (id) => resolveId(id) === resolveId(event),
+    if (event?.length) {
+      const ownedRequested = event.filter((id) =>
+        ownedEventIdSet.has(resolveId(id)),
       );
-      if (!isOwned) {
-        return {
-          data: [],
-          totalDocuments: 0,
-          page,
-          limit,
-          totalPages: 0,
-        };
+      if (ownedRequested.length === 0) {
+        return emptyPaginatedResult(page, limit);
       }
-      query.event = event;
+      query.event = ownedRequested;
+    }
+    if (startDate || endDate) {
+      const createdAtFilter: Record<string, Date> = {};
+      if (startDate) createdAtFilter.$gte = startDate;
+      if (endDate) createdAtFilter.$lte = endDate;
+      query.createdAt = createdAtFilter;
     }
     const sort = { createdAt: sortOrder === 'asc' ? 1 : -1 } as const;
     const skip = (page - 1) * limit;

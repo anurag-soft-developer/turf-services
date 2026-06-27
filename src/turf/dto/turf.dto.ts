@@ -14,17 +14,27 @@ export const DimensionsSchema = z.object({
 
 // Pricing Schema
 export const PricingSchema = z.object({
-  basePricePerHour: z.number().min(0, 'Base price must be greater than or equal to 0'),
+  basePricePerHour: z
+    .number()
+    .min(0, 'Base price must be greater than or equal to 0'),
   weekendSurge: z.number().min(0).optional(),
 });
 
 // Operating Hours Schema
 export const OperatingHoursSchema = z.object({
-  open: z.string()
-    .regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Time must be in HH:MM format (24-hour)')
+  open: z
+    .string()
+    .regex(
+      /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/,
+      'Time must be in HH:MM format (24-hour)',
+    )
     .optional(),
-  close: z.string()
-    .regex(/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Time must be in HH:MM format (24-hour)')
+  close: z
+    .string()
+    .regex(
+      /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/,
+      'Time must be in HH:MM format (24-hour)',
+    )
     .optional(),
 });
 
@@ -36,7 +46,9 @@ export const CreateTurfSchema = z.object({
   images: z.array(z.string()).optional(),
   amenities: z.array(z.string()).optional(),
   dimensions: DimensionsSchema.optional(),
-  sportType: z.array(sportTypeSchema).min(1, 'At least one sport type is required'),
+  sportType: z
+    .array(sportTypeSchema)
+    .min(1, 'At least one sport type is required'),
   pricing: PricingSchema,
   operatingHours: OperatingHoursSchema.optional(),
   isAvailable: z.boolean().optional(),

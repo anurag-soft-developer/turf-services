@@ -23,6 +23,5 @@ export const DirectUploadBodySchema = z.object({
   purpose: mediaUploadPurposeSchema,
 });
 
-
-export class UploadUrlRequestDto extends  createZodDto(UploadUrlRequestSchema) {}
-export class DirectUploadBodyDto extends  createZodDto(DirectUploadBodySchema) {}
+export class UploadUrlRequestDto extends createZodDto(UploadUrlRequestSchema) {}
+export class DirectUploadBodyDto extends createZodDto(DirectUploadBodySchema) {}

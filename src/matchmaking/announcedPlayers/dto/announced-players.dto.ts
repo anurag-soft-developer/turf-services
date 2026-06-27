@@ -28,7 +28,7 @@ const AddAnnouncedPlayersSchema = z.object({
 
 const RemoveAnnouncedPlayersSchema = z.object({
   actorTeamId: objectId,
-  userIds: z.array(objectId).min(1)//.max(50),
+  userIds: z.array(objectId).min(1), //.max(50),
 });
 
 const AnnouncedPlayerUpdateRowSchema = z

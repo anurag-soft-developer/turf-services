@@ -44,7 +44,12 @@ export class UsersController {
     @CurrentUser() user: IUser,
     @Body() updateProfileDto: UpdateProfileDto,
   ): Promise<IUser> {
-    return (await this.usersService.updateProfile(user._id.toString(), updateProfileDto)).toObject();
+    return (
+      await this.usersService.updateProfile(
+        user._id.toString(),
+        updateProfileDto,
+      )
+    ).toObject();
   }
 
   @UseGuards(JwtAuthGuard)
@@ -82,7 +87,10 @@ export class UsersController {
     @CurrentUser() user: IUser,
     @Body() dto: UpsertFcmDeviceDto,
   ) {
-    const updated = await this.usersService.upsertFcmDevice(user._id.toString(), dto);
+    const updated = await this.usersService.upsertFcmDevice(
+      user._id.toString(),
+      dto,
+    );
     return UsersService.sanitizeProfile(updated);
   }
 

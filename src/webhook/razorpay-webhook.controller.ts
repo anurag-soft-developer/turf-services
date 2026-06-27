@@ -15,7 +15,9 @@ import { RazorpayWebhookService } from './razorpay-webhook.service';
 
 @Controller('webhooks')
 export class RazorpayWebhookController {
-  constructor(private readonly razorpayWebhookService: RazorpayWebhookService) {}
+  constructor(
+    private readonly razorpayWebhookService: RazorpayWebhookService,
+  ) {}
 
   @Post('razorpay')
   @Public()

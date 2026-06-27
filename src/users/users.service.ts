@@ -463,7 +463,7 @@ export class UsersService {
         ...(u.avatar ? { avatar: u.avatar } : {}),
       };
     });
-    
+
     return {
       data,
       totalDocuments,

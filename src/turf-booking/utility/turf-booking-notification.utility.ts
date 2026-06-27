@@ -121,11 +121,13 @@ export async function notifyBookerPaymentFailed(
     await notificationService.createAndDispatch({
       recipientUserId: booking.bookedBy.toString(),
       module: NotificationModule.TURF_BOOKING,
-      title: reason === 'hold_expired' ? 'Booking hold expired' : 'Payment failed',
+      title:
+        reason === 'hold_expired' ? 'Booking hold expired' : 'Payment failed',
       body,
       data: {
         bookingId,
-        kind: reason === 'hold_expired' ? 'booking_hold_expired' : 'payment_failed',
+        kind:
+          reason === 'hold_expired' ? 'booking_hold_expired' : 'payment_failed',
       },
       sourceType: 'turfBooking',
       sourceId: bookingId,

@@ -1,4 +1,10 @@
-import { BadRequestException, ForbiddenException, Inject, Injectable, forwardRef } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  forwardRef,
+} from '@nestjs/common';
 import {
   DeleteObjectsCommand,
   ListObjectsV2Command,
@@ -10,7 +16,6 @@ import { randomUUID } from 'crypto';
 import { config } from '../core/config/env.config';
 import { MediaUploadPurpose } from '../post/dto/media-upload.dto';
 import { StorageLifecycleService } from './storage-lifecycle.service';
-
 
 interface SignUploadParams {
   userId: string;
@@ -68,7 +73,10 @@ export class StorageService {
     fileUrl: string;
     objectKey: string;
     expiresAt: string;
-    headers: { 'Content-Type': string; 'x-amz-acl': typeof OBJECT_ACL_PUBLIC_READ };
+    headers: {
+      'Content-Type': string;
+      'x-amz-acl': typeof OBJECT_ACL_PUBLIC_READ;
+    };
   }> {
     this.assertAllowedMimeType(params.mimeType);
     this.assertPositiveSize(params.sizeBytes);
@@ -160,14 +168,18 @@ export class StorageService {
     deleted: string[];
     failed: { objectKey: string; code?: string; message?: string }[];
   }> {
-    const normalized = [...new Set(params.objectKeys.map((k) => k.replace(/^\/+/, '')))];
+    const normalized = [
+      ...new Set(params.objectKeys.map((k) => k.replace(/^\/+/, ''))),
+    ];
     const prefix = `users/${params.userId}/`;
     for (const key of normalized) {
       if (key.includes('..')) {
         throw new BadRequestException('Invalid object key');
       }
       if (!key.startsWith(prefix)) {
-        throw new ForbiddenException('Cannot delete objects outside your storage prefix');
+        throw new ForbiddenException(
+          'Cannot delete objects outside your storage prefix',
+        );
       }
     }
 
@@ -208,7 +220,9 @@ export class StorageService {
     deleted: string[];
     failed: { objectKey: string; code?: string; message?: string }[];
   }> {
-    const normalized = [...new Set(objectKeys.map((k) => k.replace(/^\/+/, '')))];
+    const normalized = [
+      ...new Set(objectKeys.map((k) => k.replace(/^\/+/, ''))),
+    ];
     for (const key of normalized) {
       if (key.includes('..')) {
         throw new BadRequestException('Invalid object key');
@@ -306,7 +320,10 @@ export class StorageService {
     if (!token?.trim()) {
       return null;
     }
-    const safe = token.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+    const safe = token
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]/g, '-');
     return safe || null;
   }
 
@@ -316,9 +333,10 @@ export class StorageService {
       return `${cdnBase.replace(/\/+$/, '')}/${objectKey}`;
     }
 
-    const endpointHost = config.SPACES_ENDPOINT
-      .replace(/^https?:\/\//, '')
-      .replace(/\/+$/, '');
+    const endpointHost = config.SPACES_ENDPOINT.replace(
+      /^https?:\/\//,
+      '',
+    ).replace(/\/+$/, '');
     return `https://${config.SPACES_BUCKET}.${endpointHost}/${objectKey}`;
   }
 

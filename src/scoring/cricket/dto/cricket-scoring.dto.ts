@@ -91,7 +91,10 @@ const UpdateCricketStateSchema = z
       v.strikerUserId !== undefined ||
       v.nonStrikerUserId !== undefined ||
       v.bowlerUserId !== undefined,
-    { message: 'Provide at least one of strikerUserId, nonStrikerUserId, bowlerUserId' },
+    {
+      message:
+        'Provide at least one of strikerUserId, nonStrikerUserId, bowlerUserId',
+    },
   );
 
 export class UpdateCricketStateDto extends createZodDto(

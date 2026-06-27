@@ -1,7 +1,10 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { TeamMemberModule } from '../team-member/team-member.module';
-import { TeamMatch, TeamMatchSchema } from '../matchmaking/schemas/team-match.schema';
+import {
+  TeamMatch,
+  TeamMatchSchema,
+} from '../matchmaking/schemas/team-match.schema';
 import { ChatController } from './chat.controller';
 import { ChatService } from './chat.service';
 import { ChatMessage, ChatMessageSchema } from './schemas/chat-message.schema';

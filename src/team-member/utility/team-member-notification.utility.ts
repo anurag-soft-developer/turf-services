@@ -53,7 +53,9 @@ export async function notifyTeamJoinResolved(
     await notificationService.createAndDispatch({
       recipientUserId: params.recipientUserId,
       module: NotificationModule.TEAMS,
-      title: params.accepted ? 'Join request accepted' : 'Join request rejected',
+      title: params.accepted
+        ? 'Join request accepted'
+        : 'Join request rejected',
       body: params.accepted
         ? `You were accepted into ${params.teamName}.`
         : `Your request to join ${params.teamName} was rejected.`,

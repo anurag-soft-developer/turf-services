@@ -1,9 +1,19 @@
 import z from 'zod';
 import { createZodDto, type ZodDto } from 'nestjs-zod';
+import { endOfDay, startOfDay } from './utils/date.util';
 
 export const date = z
   .string()
   .refine((val) => !isNaN(Date.parse(val)), 'Invalid date time format');
+
+export const calendarDateStart = date.transform(startOfDay);
+export const calendarDateEnd = date.transform(endOfDay);
+
+/** Spread into filter/search schemas: inclusive calendar-day range on query params. */
+export const dateRangeQueryFields = {
+  startDate: calendarDateStart.optional(),
+  endDate: calendarDateEnd.optional(),
+} as const;
 
 /**
  * Nest/Express query: `key=a,b` and/or repeated `key=` → trimmed non-empty strings.
@@ -64,6 +74,16 @@ export function parseEnumQuery<T extends string>(
 }
 
 /**
+ * Query param as one string or many: `event=<id>` or `event=<id1>,<id2>`.
+ */
+export function parseStringArrayQuery(max = 20) {
+  return z.preprocess(
+    commaSeparatedQueryToStrings,
+    z.array(z.string().min(1)).max(max).optional(),
+  );
+}
+
+/**
  * GeoJSON Point: coordinates are [longitude, latitude].
  * Matches `GeoPoint` / `GeoLocation.coordinates` in geo-location.schema.
  * `type` defaults to `"Point"` when omitted.
@@ -105,11 +125,9 @@ export const geoLocationPartialSchema = z
 export const nearbyLocationQuerySchema = z.object({
   nearbyLat: z.coerce.number().gte(-90).lte(90),
   nearbyLng: z.coerce.number().gte(-180).lte(180),
-  nearbyRadiusKm: z.coerce
-  .number()
-  .min(0.1)
-  .max(500)
-  .default(100),
+  nearbyRadiusKm: z.coerce.number().min(0.1).max(500).default(100),
 });
 
-export class LocationFilterDto extends createZodDto(nearbyLocationQuerySchema) {}
+export class LocationFilterDto extends createZodDto(
+  nearbyLocationQuerySchema,
+) {}

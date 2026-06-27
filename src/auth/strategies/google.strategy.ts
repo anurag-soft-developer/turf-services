@@ -60,7 +60,9 @@ export class GoogleMobileStrategy {
       // Create a GoogleProfile-like object from the token payload
       const profile: GoogleProfile = {
         id: payload.sub,
-        emails: [{ value: payload.email!, verified: payload.email_verified || false }],
+        emails: [
+          { value: payload.email!, verified: payload.email_verified || false },
+        ],
         name: {
           givenName: payload.given_name || '',
           familyName: payload.family_name || '',

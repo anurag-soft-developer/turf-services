@@ -14,7 +14,9 @@ import { StorageModule } from '../storage/storage.module';
     UsersModule,
     NotificationModule,
     StorageModule,
-    MongooseModule.forFeature([{ name: Withdrawal.name, schema: WithdrawalSchema }]),
+    MongooseModule.forFeature([
+      { name: Withdrawal.name, schema: WithdrawalSchema },
+    ]),
   ],
   controllers: [WithdrawalsController],
   providers: [WithdrawalsService],

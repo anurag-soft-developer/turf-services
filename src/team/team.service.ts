@@ -109,11 +109,8 @@ export class TeamService {
       throw new NotFoundException('Team not found');
     }
 
-    await assertCanViewTeam(
-      team,
-      viewerId,
-      this.teamMemberService,
-      (t, uid) => this.isOwner(t, uid),
+    await assertCanViewTeam(team, viewerId, this.teamMemberService, (t, uid) =>
+      this.isOwner(t, uid),
     );
     return team;
   }
@@ -292,7 +289,10 @@ export class TeamService {
       if (location === null) {
         team.set('location', undefined);
       } else if (!team.location) {
-        if (location.address !== undefined && location.coordinates !== undefined) {
+        if (
+          location.address !== undefined &&
+          location.coordinates !== undefined
+        ) {
           team.location = {
             address: location.address,
             coordinates: location.coordinates as GeoPoint,

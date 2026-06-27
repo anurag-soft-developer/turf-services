@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import {
@@ -237,16 +241,15 @@ export class WalletService {
         [WalletUtility.lanePath(walletType, 'escrowBalance')]: { $gte: amount },
       },
       {
-        $inc: WalletUtility.buildIncPatch(
-          walletType,
-          'escrowBalance',
-          -amount,
-        ),
+        $inc: WalletUtility.buildIncPatch(walletType, 'escrowBalance', -amount),
       },
     );
   }
 
-  async deductWithdrawableBalance(userId: string, amount: number): Promise<boolean> {
+  async deductWithdrawableBalance(
+    userId: string,
+    amount: number,
+  ): Promise<boolean> {
     const wallet = await this.getOrCreateWallet(userId);
     const split = WalletUtility.splitWithdrawalHold(wallet, amount);
     if (!split) {
@@ -298,7 +301,9 @@ export class WalletService {
   ): Promise<boolean> {
     const wallet = await this.getOrCreateWallet(userId);
     if (walletType) {
-      return WalletUtility.getAvailableBalanceForLane(wallet, walletType) >= amount;
+      return (
+        WalletUtility.getAvailableBalanceForLane(wallet, walletType) >= amount
+      );
     }
     return WalletService.getAvailableBalance(wallet) >= amount;
   }
@@ -371,7 +376,11 @@ export class WalletService {
         },
         {
           $inc: {
-            ...WalletUtility.buildIncPatch(walletType, 'escrowBalance', -amount),
+            ...WalletUtility.buildIncPatch(
+              walletType,
+              'escrowBalance',
+              -amount,
+            ),
             ...WalletUtility.buildIncPatch(walletType, 'totalBalance', amount),
             ...WalletUtility.buildIncPatch(walletType, 'totalEarnings', amount),
           },

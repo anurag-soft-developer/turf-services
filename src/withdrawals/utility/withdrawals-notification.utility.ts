@@ -86,7 +86,9 @@ export async function notifyWithdrawalStatusChanged(
         status: params.status,
         amount: params.amount,
         walletType: params.walletType,
-        ...(params.rejectionReason ? { rejectionReason: params.rejectionReason } : {}),
+        ...(params.rejectionReason
+          ? { rejectionReason: params.rejectionReason }
+          : {}),
       },
       sourceType: 'withdrawal',
       sourceId: params.withdrawalId,

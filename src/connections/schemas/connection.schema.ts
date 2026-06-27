@@ -46,15 +46,9 @@ export class Connection {
 
 export const ConnectionSchema = SchemaFactory.createForClass(Connection);
 
-ConnectionSchema.index(
-  { requester: 1, recipient: 1 },
-  { unique: true },
-);
+ConnectionSchema.index({ requester: 1, recipient: 1 }, { unique: true });
 
-ConnectionSchema.index(
-  { purgeAt: 1 },
-  { expireAfterSeconds: 0 },
-);
+ConnectionSchema.index({ purgeAt: 1 }, { expireAfterSeconds: 0 });
 
 ConnectionSchema.index({ requester: 1, status: 1 });
 ConnectionSchema.index({ recipient: 1, status: 1 });

@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Schema as MongooseSchema,Types } from 'mongoose';
+import { Document, Schema as MongooseSchema, Types } from 'mongoose';
 import {
   ITurf,
   IDimensions,
@@ -30,7 +30,8 @@ export enum TurfStatus {
   REJECTED = 'rejected',
 }
 
-export const turfSelectFields: string = '_id name location images pricing postedBy';
+export const turfSelectFields: string =
+  '_id name location images pricing postedBy';
 
 @Schema()
 export class Dimensions implements IDimensions {

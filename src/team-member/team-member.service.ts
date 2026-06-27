@@ -276,9 +276,7 @@ export class TeamMemberService {
       membershipId,
       accepted: true,
     });
-    return (await m.populate(
-      TeamMemberService.populate,
-    )) as TeamMemberDocument;
+    return (await m.populate(TeamMemberService.populate)) as TeamMemberDocument;
   }
 
   async rejectRequest(
@@ -306,9 +304,7 @@ export class TeamMemberService {
       membershipId,
       accepted: false,
     });
-    return (await m.populate(
-      TeamMemberService.populate,
-    )) as TeamMemberDocument;
+    return (await m.populate(TeamMemberService.populate)) as TeamMemberDocument;
   }
 
   async resign(teamId: string, userId: string): Promise<void> {
@@ -319,10 +315,14 @@ export class TeamMemberService {
       status: TeamMemberStatus.ACTIVE,
     });
     if (!m) {
-      throw new BadRequestException('You are not an active member of this team');
+      throw new BadRequestException(
+        'You are not an active member of this team',
+      );
     }
 
-    const isOwner = team.ownerIds.some((o) => resolveId(o) === resolveId(userId));
+    const isOwner = team.ownerIds.some(
+      (o) => resolveId(o) === resolveId(userId),
+    );
     if (isOwner && team.ownerIds.length === 1) {
       throw new ForbiddenException(
         'You are the only owner; assign another owner before leaving',
@@ -425,9 +425,7 @@ export class TeamMemberService {
     }
 
     await m.save();
-    return (await m.populate(
-      TeamMemberService.populate,
-    )) as TeamMemberDocument;
+    return (await m.populate(TeamMemberService.populate)) as TeamMemberDocument;
   }
 
   async suspend(
@@ -452,9 +450,7 @@ export class TeamMemberService {
     m.suspendedUntil = dto.suspendedUntil;
     m.leadershipRole = undefined;
     await m.save();
-    return (await m.populate(
-      TeamMemberService.populate,
-    )) as TeamMemberDocument;
+    return (await m.populate(TeamMemberService.populate)) as TeamMemberDocument;
   }
 
   async unsuspend(
@@ -473,9 +469,7 @@ export class TeamMemberService {
     m.status = TeamMemberStatus.ACTIVE;
     m.suspendedUntil = undefined;
     await m.save();
-    return (await m.populate(
-      TeamMemberService.populate,
-    )) as TeamMemberDocument;
+    return (await m.populate(TeamMemberService.populate)) as TeamMemberDocument;
   }
 
   private async clearConflictingLeadership(
@@ -505,9 +499,7 @@ export class TeamMemberService {
     return m;
   }
 
-  private assertTeamRecruiting(team: {
-    status: TeamStatus;
-  }): void {
+  private assertTeamRecruiting(team: { status: TeamStatus }): void {
     if (team.status !== TeamStatus.ACTIVE) {
       throw new BadRequestException('This team is not recruiting');
     }

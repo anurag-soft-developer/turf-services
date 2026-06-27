@@ -2,7 +2,6 @@ import { Types } from 'mongoose';
 import type { GeoPoint } from '../../core/schemas/geo-location.schema';
 import { ILocation } from '../../turf/interfaces/turf.interface';
 
-
 export interface IEvent {
   _id: string;
   createdBy: Types.ObjectId;

@@ -114,12 +114,16 @@ export async function notifyBookerEventPaymentFailed(
     await notificationService.createAndDispatch({
       recipientUserId: booking.bookedBy.toString(),
       module: NotificationModule.EVENT_BOOKING,
-      title: reason === 'hold_expired' ? 'Registration hold expired' : 'Payment failed',
+      title:
+        reason === 'hold_expired'
+          ? 'Registration hold expired'
+          : 'Payment failed',
       body,
       data: {
         bookingId,
         eventId: booking.event.toString(),
-        kind: reason === 'hold_expired' ? 'booking_hold_expired' : 'payment_failed',
+        kind:
+          reason === 'hold_expired' ? 'booking_hold_expired' : 'payment_failed',
       },
       sourceType: 'eventBooking',
       sourceId: bookingId,

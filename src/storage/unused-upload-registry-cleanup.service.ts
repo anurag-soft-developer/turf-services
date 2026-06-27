@@ -7,9 +7,7 @@ import { StorageLifecycleService } from './storage-lifecycle.service';
 export class UnusedUploadRegistryCleanupService {
   private readonly logger = new Logger(UnusedUploadRegistryCleanupService.name);
 
-  constructor(
-    private readonly storageLifecycle: StorageLifecycleService,
-  ) {}
+  constructor(private readonly storageLifecycle: StorageLifecycleService) {}
 
   @Cron(config.UNUSED_UPLOAD_REGISTRY_PURGE_CRON)
   async purgeExpiredPendingUploads(): Promise<void> {

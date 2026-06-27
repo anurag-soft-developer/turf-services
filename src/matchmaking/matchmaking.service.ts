@@ -820,9 +820,13 @@ export class MatchmakingService {
     const becameFinalized =
       !hadScheduleFinalized &&
       match.status === TeamMatchStatus.SCHEDULE_FINALIZED;
-    if (dto.slot || dto.turfId || dto.turfBookingId !== undefined || becameFinalized) {
-      const actorTeamId =
-        selfTeam?.toString() ?? match.fromTeam.toString();
+    if (
+      dto.slot ||
+      dto.turfId ||
+      dto.turfBookingId !== undefined ||
+      becameFinalized
+    ) {
+      const actorTeamId = selfTeam?.toString() ?? match.fromTeam.toString();
       await notifyMatchUpdated(
         this.notificationService,
         this.teamMemberModel,

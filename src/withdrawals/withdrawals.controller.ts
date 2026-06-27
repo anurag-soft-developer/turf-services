@@ -36,7 +36,10 @@ export class WithdrawalsController {
   }
 
   @Get('my-requests')
-  async listMine(@CurrentUser() user: IUser, @Query() filter: WithdrawalFilterDto) {
+  async listMine(
+    @CurrentUser() user: IUser,
+    @Query() filter: WithdrawalFilterDto,
+  ) {
     return this.withdrawalsService.listMine(user._id.toString(), filter);
   }
 
@@ -49,11 +52,7 @@ export class WithdrawalsController {
 
   @Get(':id')
   async getById(@Param('id') id: string, @CurrentUser() user: IUser) {
-    return this.withdrawalsService.getById(
-      id,
-      user._id.toString(),
-      user.role,
-    );
+    return this.withdrawalsService.getById(id, user._id.toString(), user.role);
   }
 
   @Post(':id/cancel')
@@ -69,11 +68,7 @@ export class WithdrawalsController {
     @CurrentUser() user: IUser,
     @Body() dto: AddWithdrawalCommentDto,
   ) {
-    return this.withdrawalsService.addComment(
-      id,
-      user._id.toString(),
-      dto,
-    );
+    return this.withdrawalsService.addComment(id, user._id.toString(), dto);
   }
 
   @Post(':id/attachments')

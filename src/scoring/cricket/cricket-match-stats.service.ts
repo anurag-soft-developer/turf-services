@@ -8,11 +8,7 @@ import type {
   CricketPlayerStats,
 } from '../../core/sports/sport-stats';
 import { TeamMatchDocument } from '../../matchmaking/schemas/team-match.schema';
-import {
-  SportType,
-  Team,
-  TeamDocument,
-} from '../../team/schemas/team.schema';
+import { SportType, Team, TeamDocument } from '../../team/schemas/team.schema';
 import { User, UserDocument } from '../../users/schemas/user.schema';
 import { CricketOverEventDocument } from './cricket-over-event.schema';
 import {
@@ -65,8 +61,7 @@ export class CricketMatchStatsService {
     } else {
       team.losses += 1;
     }
-    team.winRate =
-      team.matchesPlayed > 0 ? team.wins / team.matchesPlayed : 0;
+    team.winRate = team.matchesPlayed > 0 ? team.wins / team.matchesPlayed : 0;
 
     const key = SportType.CRICKET;
     const prev = team.sportStats?.[key] ?? emptyTeamCricketStats();

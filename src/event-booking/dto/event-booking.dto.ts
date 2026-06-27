@@ -1,6 +1,11 @@
 import { createZodDto, type ZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 import {
+  dateRangeQueryFields,
+  parseEnumQuery,
+  parseStringArrayQuery,
+} from '../../core/dto';
+import {
   EventBookingStatus,
   PaymentStatus,
 } from '../interfaces/event-booking.interface';
@@ -19,9 +24,10 @@ const UpdateEventBookingSchema = z.object({
 });
 
 const EventBookingFilterSchema = z.object({
-  event: z.string().optional(),
-  status: z.enum(EventBookingStatus).optional(),
+  event: parseStringArrayQuery(),
+  status: parseEnumQuery(z.enum(EventBookingStatus)),
   paymentStatus: z.enum(PaymentStatus).optional(),
+  ...dateRangeQueryFields,
   page: z.coerce.number().min(1).default(1),
   limit: z.coerce.number().min(1).default(10),
   sortOrder: z.enum(['asc', 'desc']).default('desc').optional(),

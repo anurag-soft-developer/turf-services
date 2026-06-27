@@ -3,7 +3,10 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { TurfBookingModule } from '../turf-booking/turf-booking.module';
 import { EventBookingModule } from '../event-booking/event-booking.module';
 import { EventsModule } from '../events/events.module';
-import { TurfBooking, TurfBookingSchema } from '../turf-booking/schemas/turf-booking.schema';
+import {
+  TurfBooking,
+  TurfBookingSchema,
+} from '../turf-booking/schemas/turf-booking.schema';
 import {
   EventBooking,
   EventBookingSchema,

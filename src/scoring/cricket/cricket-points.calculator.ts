@@ -164,8 +164,7 @@ export function computeCricketMatchRankingPoints(
   for (const over of slices) {
     const bowler = resolveId(over.bowlerUserId);
     const innings = over.innings ?? 1;
-    const battingTeamId =
-      battingTeamByInnings.get(innings) ?? fromId;
+    const battingTeamId = battingTeamByInnings.get(innings) ?? fromId;
     const bowlingTeamId = battingTeamId === fromId ? toId : fromId;
 
     for (const e of over.ballEvents) {
@@ -212,7 +211,10 @@ export function computeCricketMatchRankingPoints(
       }
 
       if (e.isWicket && e.wicketsFallen > 0) {
-        if (e.wicketKind === CricketWicketKind.CAUGHT && e.primaryFielderUserId) {
+        if (
+          e.wicketKind === CricketWicketKind.CAUGHT &&
+          e.primaryFielderUserId
+        ) {
           add(
             resolveId(e.primaryFielderUserId),
             'catch',

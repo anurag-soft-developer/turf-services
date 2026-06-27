@@ -11,7 +11,6 @@ export interface IOAuthStrategy {
   createdAt: Date;
 }
 
-
 /** Stored FCM registration per physical device (also used by Mongoose user schema). */
 export interface FcmTokenEntry {
   deviceKey: string;

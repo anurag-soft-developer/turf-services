@@ -104,7 +104,7 @@ export class TurfReviewController {
       userId,
     );
 
-    return review
+    return review;
   }
 
   @Post(':id/vote')
@@ -116,7 +116,7 @@ export class TurfReviewController {
   ) {
     const review = await this.turfReviewService.voteReview(id, voteDto, userId);
 
-    return review
+    return review;
   }
 
   @Post(':id/report')

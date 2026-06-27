@@ -72,7 +72,9 @@ export class RazorpayWebhookService {
         razorpayOrderId: orderId,
       });
       if (turfBooking) {
-        return this.turfBookingWebhookService.processWebhookEvent(webhookPayload);
+        return this.turfBookingWebhookService.processWebhookEvent(
+          webhookPayload,
+        );
       }
 
       const eventBooking = await this.eventBookingModel.exists({
@@ -98,7 +100,9 @@ export class RazorpayWebhookService {
     payload: RazorpayWebhookPayloadDto,
   ): string | undefined {
     const paymentEntity = (
-      payload.payload?.payment as { entity?: Record<string, unknown> } | undefined
+      payload.payload?.payment as
+        | { entity?: Record<string, unknown> }
+        | undefined
     )?.entity;
     const orderId = paymentEntity?.order_id;
     return typeof orderId === 'string' ? orderId : undefined;

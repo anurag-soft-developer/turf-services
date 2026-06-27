@@ -143,8 +143,7 @@ export function aggregateFootballMatchStats(
       case FootballEventKind.OWN_GOAL: {
         if (e.primaryUserId) {
           const userId = resolveId(e.primaryUserId);
-          const concedingTeam =
-            benTeam === fromId ? toId : fromId;
+          const concedingTeam = benTeam === fromId ? toId : fromId;
           eventTeamByUser.set(userId, concedingTeam);
           const acc = ensurePlayer(players, userId, concedingTeam);
           acc.ownGoals += 1;

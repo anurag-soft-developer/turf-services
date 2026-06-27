@@ -45,7 +45,9 @@ export class WalletUtility {
     };
   }
 
-  static toLaneResponse(lane?: Partial<IWalletLaneBalance>): IWalletLaneBalance {
+  static toLaneResponse(
+    lane?: Partial<IWalletLaneBalance>,
+  ): IWalletLaneBalance {
     return {
       totalBalance: lane?.totalBalance ?? 0,
       heldBalance: lane?.heldBalance ?? 0,

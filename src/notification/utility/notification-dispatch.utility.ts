@@ -26,9 +26,7 @@ export async function dispatchToUsers<T extends NotificationBaseDto>(
 ): Promise<void> {
   const unique = [
     ...new Set(
-      recipientUserIds
-        .map((id) => id.trim())
-        .filter((id) => id.length > 0),
+      recipientUserIds.map((id) => id.trim()).filter((id) => id.length > 0),
     ),
   ].filter((id) => id !== excludeUserId);
 
@@ -58,10 +56,7 @@ export async function getTeamStaffUserIds(
     },
   });
   return [
-    ...new Set([
-      ...ownerIds,
-      ...leadershipUserIds.map((id) => id.toString()),
-    ]),
+    ...new Set([...ownerIds, ...leadershipUserIds.map((id) => id.toString())]),
   ];
 }
 

@@ -6,7 +6,11 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import { ContentPost, ContentPostDocument, PostStatus } from './schemas/content-post.schema';
+import {
+  ContentPost,
+  ContentPostDocument,
+  PostStatus,
+} from './schemas/content-post.schema';
 import { Media, MediaDocument, MediaKind } from './schemas/media.schema';
 import {
   CreateMediaDto,
@@ -54,7 +58,10 @@ export class PostService {
     return doc.save();
   }
 
-  async create(userId: string, dto: CreatePostDto): Promise<ContentPostDocument> {
+  async create(
+    userId: string,
+    dto: CreatePostDto,
+  ): Promise<ContentPostDocument> {
     const uid = new Types.ObjectId(userId);
     let teamId: Types.ObjectId | undefined;
     if (dto.team) {
@@ -207,7 +214,10 @@ export class PostService {
     await this.assertCanEditPost(post, userId);
     const mediaIds = post.media.map((m) => m.toString());
     const mediaDocs = mediaIds.length
-      ? await this.mediaModel.find({ _id: { $in: mediaIds } }).select('url').lean()
+      ? await this.mediaModel
+          .find({ _id: { $in: mediaIds } })
+          .select('url')
+          .lean()
       : [];
     const mediaUrls = mediaDocs.map((m) => m.url);
 
@@ -287,7 +297,7 @@ export class PostService {
         uploadedBy: uid,
       })),
     );
-    return docs.map((d) => d._id as Types.ObjectId);
+    return docs.map((d) => d._id);
   }
 
   private async assertMediaOwnedByUser(

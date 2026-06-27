@@ -111,8 +111,7 @@ export function pauseFootballTimer(fs: FootballState): void {
     return;
   }
   if (fs.timerStartedAt) {
-    fs.timerElapsedMs +=
-      Date.now() - new Date(fs.timerStartedAt).getTime();
+    fs.timerElapsedMs += Date.now() - new Date(fs.timerStartedAt).getTime();
   }
   fs.timerStartedAt = undefined;
   fs.isTimerPaused = true;
@@ -129,8 +128,7 @@ export function resumeFootballTimer(fs: FootballState): void {
 export function getFootballTimerElapsedMs(fs: FootballState): number {
   if (!fs.isTimerPaused && fs.timerStartedAt) {
     return (
-      fs.timerElapsedMs +
-      (Date.now() - new Date(fs.timerStartedAt).getTime())
+      fs.timerElapsedMs + (Date.now() - new Date(fs.timerStartedAt).getTime())
     );
   }
   return fs.timerElapsedMs;

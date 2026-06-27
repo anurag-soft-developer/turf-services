@@ -2,9 +2,11 @@ import { z } from 'zod';
 import { createZodDto, type ZodDto } from 'nestjs-zod';
 import {
   date,
+  dateRangeQueryFields,
   geoLocationSchema,
   geoLocationPartialSchema,
   nearbyLocationQuerySchema,
+  parseBooleanQuery,
 } from '../../core/dto';
 import { EventStatus } from '../interfaces/event.interface';
 
@@ -37,6 +39,8 @@ export const SearchEventSchema = z.object({
   createdBy: z.string().optional(),
   globalSearchText: z.string().optional(),
   status: eventStatusSchema.optional(),
+  registrationsPaused: parseBooleanQuery(),
+  ...dateRangeQueryFields,
   minPrice: z.coerce.number().min(0).optional(),
   maxPrice: z.coerce.number().min(0).optional(),
   location: nearbyLocationQuerySchema.optional(),

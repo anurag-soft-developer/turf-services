@@ -3,11 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import type { FootballPlayerStats } from '../../core/sports/sport-stats';
 import { TeamMatchDocument } from '../../matchmaking/schemas/team-match.schema';
-import {
-  SportType,
-  Team,
-  TeamDocument,
-} from '../../team/schemas/team.schema';
+import { SportType, Team, TeamDocument } from '../../team/schemas/team.schema';
 import { User, UserDocument } from '../../users/schemas/user.schema';
 import { FootballMatchEvent } from './football-match-event.schema';
 import {
@@ -65,8 +61,7 @@ export class FootballMatchStatsService {
     } else {
       team.losses += 1;
     }
-    team.winRate =
-      team.matchesPlayed > 0 ? team.wins / team.matchesPlayed : 0;
+    team.winRate = team.matchesPlayed > 0 ? team.wins / team.matchesPlayed : 0;
 
     const key = SportType.FOOTBALL;
     const prev = team.sportStats?.[key] ?? emptyTeamFootballStats();
@@ -75,8 +70,7 @@ export class FootballMatchStatsService {
       [key]: {
         goalsScored: prev.goalsScored + delta.goalsScored,
         goalsConceded: prev.goalsConceded + delta.goalsConceded,
-        penaltyGoalsScored:
-          prev.penaltyGoalsScored + delta.penaltyGoalsScored,
+        penaltyGoalsScored: prev.penaltyGoalsScored + delta.penaltyGoalsScored,
         penaltiesMissed: prev.penaltiesMissed + delta.penaltiesMissed,
         cleanSheets: prev.cleanSheets + delta.cleanSheets,
         yellowCards: prev.yellowCards + delta.yellowCards,

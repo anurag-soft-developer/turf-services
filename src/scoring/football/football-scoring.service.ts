@@ -1,7 +1,4 @@
-import {
-  BadRequestException,
-  Injectable,
-} from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { applyStatusUpdate } from '../../matchmaking/util/matchmaking.helpers';
@@ -366,7 +363,8 @@ export class FootballScoringService {
     assertTeamMatchSport(match, SportType.FOOTBALL);
     return await this.footballEventModel
       .find({ teamMatchId: match._id })
-      .sort({ sequence: 1 }).populate(FOOTBALL_EVENT_POPULATE)
+      .sort({ sequence: 1 })
+      .populate(FOOTBALL_EVENT_POPULATE)
       .exec();
   }
 
@@ -465,9 +463,7 @@ export class FootballScoringService {
       return { players, teams };
     }
 
-    const players = computeFootballPlayerPoints(
-      events as FootballMatchEvent[],
-    );
+    const players = computeFootballPlayerPoints(events as FootballMatchEvent[]);
     return { players, teams: [] };
   }
 
@@ -556,7 +552,11 @@ export class FootballScoringService {
         const ben = new Types.ObjectId(p.beneficiaryTeamId);
         const conceding = new Types.ObjectId(p.concedingPlayerUserId);
         const concedingTeam = this.otherTeam(match, ben);
-        await assertUserOnTeam(this.teamMemberService, conceding, concedingTeam);
+        await assertUserOnTeam(
+          this.teamMemberService,
+          conceding,
+          concedingTeam,
+        );
         const { d1, d2 } = this.scoreDeltasForBeneficiary(match, ben);
         applyFootballScoreDeltas(fs, d1, d2);
         return new this.footballEventModel({

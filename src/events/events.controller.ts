@@ -13,7 +13,11 @@ import {
 } from '@nestjs/common';
 import { EventsService } from './events.service';
 import { EventApprovalService } from './event-approvals/event-approval.service';
-import { CreateEventDto, SearchEventDto, UpdateEventDto } from './dto/events.dto';
+import {
+  CreateEventDto,
+  SearchEventDto,
+  UpdateEventDto,
+} from './dto/events.dto';
 import { ReviewEventDto } from './event-approvals/dto/event-approval.dto';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import * as UserInterface from '../users/interfaces/user.interface';
@@ -105,7 +109,7 @@ export class EventsController {
   ) {
     return this.eventsService.closeEvent(id, {
       userId: user._id,
-      role: user.role as UserRole,
+      role: user.role,
     });
   }
 
@@ -116,7 +120,7 @@ export class EventsController {
   ) {
     return this.eventsService.findById(id, {
       userId: user._id,
-      role: user.role as UserRole,
+      role: user.role,
     });
   }
 
@@ -128,7 +132,7 @@ export class EventsController {
   ) {
     return this.eventsService.update(id, dto, {
       userId: user._id,
-      role: user.role as UserRole,
+      role: user.role,
     });
   }
 
@@ -140,7 +144,7 @@ export class EventsController {
   ) {
     await this.eventsService.delete(id, {
       userId: user._id,
-      role: user.role as UserRole,
+      role: user.role,
     });
   }
 }

@@ -99,7 +99,11 @@ export class AuthService {
       const { otpWithKey, otpDisplay } = this.generateOTP(OtpKeys.LOGIN_2FA);
       const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
 
-      await this.usersService.updateOTP(user._id.toString(), otpWithKey, otpExpiry);
+      await this.usersService.updateOTP(
+        user._id.toString(),
+        otpWithKey,
+        otpExpiry,
+      );
       await this.emailService.sendOtpEmail({
         to: user.email,
         userFullName: user.fullName || 'User',
@@ -129,8 +133,12 @@ export class AuthService {
     };
   }
 
-  async verifyLoginOtp(verifyLoginOtpDto: VerifyLoginOtpDto): Promise<IAuthResponse> {
-    const user = await this.usersService.findByEmailWithOTP(verifyLoginOtpDto.email);
+  async verifyLoginOtp(
+    verifyLoginOtpDto: VerifyLoginOtpDto,
+  ): Promise<IAuthResponse> {
+    const user = await this.usersService.findByEmailWithOTP(
+      verifyLoginOtpDto.email,
+    );
     if (!user) {
       throw new NotFoundException('User not found');
     }
@@ -148,7 +156,10 @@ export class AuthService {
     }
 
     const { otp: storedOtp, key: storedKey } = this.splitOTPAndKey(user.otp);
-    if (storedKey !== OtpKeys.LOGIN_2FA || storedOtp !== verifyLoginOtpDto.otp) {
+    if (
+      storedKey !== OtpKeys.LOGIN_2FA ||
+      storedOtp !== verifyLoginOtpDto.otp
+    ) {
       throw new BadRequestException('Invalid OTP');
     }
 
@@ -259,7 +270,10 @@ export class AuthService {
         changePasswordDto.otp,
       );
 
-      await this.usersService.changePassword(userId, changePasswordDto.newPassword);
+      await this.usersService.changePassword(
+        userId,
+        changePasswordDto.newPassword,
+      );
       await this.usersService.clearOTP(userId);
       return;
     }
@@ -306,9 +320,15 @@ export class AuthService {
       throw new NotFoundException('User not found');
     }
 
-    const { otpWithKey, otpDisplay } = this.generateOTP(OtpKeys.CHANGE_PASSWORD);
+    const { otpWithKey, otpDisplay } = this.generateOTP(
+      OtpKeys.CHANGE_PASSWORD,
+    );
     const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
-    await this.usersService.updateOTP(user._id.toString(), otpWithKey, otpExpiry);
+    await this.usersService.updateOTP(
+      user._id.toString(),
+      otpWithKey,
+      otpExpiry,
+    );
 
     await this.emailService.sendOtpEmail({
       to: user.email,
@@ -332,17 +352,28 @@ export class AuthService {
       throw new NotFoundException('User not found');
     }
 
-    const userWithOtp = await this.usersService.findByEmailWithOTP(userBase.email);
+    const userWithOtp = await this.usersService.findByEmailWithOTP(
+      userBase.email,
+    );
     if (!userWithOtp || !userWithOtp.otp || !userWithOtp.otpExpiry) {
-      throw new BadRequestException('No 2FA OTP found. Please request a new one');
+      throw new BadRequestException(
+        'No 2FA OTP found. Please request a new one',
+      );
     }
 
     if (new Date() > userWithOtp.otpExpiry) {
-      throw new BadRequestException('2FA OTP has expired. Please request a new one');
+      throw new BadRequestException(
+        '2FA OTP has expired. Please request a new one',
+      );
     }
 
-    const { otp: storedOtp, key: storedKey } = this.splitOTPAndKey(userWithOtp.otp);
-    if (storedKey !== OtpKeys.UPDATE_2FA || storedOtp !== updateTwoFactorDto.otp) {
+    const { otp: storedOtp, key: storedKey } = this.splitOTPAndKey(
+      userWithOtp.otp,
+    );
+    if (
+      storedKey !== OtpKeys.UPDATE_2FA ||
+      storedOtp !== updateTwoFactorDto.otp
+    ) {
       throw new BadRequestException('Invalid OTP for 2FA update');
     }
 
@@ -361,7 +392,11 @@ export class AuthService {
 
     const { otpWithKey, otpDisplay } = this.generateOTP(OtpKeys.UPDATE_2FA);
     const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
-    await this.usersService.updateOTP(user._id.toString(), otpWithKey, otpExpiry);
+    await this.usersService.updateOTP(
+      user._id.toString(),
+      otpWithKey,
+      otpExpiry,
+    );
 
     await this.emailService.sendOtpEmail({
       to: user.email,
@@ -381,8 +416,10 @@ export class AuthService {
     updateNotificationSettingsDto: UpdateNotificationSettingsDto,
   ): Promise<Profile> {
     const user = await this.usersService.updateById(userId, {
-      emailNotificationsEnabled: updateNotificationSettingsDto.emailNotificationsEnabled,
-      smsNotificationsEnabled: updateNotificationSettingsDto.smsNotificationsEnabled,
+      emailNotificationsEnabled:
+        updateNotificationSettingsDto.emailNotificationsEnabled,
+      smsNotificationsEnabled:
+        updateNotificationSettingsDto.smsNotificationsEnabled,
     });
     return UsersService.sanitizeProfile(user);
   }
@@ -637,5 +674,4 @@ export class AuthService {
       otp: parts[1],
     };
   }
-
 }

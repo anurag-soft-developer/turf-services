@@ -23,7 +23,7 @@ export class JwtAuthService {
     const payload = this.getPayload(user);
 
     return this.jwtService.sign(payload, {
-      expiresIn: config.JWT_EXPIRES_IN as StringValue,
+      expiresIn: config.JWT_EXPIRES_IN,
     });
   }
 
@@ -32,7 +32,7 @@ export class JwtAuthService {
 
     return this.jwtService.sign(payload, {
       secret: config.JWT_REFRESH_SECRET,
-      expiresIn: config.JWT_REFRESH_EXPIRES_IN as StringValue,
+      expiresIn: config.JWT_REFRESH_EXPIRES_IN,
     });
   }
 

@@ -66,11 +66,7 @@ export class EventBookingController {
     @Body() dto: VerifyEventRazorpayHostedPaymentDto,
     @CurrentUser() user: UserInterface.IUser,
   ) {
-    return this.eventBookingService.verifyHostedPayment(
-      eventId,
-      dto,
-      user._id,
-    );
+    return this.eventBookingService.verifyHostedPayment(eventId, dto, user._id);
   }
 
   @Post('events/:eventId/check-capacity')
@@ -125,10 +121,7 @@ export class EventBookingController {
     @CurrentUser('_id') userId: string,
     @Query() filter: EventBookingFilterDto,
   ) {
-    return this.eventBookingService.findUserBookings(
-      userId.toString(),
-      filter,
-    );
+    return this.eventBookingService.findUserBookings(userId.toString(), filter);
   }
 
   @Get('owner-bookings')

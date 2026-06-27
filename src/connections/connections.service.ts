@@ -12,7 +12,10 @@ import {
   ConnectionDocument,
   ConnectionStatus,
 } from './schemas/connection.schema';
-import { ConnectionFilterDto, SendConnectionRequestDto } from './dto/connection.dto';
+import {
+  ConnectionFilterDto,
+  SendConnectionRequestDto,
+} from './dto/connection.dto';
 import { resolveId } from '../core/utils/mongo-ref.util';
 import { PaginatedResult } from '../core/interfaces/common';
 import { buildMongoSortOptions } from '../core/utils/mongo-sort.util';
@@ -95,7 +98,9 @@ export class ConnectionsService {
       requesterUserId: userId,
     });
 
-    return (await doc.populate(ConnectionsService.userPopulate)) as ConnectionDocument;
+    return (await doc.populate(
+      ConnectionsService.userPopulate,
+    )) as ConnectionDocument;
   }
 
   async resolveRequest(
@@ -109,7 +114,9 @@ export class ConnectionsService {
     }
 
     if (resolveId(conn.recipient) !== resolveId(userId)) {
-      throw new ForbiddenException('Only the recipient can resolve this request');
+      throw new ForbiddenException(
+        'Only the recipient can resolve this request',
+      );
     }
 
     if (conn.status !== ConnectionStatus.PENDING) {
@@ -132,9 +139,10 @@ export class ConnectionsService {
       accepted: status === ConnectionStatus.ACCEPTED,
     });
 
-    return (await conn.populate(ConnectionsService.userPopulate)) as ConnectionDocument;
+    return (await conn.populate(
+      ConnectionsService.userPopulate,
+    )) as ConnectionDocument;
   }
-
 
   async closeConnection(connectionId: string, userId: string): Promise<void> {
     const conn = await this.connectionModel.findById(connectionId);
@@ -161,12 +169,7 @@ export class ConnectionsService {
     userId: string,
     filter: ConnectionFilterDto,
   ): Promise<PaginatedResult<ConnectionDocument>> {
-    const {
-      status,
-      direction = 'all',
-      page = 1,
-      limit = 20,
-    } = filter;
+    const { status, direction = 'all', page = 1, limit = 20 } = filter;
 
     const uid = new Types.ObjectId(userId);
     const base: Record<string, unknown> = {};

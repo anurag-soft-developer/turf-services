@@ -29,7 +29,9 @@ export class FootballRankingPointsService {
     isDraw: boolean,
   ): Promise<MatchRankingPointsSnapshot | null> {
     if (match.rankingPointsAppliedAt) {
-      return (match.rankingPointsSnapshot as MatchRankingPointsSnapshot) ?? null;
+      return (
+        (match.rankingPointsSnapshot as MatchRankingPointsSnapshot) ?? null
+      );
     }
 
     const result = computeFootballMatchRankingPoints(
@@ -49,7 +51,10 @@ export class FootballRankingPointsService {
     ]);
 
     match.rankingPointsAppliedAt = new Date();
-    match.rankingPointsSnapshot = snapshot as unknown as Record<string, unknown>;
+    match.rankingPointsSnapshot = snapshot as unknown as Record<
+      string,
+      unknown
+    >;
     match.markModified('rankingPointsSnapshot');
 
     return snapshot;

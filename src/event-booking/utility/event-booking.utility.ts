@@ -23,16 +23,14 @@ export class EventBookingUtility {
 
   static getPaymentExpiryDate(): Date {
     const now = new Date();
-    now.setMinutes(
-      now.getMinutes() + EventBookingUtility.PAYMENT_HOLD_MINUTES,
-    );
+    now.setMinutes(now.getMinutes() + EventBookingUtility.PAYMENT_HOLD_MINUTES);
     return now;
   }
 
   static isPaymentHoldExpired(booking: EventBookingDocument): boolean {
     return Boolean(
       booking.paymentExpiresAt &&
-        new Date(booking.paymentExpiresAt) <= new Date(),
+      new Date(booking.paymentExpiresAt) <= new Date(),
     );
   }
 

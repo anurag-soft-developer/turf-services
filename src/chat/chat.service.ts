@@ -13,9 +13,15 @@ import {
   ChatScope,
   normalizePlayerScopeId,
 } from '../package';
-import { ChatMessage, ChatMessageDocument } from './schemas/chat-message.schema';
+import {
+  ChatMessage,
+  ChatMessageDocument,
+} from './schemas/chat-message.schema';
 import { TeamMemberService } from '../team-member/team-member.service';
-import { TeamMatch, TeamMatchDocument } from '../matchmaking/schemas/team-match.schema';
+import {
+  TeamMatch,
+  TeamMatchDocument,
+} from '../matchmaking/schemas/team-match.schema';
 import { resolveId } from '../core/utils/mongo-ref.util';
 
 export interface BatchPersistResult {
@@ -42,7 +48,11 @@ export class ChatService {
 
     for (const message of messages) {
       try {
-        await this.assertScopeAccess(message.senderUserId, message.scope, message.scopeId);
+        await this.assertScopeAccess(
+          message.senderUserId,
+          message.scope,
+          message.scopeId,
+        );
 
         operations.push({
           updateOne: {
@@ -126,9 +136,14 @@ export class ChatService {
     scopeId: string,
   ): Promise<void> {
     if (scope === 'team') {
-      const isMember = await this.teamMemberService.hasActiveMembership(scopeId, userId);
+      const isMember = await this.teamMemberService.hasActiveMembership(
+        scopeId,
+        userId,
+      );
       if (!isMember) {
-        throw new ForbiddenException('User is not an active member of this team');
+        throw new ForbiddenException(
+          'User is not an active member of this team',
+        );
       }
       return;
     }
@@ -139,7 +154,8 @@ export class ChatService {
         throw new NotFoundException('Match not found');
       }
 
-      const activeTeamIds = await this.teamMemberService.distinctActiveTeamIds(userId);
+      const activeTeamIds =
+        await this.teamMemberService.distinctActiveTeamIds(userId);
       const activeSet = new Set(activeTeamIds.map((id) => resolveId(id)));
       const isRelated =
         activeSet.has(resolveId(match.fromTeam)) ||
@@ -157,7 +173,9 @@ export class ChatService {
     }
 
     if (!participants.includes(userId)) {
-      throw new ForbiddenException('User is not a participant in this player chat');
+      throw new ForbiddenException(
+        'User is not a participant in this player chat',
+      );
     }
 
     const normalized = normalizePlayerScopeId(participants[0], participants[1]);

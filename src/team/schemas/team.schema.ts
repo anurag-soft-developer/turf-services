@@ -10,10 +10,7 @@ import { SportType } from '../../core/sports/sport-types';
 
 export type TeamDocument = Team & Document;
 
-export {
-  SportType,
-  SPORT_ROSTER_CONFIG,
-} from '../../core/sports/sport-types';
+export { SportType, SPORT_ROSTER_CONFIG } from '../../core/sports/sport-types';
 
 export enum TeamVisibility {
   PUBLIC = 'public',
@@ -90,8 +87,7 @@ export type { EarnedBadge, BadgeDefinition } from '../../core/badges/badges';
 export { BADGE_DEFINITIONS, evaluateBadges } from '../../core/badges/badges';
 
 /** Fields loaded when populating `team` on memberships (e.g. roster lists). */
-export const teamPopulateSelectFields =
-  '_id name logo location sportType';
+export const teamPopulateSelectFields = '_id name logo location sportType';
 
 @Schema({
   timestamps: true,
@@ -255,10 +251,7 @@ export class Team {
 
 export const TeamSchema = SchemaFactory.createForClass(Team);
 
-TeamSchema.index(
-  { 'location.coordinates': '2dsphere' },
-  { sparse: true },
-);
+TeamSchema.index({ 'location.coordinates': '2dsphere' }, { sparse: true });
 TeamSchema.index({ visibility: 1, status: 1, sportType: 1 });
 TeamSchema.index({ createdBy: 1 });
 TeamSchema.index({ ownerIds: 1 });

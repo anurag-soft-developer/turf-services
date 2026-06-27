@@ -179,8 +179,7 @@ export class AnnouncedPlayersService {
     match.announcedPlayers = existing.filter(
       (p) =>
         !(
-          resolveId(p.teamId) === actorStr &&
-          removeSet.has(resolveId(p.userId))
+          resolveId(p.teamId) === actorStr && removeSet.has(resolveId(p.userId))
         ),
     );
     await match.save();
@@ -261,9 +260,7 @@ export class AnnouncedPlayersService {
     actorTeamId: string,
   ): Promise<AnnouncedPlayer[]> {
     if (!actorTeamId?.trim()) {
-      throw new BadRequestException(
-        'actorTeamId query parameter is required',
-      );
+      throw new BadRequestException('actorTeamId query parameter is required');
     }
     const match = await requireTeamMatch(this.teamMatchModel, matchId);
     const actorTeam = await this.teamService.requireTeam(actorTeamId);

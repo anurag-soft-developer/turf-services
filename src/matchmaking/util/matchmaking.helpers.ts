@@ -9,11 +9,7 @@ import {
   TeamMemberStatus,
 } from '../../team-member/schemas/team-member.schema';
 import { TeamMemberService } from '../../team-member/team-member.service';
-import {
-  Team,
-  TeamDocument,
-  TeamStatus,
-} from '../../team/schemas/team.schema';
+import { Team, TeamDocument, TeamStatus } from '../../team/schemas/team.schema';
 import { TeamService } from '../../team/team.service';
 import {
   MatchProposalStatus,
@@ -89,12 +85,11 @@ export async function assertCanActForTeam(
   if (teamService.isOwner(team, userId)) {
     return;
   }
-  const isLeadership =
-    await teamMemberService.hasActiveLeadershipMembership(
-      team._id.toString(),
-      userId,
-      [LeadershipRole.CAPTAIN, LeadershipRole.VICE_CAPTAIN],
-    );
+  const isLeadership = await teamMemberService.hasActiveLeadershipMembership(
+    team._id.toString(),
+    userId,
+    [LeadershipRole.CAPTAIN, LeadershipRole.VICE_CAPTAIN],
+  );
   if (!isLeadership) {
     throw new ForbiddenException(
       'Only owners, captains, or vice captains can perform this action',
@@ -173,9 +168,7 @@ export function isTurfProposalWithdrawable(
 }
 
 /** Blocks terminal states for request/schedule negotiation APIs. */
-export function assertSchedulePhaseActionable(
-  match: TeamMatchDocument,
-): void {
+export function assertSchedulePhaseActionable(match: TeamMatchDocument): void {
   if (
     TERMINAL_PRE_PLAY_STATUSES.includes(match.status) ||
     match.status === TeamMatchStatus.SCHEDULE_FINALIZED ||
@@ -215,9 +208,7 @@ export function parseScopedTeamIds(
     }
     scopedTeamIds.push(oid);
   }
-  return [
-    ...new Map(scopedTeamIds.map((o) => [o.toString(), o])).values(),
-  ];
+  return [...new Map(scopedTeamIds.map((o) => [o.toString(), o])).values()];
 }
 
 /** Active challenge inbox: requested (non-expired), accepted, negotiating. */

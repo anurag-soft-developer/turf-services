@@ -28,9 +28,15 @@ const UpdatePayoutDetailsSchema = z
       .optional(),
   })
   .strict()
-  .refine((value) => Object.keys(value).some((key) => value[key as keyof typeof value] !== undefined), {
-    message: 'At least one payout field must be provided',
-  });
+  .refine(
+    (value) =>
+      Object.keys(value).some(
+        (key) => value[key as keyof typeof value] !== undefined,
+      ),
+    {
+      message: 'At least one payout field must be provided',
+    },
+  );
 
 export class UpdatePayoutDetailsDto extends createZodDto(
   UpdatePayoutDetailsSchema,

@@ -2,12 +2,21 @@ import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { Event, EventSchema } from '../events/schemas/event.schema';
 import { Media, MediaSchema } from '../post/schemas/media.schema';
-import { TeamMatch, TeamMatchSchema } from '../matchmaking/schemas/team-match.schema';
+import {
+  TeamMatch,
+  TeamMatchSchema,
+} from '../matchmaking/schemas/team-match.schema';
 import { Team, TeamSchema } from '../team/schemas/team.schema';
-import { TurfReview, TurfReviewSchema } from '../turf-review/schemas/turf-review.schema';
+import {
+  TurfReview,
+  TurfReviewSchema,
+} from '../turf-review/schemas/turf-review.schema';
 import { Turf, TurfSchema } from '../turf/schemas/turf.schema';
 import { User, UserSchema } from '../users/schemas/user.schema';
-import { Withdrawal, WithdrawalSchema } from '../withdrawals/schemas/withdrawal.schema';
+import {
+  Withdrawal,
+  WithdrawalSchema,
+} from '../withdrawals/schemas/withdrawal.schema';
 import {
   UnusedUploadRegistry,
   UnusedUploadRegistrySchema,

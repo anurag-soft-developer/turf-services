@@ -47,6 +47,20 @@ import { NotificationService } from '../notification/notification.service';
 import { WalletService } from '../wallet/wallet.service';
 import { WalletType } from '../wallet/interfaces/wallet.interface';
 import { resolveId } from '../core/utils/mongo-ref.util';
+
+function emptyPaginatedResult(
+  page: number,
+  limit: number,
+): PaginatedResult<TurfBookingDocument> {
+  return {
+    data: [],
+    totalDocuments: 0,
+    page,
+    limit,
+    totalPages: 0,
+  };
+}
+
 @Injectable()
 export class TurfBookingService {
   static populateOptions: PopulateOptions[] = [
@@ -271,7 +285,9 @@ export class TurfBookingService {
 
     await booking.save();
     if (booking.ownerPayoutAmount && booking.ownerPayoutAmount > 0) {
-      const turfDoc = await this.turfModel.findById(booking.turf).select('postedBy');
+      const turfDoc = await this.turfModel
+        .findById(booking.turf)
+        .select('postedBy');
       if (turfDoc) {
         await this.walletService.moveAmountToEscrow(
           WalletType.TURF,
@@ -664,22 +680,22 @@ export class TurfBookingService {
         // Booking has at least one slot that overlaps with the date range
         dateFilter['timeSlots'] = {
           $elemMatch: {
-            startTime: { $lte: new Date(endDate) },
-            endTime: { $gte: new Date(startDate) },
+            startTime: { $lte: endDate },
+            endTime: { $gte: startDate },
           },
         };
       } else if (startDate) {
         // Booking has at least one slot that starts on or after the start date
         dateFilter['timeSlots'] = {
           $elemMatch: {
-            endTime: { $gte: new Date(startDate) },
+            endTime: { $gte: startDate },
           },
         };
       } else if (endDate) {
         // Booking has at least one slot that ends on or before the end date
         dateFilter['timeSlots'] = {
           $elemMatch: {
-            startTime: { $lte: new Date(endDate) },
+            startTime: { $lte: endDate },
           },
         };
       }
@@ -742,22 +758,32 @@ export class TurfBookingService {
     ownerId: string,
     filterDto: TurfBookingFilterDto,
   ): Promise<PaginatedResult<TurfBookingDocument>> {
-    // Find all turfs owned by the user
     const ownedTurfs = await this.turfModel
       .find({ postedBy: ownerId })
       .select('_id');
     const turfIds = ownedTurfs.map((turf) => turf._id.toString());
 
+    const { page = 1, limit = 10, turf } = filterDto;
     if (turfIds.length === 0) {
-      return { data: [], totalDocuments: 0, page: 1, limit: 10, totalPages: 0 };
+      return emptyPaginatedResult(page, limit);
     }
 
-    const filter: QueryFilter<TurfBookingDocument> = {
-      turf: { $in: turfIds },
-    };
+    const turfIdSet = new Set(turfIds.map((id) => resolveId(id)));
+    let scopedTurfFilter: string | { $in: string[] };
 
-    Object.assign(filter, filterDto);
-    return this.findAll({ ...filterDto });
+    if (turf) {
+      if (!turfIdSet.has(resolveId(turf))) {
+        return emptyPaginatedResult(page, limit);
+      }
+      scopedTurfFilter = turf;
+    } else {
+      scopedTurfFilter = { $in: turfIds };
+    }
+
+    return this.findAll({
+      ...filterDto,
+      turf: scopedTurfFilter as TurfBookingFilterDto['turf'],
+    });
   }
 
   async getTurfOwnerBookingStats(ownerId: string, turfIds?: string[]) {
@@ -829,7 +855,7 @@ export class TurfBookingService {
     }>([
       {
         $match: {
-          turf: { $in: ownerTurfIds as Types.ObjectId[] },
+          turf: { $in: ownerTurfIds },
         },
       },
       {

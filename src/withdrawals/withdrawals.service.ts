@@ -6,10 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import {
-  Withdrawal,
-  WithdrawalDocument,
-} from './schemas/withdrawal.schema';
+import { Withdrawal, WithdrawalDocument } from './schemas/withdrawal.schema';
 import {
   AddWithdrawalAttachmentsDto,
   AddWithdrawalCommentDto,
@@ -67,10 +64,7 @@ export class WithdrawalsService {
     return plain;
   }
 
-  async createRequest(
-    userId: string,
-    dto: CreateWithdrawalRequestDto,
-  ) {
+  async createRequest(userId: string, dto: CreateWithdrawalRequestDto) {
     const wallet = await this.walletService.getOrCreateWallet(userId);
 
     if (!WalletUtility.hasCompletePayoutDetails(wallet.payoutDetails)) {
@@ -102,12 +96,16 @@ export class WithdrawalsService {
         WithdrawalsService.populateOptions,
       )) as WithdrawalDocument;
 
-      await notifyWithdrawalSubmitted(this.notificationService, this.usersService, {
-        withdrawalId: created._id.toString(),
-        amount: dto.amount,
-        walletType: dto.walletType,
-        hostUserId: userId,
-      });
+      await notifyWithdrawalSubmitted(
+        this.notificationService,
+        this.usersService,
+        {
+          withdrawalId: created._id.toString(),
+          amount: dto.amount,
+          walletType: dto.walletType,
+          hostUserId: userId,
+        },
+      );
 
       return this.toWithdrawalResponse(populated, { forHost: true });
     } catch (error) {
@@ -120,11 +118,7 @@ export class WithdrawalsService {
     }
   }
 
-  async getById(
-    withdrawalId: string,
-    userId: string,
-    userRole: string,
-  ) {
+  async getById(withdrawalId: string, userId: string, userRole: string) {
     const request = await this.withdrawalModel
       .findById(withdrawalId)
       .populate(WithdrawalsService.populateOptions);
@@ -156,10 +150,7 @@ export class WithdrawalsService {
     return response;
   }
 
-  async cancelRequest(
-    withdrawalId: string,
-    userId: string,
-  ) {
+  async cancelRequest(withdrawalId: string, userId: string) {
     const request = await this.withdrawalModel.findById(withdrawalId);
     if (!request) {
       throw new NotFoundException('Withdrawal request not found');
@@ -199,7 +190,9 @@ export class WithdrawalsService {
   async listMine(
     userId: string,
     filter: WithdrawalFilterDto,
-  ): Promise<PaginatedResult<ReturnType<WithdrawalsService['toWithdrawalResponse']>>> {
+  ): Promise<
+    PaginatedResult<ReturnType<WithdrawalsService['toWithdrawalResponse']>>
+  > {
     const { status, walletType, page = 1, limit = 20 } = filter;
     const query: Record<string, unknown> = { requestedBy: userId };
     if (status) query.status = status;
@@ -217,7 +210,9 @@ export class WithdrawalsService {
     ]);
 
     return {
-      data: data.map((doc) => this.toWithdrawalResponse(doc, { forHost: true })),
+      data: data.map((doc) =>
+        this.toWithdrawalResponse(doc, { forHost: true }),
+      ),
       totalDocuments,
       page,
       limit,
@@ -227,7 +222,9 @@ export class WithdrawalsService {
 
   async listAll(
     filter: WithdrawalFilterDto,
-  ): Promise<PaginatedResult<ReturnType<WithdrawalsService['toWithdrawalResponse']>>> {
+  ): Promise<
+    PaginatedResult<ReturnType<WithdrawalsService['toWithdrawalResponse']>>
+  > {
     const { status, walletType, userId, page = 1, limit = 20 } = filter;
     const query: Record<string, unknown> = {};
     if (status) query.status = status;
@@ -284,10 +281,7 @@ export class WithdrawalsService {
     return this.toWithdrawalResponse(populated);
   }
 
-  async addAttachments(
-    withdrawalId: string,
-    dto: AddWithdrawalAttachmentsDto,
-  ) {
+  async addAttachments(withdrawalId: string, dto: AddWithdrawalAttachmentsDto) {
     const request = await this.withdrawalModel.findById(withdrawalId);
     if (!request) {
       throw new NotFoundException('Withdrawal request not found');

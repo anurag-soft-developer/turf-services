@@ -26,8 +26,7 @@ export function buildMongoSortOptions(
   sortString: string | undefined | null,
   config: BuildMongoSortOptionsConfig,
 ): MongoSortSpec {
-  const { defaultSort, fieldMap = {}, allowedFields, whenParsedEmpty } =
-    config;
+  const { defaultSort, fieldMap = {}, allowedFields, whenParsedEmpty } = config;
 
   if (!sortString?.trim()) {
     return { ...defaultSort };

@@ -390,8 +390,16 @@ export class EventsService {
     searchDto: SearchEventDto,
     options: { publicFeed?: boolean } = {},
   ): Record<string, unknown> {
-    const { globalSearchText, createdBy, status, minPrice, maxPrice } =
-      searchDto;
+    const {
+      globalSearchText,
+      createdBy,
+      status,
+      registrationsPaused,
+      startDate,
+      endDate,
+      minPrice,
+      maxPrice,
+    } = searchDto;
 
     const query: Record<string, unknown> = { archive: false };
     if (options.publicFeed) {
@@ -403,6 +411,15 @@ export class EventsService {
     }
     if (status) {
       query.status = status;
+    }
+    if (registrationsPaused !== undefined) {
+      query.registrationsPaused = registrationsPaused;
+    }
+    if (startDate || endDate) {
+      const eventDateFilter: Record<string, Date> = {};
+      if (startDate) eventDateFilter.$gte = startDate;
+      if (endDate) eventDateFilter.$lte = endDate;
+      query.eventDate = eventDateFilter;
     }
     if (globalSearchText) {
       const searchRegex = new RegExp(globalSearchText, 'i');
@@ -590,8 +607,7 @@ export class EventsService {
     event: EventDocument,
     viewer: EventViewer,
   ): void {
-    const isOrganizer =
-      resolveId(event.createdBy) === resolveId(viewer.userId);
+    const isOrganizer = resolveId(event.createdBy) === resolveId(viewer.userId);
     const isAdmin = viewer.role === UserRole.PLATFORM_ADMIN;
     if (!isOrganizer && !isAdmin) {
       throw new ForbiddenException('Access denied');

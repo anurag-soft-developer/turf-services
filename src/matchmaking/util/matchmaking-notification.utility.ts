@@ -7,16 +7,16 @@ import {
 } from '../../notification/utility/notification-dispatch.utility';
 import { NotificationService } from '../../notification/notification.service';
 import { NotificationModule } from '../../notification/schemas/notification.schema';
-import {
-  TeamMember,
-} from '../../team-member/schemas/team-member.schema';
+import { TeamMember } from '../../team-member/schemas/team-member.schema';
 import type { TeamDocument } from '../../team/schemas/team.schema';
 import { TeamService } from '../../team/team.service';
 import type { TeamMatchDocument } from '../schemas/team-match.schema';
 
 const logger = new Logger('MatchmakingNotification');
 
-function matchBase(matchId: string): Pick<NotificationBaseDto, 'module' | 'sourceType' | 'sourceId'> {
+function matchBase(
+  matchId: string,
+): Pick<NotificationBaseDto, 'module' | 'sourceType' | 'sourceId'> {
   return {
     module: NotificationModule.MATCHMAKING,
     sourceType: 'teamMatch',
@@ -24,10 +24,7 @@ function matchBase(matchId: string): Pick<NotificationBaseDto, 'module' | 'sourc
   };
 }
 
-function opponentTeamId(
-  match: TeamMatchDocument,
-  actorTeamId: string,
-): string {
+function opponentTeamId(match: TeamMatchDocument, actorTeamId: string): string {
   return match.fromTeam.toString() === actorTeamId
     ? match.toTeam.toString()
     : match.fromTeam.toString();
@@ -324,7 +321,9 @@ export async function notifyAnnouncedPlayers(
       params.userIds,
       {
         ...matchBase(params.matchId),
-        title: params.added ? 'Added to match squad' : 'Removed from match squad',
+        title: params.added
+          ? 'Added to match squad'
+          : 'Removed from match squad',
         body: params.added
           ? 'You were added to the announced squad for an upcoming match.'
           : 'You were removed from the announced squad for a match.',

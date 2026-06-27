@@ -84,14 +84,10 @@ function recalcBowlingDerived(b: MutableBowling): void {
   const overs = totalBowlingBalls(b) / 6;
   b.average = b.wicketsTaken > 0 ? b.runsConceded / b.wicketsTaken : 0;
   b.economy = overs > 0 ? b.runsConceded / overs : 0;
-  b.strikeRate =
-    b.wicketsTaken > 0 ? totalBowlingBalls(b) / b.wicketsTaken : 0;
+  b.strikeRate = b.wicketsTaken > 0 ? totalBowlingBalls(b) / b.wicketsTaken : 0;
 }
 
-function finalizeInningsBatting(
-  acc: PlayerAccum,
-  innings: number,
-): void {
+function finalizeInningsBatting(acc: PlayerAccum, innings: number): void {
   const runs = acc.inningsRuns.get(innings) ?? 0;
   if (!acc.battedInnings.has(innings)) {
     return;
@@ -214,8 +210,7 @@ export function aggregateCricketMatchStats(
     const inn = over.innings;
     const battingTeamId =
       battingTeamByInnings.get(inn) ?? resolveId(cs.battingTeamId);
-    const bowlingTeamId =
-      battingTeamId === fromId ? toId : fromId;
+    const bowlingTeamId = battingTeamId === fromId ? toId : fromId;
 
     const bowlerId = resolveId(over.bowlerUserId);
     inningsTeamByUser.set(bowlerId, bowlingTeamId);
@@ -232,8 +227,7 @@ export function aggregateCricketMatchStats(
 
       const strikerAcc = getPlayer(strikerId, battingTeamId);
       strikerAcc.battedInnings.add(inn);
-      const innRuns =
-        (strikerAcc.inningsRuns.get(inn) ?? 0) + ball.runsOffBat;
+      const innRuns = (strikerAcc.inningsRuns.get(inn) ?? 0) + ball.runsOffBat;
       strikerAcc.inningsRuns.set(inn, innRuns);
 
       strikerAcc.batting.runsScored += ball.runsOffBat;

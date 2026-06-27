@@ -41,10 +41,7 @@ const teamBaseSchema = z.object({
   genderCategory: genderCategorySchema.optional(),
   maxPendingJoinRequests: z.number().int().min(0).max(1000),
   logo: z.string().trim().max(2048).optional(),
-  coverImages: z
-    .array(z.string().trim().min(1).max(2048))
-    .max(20)
-    .optional(),
+  coverImages: z.array(z.string().trim().min(1).max(2048)).max(20).optional(),
   tags: z.array(z.string().trim().min(1).max(50)).max(20).optional(),
   preferredPlayDays: z.array(dayOfWeekSchema).max(7).optional(),
   preferredTimeSlot: preferredTimeSlotSchema.optional(),
@@ -82,10 +79,7 @@ const UpdateTeamSchema = teamBaseSchema
   .extend({
     location: geoLocationPartialSchema.nullable().optional(),
     logo: z.string().trim().max(2048).optional(),
-    coverImages: z
-      .array(z.string().trim().min(1).max(2048))
-      .max(20)
-      .optional(),
+    coverImages: z.array(z.string().trim().min(1).max(2048)).max(20).optional(),
   })
   .refine(privateCannotUseOpenJoin, {
     message: 'Private teams cannot use open join mode',
@@ -125,9 +119,7 @@ const PromoteOwnerSchema = z.object({
   userId: z.string().min(1),
 });
 
-
-
 export class CreateTeamDto extends createZodDto(CreateTeamSchema) {}
 export class UpdateTeamDto extends createZodDto(UpdateTeamSchema) {}
-export class TeamFilterDto extends  createZodDto(TeamFilterSchema) {}
-export class PromoteOwnerDto extends  createZodDto(PromoteOwnerSchema) {}
+export class TeamFilterDto extends createZodDto(TeamFilterSchema) {}
+export class PromoteOwnerDto extends createZodDto(PromoteOwnerSchema) {}

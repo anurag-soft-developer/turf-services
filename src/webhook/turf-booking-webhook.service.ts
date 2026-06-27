@@ -60,7 +60,9 @@ export class TurfBookingWebhookService {
     payload: RazorpayWebhookPayloadDto,
   ): Promise<void> {
     const paymentEntity = (
-      payload.payload?.payment as { entity?: Record<string, unknown> } | undefined
+      payload.payload?.payment as
+        | { entity?: Record<string, unknown> }
+        | undefined
     )?.entity;
     const orderId =
       typeof paymentEntity?.order_id === 'string'
@@ -72,7 +74,9 @@ export class TurfBookingWebhookService {
       return;
     }
 
-    const booking = await this.turfBookingModel.findOne({ razorpayOrderId: orderId });
+    const booking = await this.turfBookingModel.findOne({
+      razorpayOrderId: orderId,
+    });
     if (!booking || booking.paymentStatus === PaymentStatus.PAID) {
       return;
     }
@@ -92,7 +96,10 @@ export class TurfBookingWebhookService {
       booking.bookingId || this.generateBookingId(booking._id.toString());
     await booking.save();
 
-    const turf = await this.turfModel.findById(booking.turf).select('postedBy name').lean();
+    const turf = await this.turfModel
+      .findById(booking.turf)
+      .select('postedBy name')
+      .lean();
     if (!turf) return;
     const payout =
       booking.ownerPayoutAmount ??
@@ -116,7 +123,9 @@ export class TurfBookingWebhookService {
     payload: RazorpayWebhookPayloadDto,
   ): Promise<void> {
     const paymentEntity = (
-      payload.payload?.payment as { entity?: Record<string, unknown> } | undefined
+      payload.payload?.payment as
+        | { entity?: Record<string, unknown> }
+        | undefined
     )?.entity;
     const orderId =
       typeof paymentEntity?.order_id === 'string'
@@ -141,7 +150,10 @@ export class TurfBookingWebhookService {
     booking.paymentExpiresAt = undefined;
     await booking.save();
 
-    const turf = await this.turfModel.findById(booking.turf).select('name').lean();
+    const turf = await this.turfModel
+      .findById(booking.turf)
+      .select('name')
+      .lean();
     if (turf) {
       await notifyBookerPaymentFailed(
         this.notificationService,
@@ -171,7 +183,9 @@ export class TurfBookingWebhookService {
       return;
     }
 
-    const booking = await this.turfBookingModel.findOne({ razorpayPaymentId: paymentId });
+    const booking = await this.turfBookingModel.findOne({
+      razorpayPaymentId: paymentId,
+    });
     if (!booking) {
       return;
     }

@@ -14,7 +14,6 @@ export enum NotificationModule {
   TURF_APPROVAL = 'turfApproval',
 }
 
-
 @Schema({
   timestamps: true,
   collection: 'notifications',

@@ -66,12 +66,7 @@ export async function distinctOpponentsWithSentRequest(
   }
 
   const fromTeam = await requireTeam(fromTeamId);
-  await assertCanActForTeam(
-    fromTeam,
-    userId,
-    teamService,
-    teamMemberService,
-  );
+  await assertCanActForTeam(fromTeam, userId, teamService, teamMemberService);
 
   return teamMatchModel.distinct('toTeam', {
     fromTeam: fromTeamOid,

@@ -2,10 +2,7 @@ import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { TurfReviewService } from './turf-review.service';
 import { TurfReviewController } from './turf-review.controller';
-import {
-  TurfReview,
-  TurfReviewSchema,
-} from './schemas/turf-review.schema';
+import { TurfReview, TurfReviewSchema } from './schemas/turf-review.schema';
 import { Turf, TurfSchema } from '../turf/schemas/turf.schema';
 import { StorageModule } from '../storage/storage.module';
 

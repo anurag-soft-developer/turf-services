@@ -84,7 +84,11 @@ export class MatchmakingController {
     @Body() dto: DecideSlotProposalDto,
     @CurrentUser('_id') userId: Types.ObjectId,
   ) {
-    return this.matchmakingService.decideSlotProposal(id, userId.toString(), dto);
+    return this.matchmakingService.decideSlotProposal(
+      id,
+      userId.toString(),
+      dto,
+    );
   }
 
   @Post('requests/:id/turfs/decide')
@@ -93,7 +97,11 @@ export class MatchmakingController {
     @Body() dto: DecideTurfProposalDto,
     @CurrentUser('_id') userId: Types.ObjectId,
   ) {
-    return this.matchmakingService.decideTurfProposal(id, userId.toString(), dto);
+    return this.matchmakingService.decideTurfProposal(
+      id,
+      userId.toString(),
+      dto,
+    );
   }
 
   @Post('requests/:id/finalize-schedule')
@@ -120,7 +128,11 @@ export class MatchmakingController {
     @Body() dto: RecordMatchResultDto,
     @CurrentUser('_id') userId: Types.ObjectId,
   ) {
-    return this.matchmakingService.recordMatchResult(id, userId.toString(), dto);
+    return this.matchmakingService.recordMatchResult(
+      id,
+      userId.toString(),
+      dto,
+    );
   }
 
   /** Patch booking, notes, optional `slot` / `turfId` (new accepted proposals; ids generated server-side). */

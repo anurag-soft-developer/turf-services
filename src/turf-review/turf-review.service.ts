@@ -184,8 +184,8 @@ export class TurfReviewService {
     // Date range filtering
     if (startDate || endDate) {
       filter.createdAt = {};
-      if (startDate) filter.createdAt.$gte = new Date(startDate);
-      if (endDate) filter.createdAt.$lte = new Date(endDate);
+      if (startDate) filter.createdAt.$gte = startDate;
+      if (endDate) filter.createdAt.$lte = endDate;
     }
 
     const sortSpec = buildMongoSortOptions(

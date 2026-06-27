@@ -39,7 +39,10 @@ export class RajorpayService {
     }
   }
 
-  isOrderReusable(order: IRajorpayOrder, expectedAmountRupees: number): boolean {
+  isOrderReusable(
+    order: IRajorpayOrder,
+    expectedAmountRupees: number,
+  ): boolean {
     return (
       order.status === 'created' &&
       order.amount === Math.round(expectedAmountRupees * 100)
@@ -72,7 +75,9 @@ export class RajorpayService {
     });
   }
 
-  async getPaymentLink(paymentLinkId: string): Promise<IRajorpayPaymentLink | null> {
+  async getPaymentLink(
+    paymentLinkId: string,
+  ): Promise<IRajorpayPaymentLink | null> {
     try {
       return await this.apiRequest<IRajorpayPaymentLink>(
         `/v1/payment_links/${paymentLinkId}`,
@@ -210,10 +215,7 @@ export class RajorpayService {
     return { platformFeeAmount, ownerPayoutAmount };
   }
 
-  private async apiRequest<T>(
-    path: string,
-    init: RequestInit,
-  ): Promise<T> {
+  private async apiRequest<T>(path: string, init: RequestInit): Promise<T> {
     const response = await fetch(`${RajorpayService.API_BASE}${path}`, {
       ...init,
       headers: {

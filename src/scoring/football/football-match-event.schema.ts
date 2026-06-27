@@ -1,5 +1,10 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Schema as MongooseSchema, PopulateOptions, Types } from 'mongoose';
+import {
+  Document,
+  Schema as MongooseSchema,
+  PopulateOptions,
+  Types,
+} from 'mongoose';
 import { TeamMatch } from '../../matchmaking/schemas/team-match.schema';
 import { Team } from '../../team/schemas/team.schema';
 import { User, userSelectFields } from '../../users/schemas/user.schema';
@@ -86,5 +91,8 @@ export class FootballMatchEvent {
 export const FootballMatchEventSchema =
   SchemaFactory.createForClass(FootballMatchEvent);
 
-FootballMatchEventSchema.index({ teamMatchId: 1, sequence: 1 }, { unique: true });
+FootballMatchEventSchema.index(
+  { teamMatchId: 1, sequence: 1 },
+  { unique: true },
+);
 FootballMatchEventSchema.index({ teamMatchId: 1, createdAt: 1 });

@@ -36,7 +36,9 @@ export class EventBookingWebhookService {
       const applied = await this.applyPaymentLinkPaidWebhook(eventPayload);
       return {
         processed: applied,
-        message: applied ? `${eventType} processed` : `${eventType} not matched`,
+        message: applied
+          ? `${eventType} processed`
+          : `${eventType} not matched`,
       };
     }
 
@@ -44,7 +46,9 @@ export class EventBookingWebhookService {
       const applied = await this.applyCapturedPaymentWebhook(eventPayload);
       return {
         processed: applied,
-        message: applied ? `${eventType} processed` : `${eventType} not matched`,
+        message: applied
+          ? `${eventType} processed`
+          : `${eventType} not matched`,
       };
     }
 
@@ -52,7 +56,9 @@ export class EventBookingWebhookService {
       const applied = await this.applyFailedPaymentWebhook(eventPayload);
       return {
         processed: applied,
-        message: applied ? 'payment.failed processed' : 'payment.failed not matched',
+        message: applied
+          ? 'payment.failed processed'
+          : 'payment.failed not matched',
       };
     }
 
@@ -60,7 +66,9 @@ export class EventBookingWebhookService {
       const applied = await this.applyRefundWebhook(eventPayload);
       return {
         processed: applied,
-        message: applied ? `${eventType} processed` : `${eventType} not matched`,
+        message: applied
+          ? `${eventType} processed`
+          : `${eventType} not matched`,
       };
     }
 
@@ -76,7 +84,9 @@ export class EventBookingWebhookService {
         | undefined
     )?.entity;
     const paymentEntity = (
-      payload.payload?.payment as { entity?: Record<string, unknown> } | undefined
+      payload.payload?.payment as
+        | { entity?: Record<string, unknown> }
+        | undefined
     )?.entity;
 
     const paymentLinkId =
@@ -107,7 +117,9 @@ export class EventBookingWebhookService {
     payload: RazorpayWebhookPayloadDto,
   ): Promise<boolean> {
     const paymentEntity = (
-      payload.payload?.payment as { entity?: Record<string, unknown> } | undefined
+      payload.payload?.payment as
+        | { entity?: Record<string, unknown> }
+        | undefined
     )?.entity;
     const orderId =
       typeof paymentEntity?.order_id === 'string'
@@ -138,7 +150,9 @@ export class EventBookingWebhookService {
     payload: RazorpayWebhookPayloadDto,
   ): Promise<boolean> {
     const paymentEntity = (
-      payload.payload?.payment as { entity?: Record<string, unknown> } | undefined
+      payload.payload?.payment as
+        | { entity?: Record<string, unknown> }
+        | undefined
     )?.entity;
     const orderId =
       typeof paymentEntity?.order_id === 'string'
@@ -162,7 +176,10 @@ export class EventBookingWebhookService {
     booking.paymentExpiresAt = undefined;
     await booking.save();
 
-    const event = await this.eventModel.findById(booking.event).select('title').lean();
+    const event = await this.eventModel
+      .findById(booking.event)
+      .select('title')
+      .lean();
     if (event) {
       await notifyBookerEventPaymentFailed(
         this.notificationService,
@@ -194,7 +211,9 @@ export class EventBookingWebhookService {
       return false;
     }
 
-    const booking = await this.eventBookingModel.findOne({ razorpayPaymentId: paymentId });
+    const booking = await this.eventBookingModel.findOne({
+      razorpayPaymentId: paymentId,
+    });
     if (!booking) {
       return false;
     }

@@ -1,5 +1,10 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Schema as MongooseSchema, PopulateOptions, Types } from 'mongoose';
+import {
+  Document,
+  Schema as MongooseSchema,
+  PopulateOptions,
+  Types,
+} from 'mongoose';
 import { TeamMatch } from '../../matchmaking/schemas/team-match.schema';
 import { User, userSelectFields } from '../../users/schemas/user.schema';
 import { TEAM_MATCH_POPULATE } from '../../matchmaking/util/matchmaking.constants';
@@ -109,7 +114,6 @@ CricketOverEventSchema.index(
 );
 CricketOverEventSchema.index({ teamMatchId: 1, sequence: 1 });
 CricketOverEventSchema.index({ teamMatchId: 1, createdAt: 1 });
-
 
 export const CRICKET_OVER_EVENT_POPULATE: PopulateOptions[] = [
   { path: 'teamMatchId', populate: TEAM_MATCH_POPULATE },

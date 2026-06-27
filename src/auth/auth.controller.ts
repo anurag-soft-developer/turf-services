@@ -30,7 +30,10 @@ import { GoogleAuthGuard } from './guards/google-auth.guard';
 import { Public } from './decorators/public.decorator';
 import { CurrentUser } from './decorators/current-user.decorator';
 import type { IUser, Profile } from '../users/interfaces/user.interface';
-import { IAuthOtpChallengeResponse, IAuthResponse } from './interfaces/auth.interface';
+import {
+  IAuthOtpChallengeResponse,
+  IAuthResponse,
+} from './interfaces/auth.interface';
 import { GoogleMobileStrategy } from './strategies/google.strategy';
 import { config } from '../core/config/env.config';
 import { UsersService } from '../users/users.service';

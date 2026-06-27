@@ -65,7 +65,9 @@ export class TurfService {
     }
 
     const turf = new this.turfModel({ ...createTurfDto, postedBy });
-    const saved = await (await turf.save()).populate(TurfService.populateOptions);
+    const saved = await (
+      await turf.save()
+    ).populate(TurfService.populateOptions);
 
     await this.storageLifecycle.syncUrlArrayOnEntitySave({
       userId: postedBy,

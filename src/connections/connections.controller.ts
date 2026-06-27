@@ -53,7 +53,11 @@ export class ConnectionsController {
       dto.status === 'accepted'
         ? ConnectionStatus.ACCEPTED
         : ConnectionStatus.REJECTED;
-    return this.connectionsService.resolveRequest(id, userId.toString(), status);
+    return this.connectionsService.resolveRequest(
+      id,
+      userId.toString(),
+      status,
+    );
   }
 
   @Delete(':id')
@@ -64,5 +68,4 @@ export class ConnectionsController {
   ) {
     await this.connectionsService.closeConnection(id, userId.toString());
   }
-
 }

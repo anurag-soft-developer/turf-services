@@ -28,7 +28,6 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 export class TurfBookingController {
   constructor(private readonly turfBookingService: TurfBookingService) {}
 
-
   @Post('create-order')
   @HttpCode(HttpStatus.CREATED)
   async createBookingOrder(

@@ -163,7 +163,10 @@ export class TeamMatch {
           enum: Object.values(MatchProposalStatus),
           default: MatchProposalStatus.PENDING,
         },
-        decidedByTeamId: { type: MongooseSchema.Types.ObjectId, ref: Team.name },
+        decidedByTeamId: {
+          type: MongooseSchema.Types.ObjectId,
+          ref: Team.name,
+        },
         decidedAt: { type: Date },
         reason: { type: String, trim: true, maxlength: 300 },
         createdAt: { type: Date, default: Date.now },
@@ -194,7 +197,10 @@ export class TeamMatch {
           enum: Object.values(MatchProposalStatus),
           default: MatchProposalStatus.PENDING,
         },
-        decidedByTeamId: { type: MongooseSchema.Types.ObjectId, ref: Team.name },
+        decidedByTeamId: {
+          type: MongooseSchema.Types.ObjectId,
+          ref: Team.name,
+        },
         decidedAt: { type: Date },
         reason: { type: String, trim: true, maxlength: 300 },
         createdAt: { type: Date, default: Date.now },
