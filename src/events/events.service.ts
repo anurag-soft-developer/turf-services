@@ -392,6 +392,7 @@ export class EventsService {
   ): Record<string, unknown> {
     const {
       globalSearchText,
+      city,
       createdBy,
       status,
       registrationsPaused,
@@ -428,6 +429,9 @@ export class EventsService {
         { description: searchRegex },
         { 'location.address': searchRegex },
       ];
+    }
+    if (city) {
+      query['location.city'] = new RegExp(city, 'i');
     }
     if (minPrice !== undefined || maxPrice !== undefined) {
       query.price = {};

@@ -38,6 +38,7 @@ export const UpdateEventSchema = CreateEventSchema.partial().extend({
 export const SearchEventSchema = z.object({
   createdBy: z.string().optional(),
   globalSearchText: z.string().optional(),
+  city: z.string().trim().min(1).optional(),
   status: eventStatusSchema.optional(),
   registrationsPaused: parseBooleanQuery(),
   ...dateRangeQueryFields,
