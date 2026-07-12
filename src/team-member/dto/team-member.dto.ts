@@ -39,6 +39,8 @@ const TeamMemberFilterSchema = z.object({
 
 const MyMembershipsFilterSchema = z.object({
   status: teamMemberStatusSchema.optional(),
+  /** Case-insensitive match on team name / shortName. */
+  search: z.string().trim().min(1).max(80).optional(),
   page: z.coerce.number().min(1).default(1),
   limit: z.coerce.number().min(1).max(100).default(20),
 });

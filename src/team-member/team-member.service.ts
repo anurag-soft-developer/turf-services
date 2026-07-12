@@ -156,13 +156,33 @@ export class TeamMemberService {
     status: TeamMemberStatus | undefined,
     page: number,
     limit: number,
+    search?: string,
   ): Promise<PaginatedResult<TeamMemberDocument>> {
+    const emptyPage = (): PaginatedResult<TeamMemberDocument> => ({
+      data: [],
+      totalDocuments: 0,
+      page,
+      limit,
+      totalPages: 0,
+    });
+
     const filter: Record<string, unknown> = {
       user: new Types.ObjectId(userId),
     };
     if (status) {
       filter.status = status;
     }
+
+    const trimmedSearch = search?.trim();
+    if (trimmedSearch) {
+      const teamIds =
+        await this.teamService.findIdsByNameSearch(trimmedSearch);
+      if (teamIds.length === 0) {
+        return emptyPage();
+      }
+      filter.team = { $in: teamIds };
+    }
+
     const skip = (page - 1) * limit;
     const [data, totalDocuments] = await Promise.all([
       this.teamMemberModel

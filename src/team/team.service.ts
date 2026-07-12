@@ -99,6 +99,21 @@ export class TeamService {
     return populated;
   }
 
+  async findIdsByNameSearch(search: string): Promise<Types.ObjectId[]> {
+    const trimmed = search.trim();
+    if (!trimmed) return [];
+    const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const searchRegex = new RegExp(escaped, 'i');
+    const teams = await this.teamModel
+      .find({
+        $or: [{ name: searchRegex }, { shortName: searchRegex }],
+      })
+      .select('_id')
+      .lean()
+      .exec();
+    return teams.map((t) => t._id);
+  }
+
   async findById(id: string, viewerId: string): Promise<TeamDocument> {
     const team = await this.teamModel
       .findById(id)

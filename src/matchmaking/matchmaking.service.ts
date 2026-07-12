@@ -157,22 +157,31 @@ export class MatchmakingService {
     userId: string,
     filter: ListNegotiationsFilterDto,
   ): Promise<PaginatedResult<TeamMatchDocument>> {
-    const actorTeamIds = await getActorTeamIds(
-      userId,
-      this.teamModel,
-      this.teamMemberService,
-    );
-    if (actorTeamIds.length === 0) {
-      return {
-        data: [],
-        totalDocuments: 0,
-        page: filter.page,
-        limit: filter.limit,
-        totalPages: 0,
-      };
+    const emptyPage = (): PaginatedResult<TeamMatchDocument> => ({
+      data: [],
+      totalDocuments: 0,
+      page: filter.page,
+      limit: filter.limit,
+      totalPages: 0,
+    });
+
+    const scope = filter.scope ?? 'mine';
+    const uniqueScoped = parseScopedTeamIds(filter);
+    const hasExplicitTeamFilter = uniqueScoped.length > 0;
+
+    let actorTeamIds: Types.ObjectId[] = [];
+    if (scope === 'mine' && !hasExplicitTeamFilter) {
+      actorTeamIds = await getActorTeamIds(
+        userId,
+        this.teamModel,
+        this.teamMemberService,
+      );
+      if (actorTeamIds.length === 0) {
+        return emptyPage();
+      }
     }
 
-    const q: Record<string, unknown> = {};
+    const andClauses: Record<string, unknown>[] = [];
 
     const statusStrings: string[] = [];
     if (filter.statuses?.length) {
@@ -182,29 +191,48 @@ export class MatchmakingService {
     }
     const uniqueStatuses = [...new Set(statusStrings)];
     if (uniqueStatuses.length > 0) {
-      q.status = uniqueStatuses;
+      andClauses.push({ status: uniqueStatuses });
     }
 
-    const uniqueScoped = parseScopedTeamIds(filter);
-
-    const hasTeamFilter = uniqueScoped.length > 0;
-    if (hasTeamFilter) {
+    const scopedTeamIds = hasExplicitTeamFilter ? uniqueScoped : actorTeamIds;
+    if (scope === 'mine' || hasExplicitTeamFilter) {
       if (filter.type === 'incoming') {
-        q.toTeam = uniqueScoped;
+        andClauses.push({ toTeam: scopedTeamIds });
       } else if (filter.type === 'outgoing') {
-        q.fromTeam = uniqueScoped;
+        andClauses.push({ fromTeam: scopedTeamIds });
       } else {
-        q.$or = [{ fromTeam: uniqueScoped }, { toTeam: uniqueScoped }];
-      }
-    } else {
-      if (filter.type === 'incoming') {
-        q.toTeam = actorTeamIds;
-      } else if (filter.type === 'outgoing') {
-        q.fromTeam = actorTeamIds;
-      } else {
-        q.$or = [{ fromTeam: actorTeamIds }, { toTeam: actorTeamIds }];
+        andClauses.push({
+          $or: [{ fromTeam: scopedTeamIds }, { toTeam: scopedTeamIds }],
+        });
       }
     }
+
+    const search = filter.search?.trim();
+    if (search) {
+      const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const searchRegex = new RegExp(escaped, 'i');
+      const matchedTeams = await this.teamModel
+        .find({
+          $or: [{ name: searchRegex }, { shortName: searchRegex }],
+        })
+        .select('_id')
+        .lean()
+        .exec();
+      const searchTeamIds = matchedTeams.map((t) => t._id);
+      if (searchTeamIds.length === 0) {
+        return emptyPage();
+      }
+      andClauses.push({
+        $or: [{ fromTeam: searchTeamIds }, { toTeam: searchTeamIds }],
+      });
+    }
+
+    const q: Record<string, unknown> =
+      andClauses.length === 0
+        ? {}
+        : andClauses.length === 1
+          ? andClauses[0]
+          : { $and: andClauses };
 
     const sortSpec = buildMongoSortOptions(filter.sort, {
       defaultSort: { updatedAt: -1 },

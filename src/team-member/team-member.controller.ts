@@ -160,6 +160,7 @@ export class TeamMembershipSelfController {
       filter.status as TeamMemberStatus | undefined,
       filter.page,
       filter.limit,
+      filter.search,
     );
   }
 }

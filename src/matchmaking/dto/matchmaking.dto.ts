@@ -59,6 +59,13 @@ const ListNegotiationsFilterSchema = z.object({
   type: z.enum(['incoming', 'outgoing', 'all']).default('all'),
   status: teamMatchStatusSchema.optional(),
   statuses: parseStatusesQuery,
+  /**
+   * `mine` — only matches involving the caller's teams (default).
+   * `all` — platform-wide (JWT still required).
+   */
+  scope: z.enum(['mine', 'all']).default('mine'),
+  /** Case-insensitive match on either team's name / shortName. */
+  search: z.string().trim().min(1).max(80).optional(),
   /** e.g. `createdAt:desc` or `updatedAt:asc,createdAt:desc` */
   sort: z.string().trim().max(120).optional(),
   page: z.coerce.number().min(1).default(1),
