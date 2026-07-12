@@ -36,6 +36,18 @@ export class TeamMemberController {
     return this.teamMemberService.join(teamId, userId.toString());
   }
 
+  @Post('withdraw-request')
+  async withdrawRequest(
+    @Param('teamId') teamId: string,
+    @CurrentUser('_id') userId: Types.ObjectId,
+  ) {
+    await this.teamMemberService.withdrawJoinRequest(
+      teamId,
+      userId.toString(),
+    );
+    return { message: 'Join request withdrawn', success: true };
+  }
+
   @Get()
   async list(
     @Param('teamId') teamId: string,

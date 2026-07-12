@@ -25,6 +25,7 @@ const TURF_SEARCH_SORT_FIELD_MAP: Record<string, string> = {
   name: 'name',
   createdAt: 'createdAt',
   distance: 'distance',
+  averageRating: 'averageRating',
 };
 
 export interface TurfViewer {
@@ -236,6 +237,7 @@ export class TurfService {
       operatingTime,
       postedBy,
       status,
+      hasImages,
       page = 1,
       limit = 10,
       sort,
@@ -274,6 +276,10 @@ export class TurfService {
 
     if (isAvailable !== undefined) {
       query.isAvailable = isAvailable;
+    }
+
+    if (hasImages) {
+      query['images.0'] = { $exists: true };
     }
 
     if (pricing) {

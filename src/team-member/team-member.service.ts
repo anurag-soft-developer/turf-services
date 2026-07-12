@@ -327,6 +327,24 @@ export class TeamMemberService {
     return (await m.populate(TeamMemberService.populate)) as TeamMemberDocument;
   }
 
+  /** Applicant cancels their own pending join request by deleting it. */
+  async withdrawJoinRequest(teamId: string, userId: string): Promise<void> {
+    await this.teamService.requireTeam(teamId);
+
+    const m = await this.teamMemberModel.findOne({
+      team: new Types.ObjectId(teamId),
+      user: new Types.ObjectId(userId),
+      status: TeamMemberStatus.PENDING,
+    });
+    if (!m) {
+      throw new BadRequestException(
+        'You do not have a pending join request for this team',
+      );
+    }
+
+    await m.deleteOne();
+  }
+
   async resign(teamId: string, userId: string): Promise<void> {
     const team = await this.teamService.requireTeam(teamId);
     const m = await this.teamMemberModel.findOne({

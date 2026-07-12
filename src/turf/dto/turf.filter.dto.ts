@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { createZodDto, type ZodDto } from 'nestjs-zod';
-import { nearbyLocationQuerySchema } from '../../core/dto';
+import { nearbyLocationQuerySchema, parseBooleanQuery } from '../../core/dto';
 import { sportTypeSchema } from '../../core/sports/sport-types';
 import { TurfStatus } from '../schemas/turf.schema';
 
@@ -39,6 +39,8 @@ export const SearchTurfSchema = z.object({
     .optional(),
   status: turfStatusSchema.optional(),
   minRating: z.coerce.number().min(0).max(5).optional(),
+  /** When true, only turfs with at least one image. */
+  hasImages: parseBooleanQuery(),
   operatingTime: z
     .string()
     .regex(
