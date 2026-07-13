@@ -1,48 +1,76 @@
 import { z } from 'zod';
 import { createZodDto, type ZodDto } from 'nestjs-zod';
+import { normalizePhone } from '../../core/utils/phone.util';
 
 // Password validation regex
 const passwordRegex =
   /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/;
-const phoneRegex = /^\+?[\d\s\-\(\)]{10,15}$/;
 const otpRegex = /^\d{6}$/;
 
+const optionalEmail = z.email('Please provide a valid email address').optional();
+
+const optionalPhone = z.preprocess((val) => {
+  if (val === undefined || val === null || val === '') {
+    return undefined;
+  }
+  if (typeof val !== 'string') {
+    return val;
+  }
+  return normalizePhone(val);
+}, z.string().optional());
+
+const exactlyOneContactRefine = {
+  message: 'Provide exactly one of email or phone',
+  path: ['email'] as (string | number)[],
+};
+
+const passwordField = z
+  .string()
+  .min(8, 'Password must be at least 8 characters long')
+  .max(50, 'Password must not exceed 50 characters')
+  .regex(
+    passwordRegex,
+    'Password must contain at least one uppercase letter, one lowercase letter, one number and one special character',
+  );
+
+const otpField = z
+  .string()
+  .length(6, 'OTP must be 6 digits')
+  .regex(otpRegex, 'OTP must be 6 digits');
+
 // Register Schema
-export const RegisterSchema = z.object({
-  email: z.email('Please provide a valid email address'),
-  password: z
-    .string()
-    .min(8, 'Password must be at least 8 characters long')
-    .max(50, 'Password must not exceed 50 characters')
-    .regex(
-      passwordRegex,
-      'Password must contain at least one uppercase letter, one lowercase letter, one number and one special character',
-    ),
-  fullName: z
-    .string()
-    .min(2, 'Full name must be at least 2 characters long')
-    .max(100, 'Full name must not exceed 100 characters'),
-  phone: z
-    .string()
-    .regex(phoneRegex, 'Please provide a valid phone number')
-    .optional(),
-  bio: z.string().max(500, 'Bio must not exceed 500 characters').optional(),
-});
+export const RegisterSchema = z
+  .object({
+    email: optionalEmail,
+    phone: optionalPhone,
+    password: passwordField,
+    fullName: z
+      .string()
+      .min(2, 'Full name must be at least 2 characters long')
+      .max(100, 'Full name must not exceed 100 characters'),
+    bio: z.string().max(500, 'Bio must not exceed 500 characters').optional(),
+  })
+  .refine(
+    (data) => Boolean(data.email) !== Boolean(data.phone),
+    exactlyOneContactRefine,
+  );
 
 // Login Schema
-export const LoginSchema = z.object({
-  email: z.email('Please provide a valid email address'),
-  password: z.string().min(1, 'Password cannot be empty'),
-});
+export const LoginSchema = z
+  .object({
+    email: optionalEmail,
+    phone: optionalPhone,
+    password: z.string().min(1, 'Password cannot be empty'),
+  })
+  .refine(
+    (data) => Boolean(data.email) !== Boolean(data.phone),
+    exactlyOneContactRefine,
+  );
 
 // Change Password Schema
 export const ChangePasswordSchema = z.object({
   currentPassword: z.string().min(1, 'Current password is required').optional(),
-  otp: z
-    .string()
-    .length(6, 'OTP must be 6 digits')
-    .regex(otpRegex, 'OTP must be 6 digits')
-    .optional(),
+  otp: otpField.optional(),
   newPassword: z
     .string()
     .min(8, 'New password must be at least 8 characters long')
@@ -54,26 +82,28 @@ export const ChangePasswordSchema = z.object({
 });
 
 // Forgot Password Schema
-export const ForgotPasswordSchema = z.object({
-  email: z.email('Please provide a valid email address'),
-});
+export const ForgotPasswordSchema = z
+  .object({
+    email: optionalEmail,
+    phone: optionalPhone,
+  })
+  .refine(
+    (data) => Boolean(data.email) !== Boolean(data.phone),
+    exactlyOneContactRefine,
+  );
 
 // Reset Password Schema
-export const ResetPasswordSchema = z.object({
-  email: z.email('Please provide a valid email address'),
-  otp: z
-    .string()
-    .length(6, 'OTP must be 6 digits')
-    .regex(otpRegex, 'OTP must be 6 digits'),
-  password: z
-    .string()
-    .min(8, 'Password must be at least 8 characters long')
-    .max(50, 'Password must not exceed 50 characters')
-    .regex(
-      passwordRegex,
-      'Password must contain at least one uppercase letter, one lowercase letter, one number and one special character',
-    ),
-});
+export const ResetPasswordSchema = z
+  .object({
+    email: optionalEmail,
+    phone: optionalPhone,
+    otp: otpField,
+    password: passwordField,
+  })
+  .refine(
+    (data) => Boolean(data.email) !== Boolean(data.phone),
+    exactlyOneContactRefine,
+  );
 
 // Update Profile Schema
 export const UpdateProfileSchema = z.object({
@@ -81,11 +111,6 @@ export const UpdateProfileSchema = z.object({
     .string()
     .min(2, 'Full name must be at least 2 characters long')
     .max(100, 'Full name must not exceed 100 characters')
-    .optional(),
-  phone: z
-    .string()
-    .regex(phoneRegex, 'Please provide a valid phone number')
-    .or(z.literal(''))
     .optional(),
   bio: z.string().max(500, 'Bio must not exceed 500 characters').optional(),
   avatar: z.string().optional(),
@@ -99,10 +124,7 @@ export const SendVerificationEmailSchema = z.object({
 // Verify Email Schema
 export const VerifyEmailSchema = z.object({
   email: z.email('Please provide a valid email address'),
-  otp: z
-    .string()
-    .length(6, 'OTP must be 6 digits')
-    .regex(otpRegex, 'OTP must be 6 digits'),
+  otp: otpField,
 });
 
 // Google Mobile Auth Schema
@@ -110,20 +132,20 @@ export const GoogleMobileAuthSchema = z.object({
   idToken: z.string().min(1, 'Google ID token is required'),
 });
 
-export const VerifyLoginOtpSchema = z.object({
-  email: z.email('Please provide a valid email address'),
-  otp: z
-    .string()
-    .length(6, 'OTP must be 6 digits')
-    .regex(otpRegex, 'OTP must be 6 digits'),
-});
+export const VerifyLoginOtpSchema = z
+  .object({
+    email: optionalEmail,
+    phone: optionalPhone,
+    otp: otpField,
+  })
+  .refine(
+    (data) => Boolean(data.email) !== Boolean(data.phone),
+    exactlyOneContactRefine,
+  );
 
 export const UpdateTwoFactorSchema = z.object({
   enabled: z.boolean(),
-  otp: z
-    .string()
-    .length(6, 'OTP must be 6 digits')
-    .regex(otpRegex, 'OTP must be 6 digits'),
+  otp: otpField,
 });
 
 export const UpdateNotificationSettingsSchema = z.object({

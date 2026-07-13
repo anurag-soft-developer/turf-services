@@ -4,7 +4,6 @@ import type { IJwtPayload } from './interfaces/auth.interface';
 import type { IUser } from '../users/interfaces/user.interface';
 import { UserDocument } from '../users/schemas/user.schema';
 import { config } from '../core/config/env.config';
-import type { StringValue } from 'ms';
 
 @Injectable()
 export class JwtAuthService {
@@ -13,9 +12,11 @@ export class JwtAuthService {
   private getPayload(user: IUser | UserDocument): IJwtPayload {
     return {
       sub: user._id.toString(),
-      email: user.email,
+      ...(user.email ? { email: user.email } : {}),
+      ...(user.phone ? { phone: user.phone } : {}),
       role: user.role,
       isEmailVerified: user.isEmailVerified || false,
+      isPhoneVerified: user.isPhoneVerified || false,
     };
   }
 
@@ -49,7 +50,7 @@ export class JwtAuthService {
   decodeToken(token: string): IJwtPayload | null {
     try {
       return this.jwtService.decode(token);
-    } catch (error) {
+    } catch {
       return null;
     }
   }

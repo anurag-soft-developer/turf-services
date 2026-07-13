@@ -9,7 +9,7 @@ import { JwtAuthService } from './jwt-auth.service';
 import { UsersModule } from '../users/users.module';
 import { config } from '../core/config/env.config';
 import { EmailService } from '../core/services/email.service';
-import type { StringValue } from 'ms';
+import { SmsService } from '../core/services/sms.service';
 import { LocalStrategy } from './strategies/local.strategy';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import {
@@ -33,6 +33,7 @@ import {
     AuthService,
     JwtAuthService,
     EmailService,
+    SmsService,
     LocalStrategy,
     JwtStrategy,
     GoogleStrategy,

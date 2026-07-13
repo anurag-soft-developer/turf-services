@@ -37,13 +37,23 @@ export class UsersService {
       userData.password = await bcrypt.hash(userData.password, saltRounds);
     }
 
-    if (!userData.email) {
-      throw new BadRequestException('Email is required');
+    if (!userData.email && !userData.phone) {
+      throw new BadRequestException('Email or phone is required');
     }
 
-    const existingUser = await this.findByEmail(userData.email);
-    if (existingUser) {
-      throw new ConflictException('User with this email already exists');
+    if (userData.email) {
+      userData.email = userData.email.toLowerCase();
+      const existingByEmail = await this.findByEmail(userData.email);
+      if (existingByEmail) {
+        throw new ConflictException('User with this email already exists');
+      }
+    }
+
+    if (userData.phone) {
+      const existingByPhone = await this.findByPhone(userData.phone);
+      if (existingByPhone) {
+        throw new ConflictException('User with this phone already exists');
+      }
     }
 
     const user = new this.userModel(userData);
@@ -83,6 +93,29 @@ export class UsersService {
       .exec();
   }
 
+  async findByPhone(phone: string): Promise<UserDocument | null> {
+    return await this.userModel.findOne({ phone }).exec();
+  }
+
+  async findByPhoneWithPassword(phone: string): Promise<UserDocument | null> {
+    return await this.userModel.findOne({ phone }).select('+password').exec();
+  }
+
+  async findByPhoneWithOTP(phone: string): Promise<UserDocument | null> {
+    return await this.userModel
+      .findOne({ phone })
+      .select('+otp +otpExpiry')
+      .exec();
+  }
+
+  async findByIdWithPassword(id: string): Promise<UserDocument | null> {
+    return await this.userModel.findById(id).select('+password').exec();
+  }
+
+  async findByIdWithOTP(id: string): Promise<UserDocument | null> {
+    return await this.userModel.findById(id).select('+otp +otpExpiry').exec();
+  }
+
   async findByOAuthId(
     provider: string,
     oauthId: string,
@@ -117,24 +150,31 @@ export class UsersService {
     id: string,
     updateData: UpdateProfileDto,
   ): Promise<UserDocument> {
-    if (updateData.avatar !== undefined) {
+    const { fullName, bio, avatar } = updateData;
+    const allowedUpdates: Partial<IUser> = {
+      ...(fullName !== undefined ? { fullName } : {}),
+      ...(bio !== undefined ? { bio } : {}),
+      ...(avatar !== undefined ? { avatar } : {}),
+    };
+
+    if (avatar !== undefined) {
       const existing = await this.findById(id);
       if (!existing) {
         throw new NotFoundException('User not found');
       }
 
-      const user = await this.updateById(id, updateData);
+      const user = await this.updateById(id, allowedUpdates);
       await this.storageLifecycle.syncUrlArrayOnEntitySave({
         userId: id,
         entityType: 'user',
         entityId: id,
         previousUrls: existing.avatar ? [existing.avatar] : [],
-        nextUrls: updateData.avatar ? [updateData.avatar] : [],
+        nextUrls: avatar ? [avatar] : [],
       });
       return user;
     }
 
-    return await this.updateById(id, updateData);
+    return await this.updateById(id, allowedUpdates);
   }
 
   async updateNotificationSettings(
@@ -370,6 +410,7 @@ export class UsersService {
       isActive: user.isActive,
       isVerified: user.isVerified,
       isEmailVerified: user.isEmailVerified,
+      isPhoneVerified: user.isPhoneVerified,
       twoFactorEnabled: user.twoFactorEnabled,
       emailNotificationsEnabled: user.emailNotificationsEnabled,
       smsNotificationsEnabled: user.smsNotificationsEnabled,

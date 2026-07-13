@@ -1,6 +1,7 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
 import { Strategy } from 'passport-local';
+import type { Request } from 'express';
 import { AuthService } from '../auth.service';
 
 @Injectable()
@@ -9,17 +10,22 @@ export class LocalStrategy extends PassportStrategy(Strategy) {
     super({
       usernameField: 'email',
       passwordField: 'password',
+      passReqToCallback: true,
     });
   }
 
-  async validate(email: string, password: string) {
+  async validate(req: Request, _username: string, password: string) {
     try {
-      const result = await this.authService.login({ email, password });
+      const result = await this.authService.login({
+        email: req.body?.email,
+        phone: req.body?.phone,
+        password,
+      });
       if (!('user' in result)) {
         throw new UnauthorizedException('OTP verification required');
       }
       return result.user;
-    } catch (error) {
+    } catch {
       throw new UnauthorizedException('Invalid credentials');
     }
   }

@@ -19,7 +19,7 @@ import {
   UpdateTwoFactorDto,
   UpdateNotificationSettingsDto,
 } from './dto/auth.dto';
-import type { IUser, Profile } from '../users/interfaces/user.interface';
+import type { Profile } from '../users/interfaces/user.interface';
 import ms from 'ms';
 import {
   OAuthProvider,
@@ -32,8 +32,11 @@ import {
 } from './interfaces/auth.interface';
 import { GoogleProfile } from './strategies/google.strategy';
 import { EmailService } from '../core/services/email.service';
+import { SmsService } from '../core/services/sms.service';
 import type { CookieOptions, Response } from 'express';
 import { config } from '../core/config/env.config';
+
+type OtpChannel = 'email' | 'sms';
 
 @Injectable()
 export class AuthService {
@@ -41,12 +44,26 @@ export class AuthService {
     private usersService: UsersService,
     private jwtAuthService: JwtAuthService,
     private emailService: EmailService,
+    private smsService: SmsService,
   ) {}
 
   async register(registerDto: RegisterDto): Promise<IAuthResponse> {
-    const existingUser = await this.usersService.findByEmail(registerDto.email);
-    if (existingUser) {
-      throw new ConflictException('User with this email already exists');
+    if (registerDto.email) {
+      const existingUser = await this.usersService.findByEmail(
+        registerDto.email,
+      );
+      if (existingUser) {
+        throw new ConflictException('User with this email already exists');
+      }
+    }
+
+    if (registerDto.phone) {
+      const existingUser = await this.usersService.findByPhone(
+        registerDto.phone,
+      );
+      if (existingUser) {
+        throw new ConflictException('User with this phone already exists');
+      }
     }
 
     const user = await this.usersService.create({
@@ -68,9 +85,9 @@ export class AuthService {
   async login(
     loginDto: LoginDto,
   ): Promise<IAuthResponse | IAuthOtpChallengeResponse> {
-    const user = await this.usersService.findByEmailWithPassword(
-      loginDto.email,
-    );
+    const user = loginDto.phone
+      ? await this.usersService.findByPhoneWithPassword(loginDto.phone)
+      : await this.usersService.findByEmailWithPassword(loginDto.email!);
 
     if (!user) {
       throw new UnauthorizedException('Invalid credentials');
@@ -96,6 +113,7 @@ export class AuthService {
     }
 
     if (user.twoFactorEnabled) {
+      const channel: OtpChannel = loginDto.phone ? 'sms' : 'email';
       const { otpWithKey, otpDisplay } = this.generateOTP(OtpKeys.LOGIN_2FA);
       const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
 
@@ -104,6 +122,27 @@ export class AuthService {
         otpWithKey,
         otpExpiry,
       );
+
+      if (channel === 'sms') {
+        if (!user.phone) {
+          throw new BadRequestException('Phone number is not available for SMS OTP');
+        }
+        await this.smsService.sendOtpSms({
+          to: user.phone,
+          otpCode: otpDisplay,
+          purpose: 'login verification',
+        });
+        return {
+          message: 'OTP sent to your registered phone',
+          requiresOtp: true,
+          channel: 'sms',
+          phone: user.phone,
+        };
+      }
+
+      if (!user.email) {
+        throw new BadRequestException('Email is not available for email OTP');
+      }
       await this.emailService.sendOtpEmail({
         to: user.email,
         userFullName: user.fullName || 'User',
@@ -117,6 +156,7 @@ export class AuthService {
       return {
         message: 'OTP sent to your registered email',
         requiresOtp: true,
+        channel: 'email',
         email: user.email,
       };
     }
@@ -136,9 +176,10 @@ export class AuthService {
   async verifyLoginOtp(
     verifyLoginOtpDto: VerifyLoginOtpDto,
   ): Promise<IAuthResponse> {
-    const user = await this.usersService.findByEmailWithOTP(
-      verifyLoginOtpDto.email,
-    );
+    const user = verifyLoginOtpDto.phone
+      ? await this.usersService.findByPhoneWithOTP(verifyLoginOtpDto.phone)
+      : await this.usersService.findByEmailWithOTP(verifyLoginOtpDto.email!);
+
     if (!user) {
       throw new NotFoundException('User not found');
     }
@@ -236,7 +277,7 @@ export class AuthService {
         accessToken: newAccessToken,
         refreshToken: newRefreshToken,
       };
-    } catch (error) {
+    } catch {
       throw new UnauthorizedException('Invalid refresh token');
     }
   }
@@ -245,15 +286,7 @@ export class AuthService {
     userId: string,
     changePasswordDto: ChangePasswordDto,
   ): Promise<void> {
-    const userBase = await this.usersService.findById(userId);
-    if (!userBase) {
-      throw new NotFoundException('User not found');
-    }
-
-    const user = await this.usersService.findByEmailWithPassword(
-      userBase.email,
-    );
-
+    const user = await this.usersService.findByIdWithPassword(userId);
     if (!user) {
       throw new NotFoundException('User not found');
     }
@@ -265,10 +298,7 @@ export class AuthService {
         );
       }
 
-      await this.assertValidChangePasswordOtp(
-        userBase.email,
-        changePasswordDto.otp,
-      );
+      await this.assertValidChangePasswordOtp(userId, changePasswordDto.otp);
 
       await this.usersService.changePassword(
         userId,
@@ -298,10 +328,7 @@ export class AuthService {
         );
       }
 
-      await this.assertValidChangePasswordOtp(
-        userBase.email,
-        changePasswordDto.otp,
-      );
+      await this.assertValidChangePasswordOtp(userId, changePasswordDto.otp);
     }
 
     await this.usersService.changePassword(
@@ -330,31 +357,27 @@ export class AuthService {
       otpExpiry,
     );
 
-    await this.emailService.sendOtpEmail({
-      to: user.email,
-      userFullName: user.fullName || 'User',
-      otpCode: otpDisplay,
+    const channel = await this.sendOtpViaPreferredChannel(user, otpDisplay, {
       subject: 'Password Change OTP',
       title: 'Password Change Verification',
       instructionText:
         'Use the following one-time password (OTP) to continue changing your password.',
+      smsPurpose: 'password change',
     });
 
-    return { message: 'Password change OTP sent to your email' };
+    return {
+      message:
+        channel === 'sms'
+          ? 'Password change OTP sent to your phone'
+          : 'Password change OTP sent to your email',
+    };
   }
 
   async updateTwoFactor(
     userId: string,
     updateTwoFactorDto: UpdateTwoFactorDto,
   ): Promise<Profile> {
-    const userBase = await this.usersService.findById(userId);
-    if (!userBase) {
-      throw new NotFoundException('User not found');
-    }
-
-    const userWithOtp = await this.usersService.findByEmailWithOTP(
-      userBase.email,
-    );
+    const userWithOtp = await this.usersService.findByIdWithOTP(userId);
     if (!userWithOtp || !userWithOtp.otp || !userWithOtp.otpExpiry) {
       throw new BadRequestException(
         'No 2FA OTP found. Please request a new one',
@@ -398,17 +421,20 @@ export class AuthService {
       otpExpiry,
     );
 
-    await this.emailService.sendOtpEmail({
-      to: user.email,
-      userFullName: user.fullName || 'User',
-      otpCode: otpDisplay,
+    const channel = await this.sendOtpViaPreferredChannel(user, otpDisplay, {
       subject: '2FA Settings OTP',
       title: '2FA Settings Verification',
       instructionText:
         'Use the following one-time password (OTP) to update your 2FA settings.',
+      smsPurpose: '2FA settings',
     });
 
-    return { message: '2FA OTP sent to your email' };
+    return {
+      message:
+        channel === 'sms'
+          ? '2FA OTP sent to your phone'
+          : '2FA OTP sent to your email',
+    };
   }
 
   async updateNotificationSettings(
@@ -449,7 +475,7 @@ export class AuthService {
     );
 
     await this.emailService.sendVerificationEmail({
-      to: user.email,
+      to: user.email!,
       userFullName: user.fullName || 'User',
       otpCode: otpDisplay,
     });
@@ -514,14 +540,16 @@ export class AuthService {
   async forgotPassword(
     forgotPasswordDto: ForgotPasswordDto,
   ): Promise<{ message: string }> {
-    const user = await this.usersService.findByEmail(forgotPasswordDto.email);
+    const genericMessage = forgotPasswordDto.phone
+      ? 'If an account with that phone exists, we have sent a password reset code'
+      : 'If an account with that email exists, we have sent a password reset code';
+
+    const user = forgotPasswordDto.phone
+      ? await this.usersService.findByPhone(forgotPasswordDto.phone)
+      : await this.usersService.findByEmail(forgotPasswordDto.email!);
 
     if (!user) {
-      // Don't reveal if user exists for security reasons
-      return {
-        message:
-          'If an account with that email exists, we have sent a password reset code',
-      };
+      return { message: genericMessage };
     }
 
     const { otpWithKey, otpDisplay } = this.generateOTP(
@@ -535,24 +563,29 @@ export class AuthService {
       otpExpiry,
     );
 
-    await this.emailService.sendPasswordResetEmail({
-      to: user.email,
-      userFullName: user.fullName || 'User',
-      otpCode: otpDisplay,
-    });
+    if (forgotPasswordDto.phone) {
+      await this.smsService.sendOtpSms({
+        to: user.phone!,
+        otpCode: otpDisplay,
+        purpose: 'password reset',
+      });
+    } else {
+      await this.emailService.sendPasswordResetEmail({
+        to: user.email!,
+        userFullName: user.fullName || 'User',
+        otpCode: otpDisplay,
+      });
+    }
 
-    return {
-      message:
-        'If an account with that email exists, we have sent a password reset code',
-    };
+    return { message: genericMessage };
   }
 
   async resetPassword(
     resetPasswordDto: ResetPasswordDto,
   ): Promise<{ message: string }> {
-    const user = await this.usersService.findByEmailWithOTP(
-      resetPasswordDto.email,
-    );
+    const user = resetPasswordDto.phone
+      ? await this.usersService.findByPhoneWithOTP(resetPasswordDto.phone)
+      : await this.usersService.findByEmailWithOTP(resetPasswordDto.email!);
 
     if (!user) {
       throw new NotFoundException('User not found');
@@ -590,25 +623,22 @@ export class AuthService {
   }
 
   private getCookieOptions(): CookieOptions {
-    // const isProduction = config.NODE_ENV === 'production';
-
     return {
       httpOnly: true,
       secure: true,
       sameSite: 'none',
       path: '/',
-      // domain: isProduction ? config.COOKIE_DOMAIN : undefined,
     };
   }
 
   setCookies(res: Response, accessToken: string, refreshToken: string): void {
     const accessTokenOptions = this.getCookieOptions();
 
-    accessTokenOptions.maxAge = ms(config.JWT_EXPIRES_IN); // 7 days
+    accessTokenOptions.maxAge = ms(config.JWT_EXPIRES_IN);
 
     const refreshTokenOptions: CookieOptions = {
       ...accessTokenOptions,
-      maxAge: ms(config.JWT_REFRESH_EXPIRES_IN), // 7 days
+      maxAge: ms(config.JWT_REFRESH_EXPIRES_IN),
     };
 
     res.cookie('accessToken', accessToken, accessTokenOptions);
@@ -622,11 +652,48 @@ export class AuthService {
     res.clearCookie('refreshToken', clearOptions);
   }
 
+  /**
+   * Prefer email when present; otherwise SMS for phone-only accounts.
+   */
+  private async sendOtpViaPreferredChannel(
+    user: UserDocument,
+    otpDisplay: string,
+    options: {
+      subject: string;
+      title: string;
+      instructionText: string;
+      smsPurpose: string;
+    },
+  ): Promise<OtpChannel> {
+    if (user.email) {
+      await this.emailService.sendOtpEmail({
+        to: user.email,
+        userFullName: user.fullName || 'User',
+        otpCode: otpDisplay,
+        subject: options.subject,
+        title: options.title,
+        instructionText: options.instructionText,
+      });
+      return 'email';
+    }
+
+    if (user.phone) {
+      await this.smsService.sendOtpSms({
+        to: user.phone,
+        otpCode: otpDisplay,
+        purpose: options.smsPurpose,
+      });
+      return 'sms';
+    }
+
+    throw new BadRequestException('No contact method available to send OTP');
+  }
+
   private async assertValidChangePasswordOtp(
-    email: string,
+    userId: string,
     otp: string,
   ): Promise<void> {
-    const userWithOtp = await this.usersService.findByEmailWithOTP(email);
+    const userWithOtp = await this.usersService.findByIdWithOTP(userId);
     if (!userWithOtp || !userWithOtp.otp || !userWithOtp.otpExpiry) {
       throw new BadRequestException(
         'No password change OTP found. Please request a new one',

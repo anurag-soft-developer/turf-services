@@ -3,8 +3,10 @@ import { UserRole } from '../decorators/roles.decorator';
 
 export interface IJwtPayload {
   sub: string;
-  email: string;
-  isEmailVerified: boolean;
+  email?: string;
+  phone?: string;
+  isEmailVerified?: boolean;
+  isPhoneVerified?: boolean;
   role: UserRole;
   iat?: number;
   exp?: number;
@@ -19,5 +21,7 @@ export interface IAuthResponse {
 export interface IAuthOtpChallengeResponse {
   message: string;
   requiresOtp: true;
-  email: string;
+  channel: 'email' | 'sms';
+  email?: string;
+  phone?: string;
 }

@@ -53,12 +53,12 @@ export const userSelectFields: string = '_id fullName avatar email';
 export class User extends Document implements UserDocument {
   @Prop({
     type: String,
-    required: true,
     unique: true,
+    sparse: true,
     lowercase: true,
     trim: true,
   })
-  email!: string;
+  email?: string;
 
   @Prop({
     type: String,
@@ -121,6 +121,12 @@ export class User extends Document implements UserDocument {
     default: false,
   })
   isEmailVerified?: boolean;
+
+  @Prop({
+    type: Boolean,
+    default: false,
+  })
+  isPhoneVerified?: boolean;
 
   @Prop({
     type: Boolean,
@@ -197,6 +203,8 @@ export class User extends Document implements UserDocument {
 
   @Prop({
     type: String,
+    unique: true,
+    sparse: true,
   })
   phone?: string;
 

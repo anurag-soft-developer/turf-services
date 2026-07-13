@@ -21,7 +21,7 @@ export interface FcmTokenEntry {
 
 export interface Profile {
   _id: string;
-  email: string;
+  email?: string;
   role: UserRole;
   fullName?: string;
   bio?: string;
@@ -29,6 +29,7 @@ export interface Profile {
   isActive?: boolean;
   isVerified?: boolean;
   isEmailVerified?: boolean;
+  isPhoneVerified?: boolean;
   twoFactorEnabled?: boolean;
   emailNotificationsEnabled?: boolean;
   smsNotificationsEnabled?: boolean;
