@@ -1,6 +1,19 @@
-# Turf Services
+# Turf Services (Nest monorepo)
 
-A NestJS-based authentication service with email verification and password reset functionality using OTP (One-Time Password) system.
+HTTP API (`apps/turf-services`) and Socket.io realtime (`apps/socket`) share Zod contracts from `libs/` (plain TS utilities, imported as `@app/shared`). Apps communicate over HTTP with `x-internal-token` — they do not import Nest gateways across process boundaries.
+
+```text
+turf-services/
+├── apps/
+│   ├── turf-services/   # HTTP API (Vercel)
+│   └── socket/          # Socket.io + Redis (always-on host)
+├── libs/                  # Shared Zod/utility contracts (not a Nest app)
+│   ├── chat/
+│   ├── notification/
+│   └── scoring/
+├── docker-compose.yml   # Local Redis
+└── nest-cli.json
+```
 
 ## Features
 
@@ -8,86 +21,99 @@ A NestJS-based authentication service with email verification and password reset
 - **Email Verification**: OTP-based email verification system
 - **Password Reset**: Secure password reset with OTP
 - **OAuth Integration**: Google OAuth2 authentication
-- **React Email Templates**: Beautiful, responsive email templates
-- **Security**: Password hashing with bcrypt, JWT access and refresh tokens
+- **Realtime**: Chat, scoring updates, and in-app notifications via Socket.io
+- **React Email Templates**: Responsive email templates
 - **Role-based Access**: User role management system
 
 ## Technology Stack
 
-- **Framework**: NestJS (Node.js)
+- **Framework**: NestJS monorepo (Node.js)
 - **Database**: MongoDB with Mongoose
+- **Realtime**: Socket.io + Redis adapter
 - **Authentication**: JWT, Passport.js
 - **Email Templates**: React Email
-- **Email Service**: Nodemailer
-- **Validation**: class-validator
-- **Password Hashing**: bcryptjs
+- **Validation**: Zod (`nestjs-zod`)
 
-## Project Setup
+## Prerequisites
 
-### Prerequisites
-
-- Node.js (v16 or higher)
+- Node.js (v18 or higher)
 - MongoDB
+- Redis (local: `docker compose up -d`)
 - SMTP email service (Gmail, SendGrid, etc.)
 
-### Installation
+## Installation
 
-1. Clone the repository
 ```bash
 git clone <repository-url>
 cd turf-services
-```
-
-2. Install dependencies
-```bash
 npm install
-```
-
-3. Environment Configuration
-```bash
 cp .env.example .env
+cp apps/socket/.env.example apps/socket/.env
+docker compose up -d
 ```
 
-Edit the `.env` file with your configuration:
+Align secrets across both `.env` files:
 
-```env
-# Database
-MONGODB_URI=mongodb://localhost:27017/turf-services
+| Variable | API (`PORT=3000`) | Socket (`PORT=3001`) |
+|---|---|---|
+| `JWT_SECRET` | required | same value |
+| `NOTIFICATION_INTERNAL_TOKEN` | required | same value |
+| `SCORING_INTERNAL_TOKEN` | required | same value |
+| `CHAT_BATCH_INTERNAL_TOKEN` | required | same value |
+| `REALTIME_TURF_BASE_URL` | `http://localhost:3001` | — |
+| `TURF_SERVICES_BASE_URL` | — | `http://localhost:3000` |
+| `REDIS_URL` | — | `redis://localhost:6379` |
 
-# JWT Configuration
-JWT_SECRET=your-jwt-secret-key
-JWT_EXPIRES_IN=1h
-JWT_REFRESH_SECRET=your-jwt-refresh-secret-key
-JWT_REFRESH_EXPIRES_IN=7d
-
-# Email Configuration (SMTP)
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=your-email@gmail.com
-SMTP_PASS=your-app-password
-SMTP_FROM=noreply@turfservices.com
-
-# Google OAuth
-GOOGLE_CLIENT_ID=your-google-client-id
-GOOGLE_CLIENT_SECRET=your-google-client-secret
-
-# Application
-PORT=3000
-FRONTEND_URL=http://localhost:3000
-APP_NAME=Turf Services
-```
-
-## Running the Application
+## Running locally
 
 ```bash
-# Development mode
+# Terminal 1 — HTTP API
 npm run start:dev
 
-# Production mode
-npm run start:prod
+# Terminal 2 — Socket app
+npm run start:dev:socket
 ```
 
-The server will start at `http://localhost:3000`
+- API: `http://localhost:3000`
+- Socket: `http://localhost:3001` (namespaces `/chat`, `/scoring`, `/notifications`)
+
+## Build
+
+```bash
+npm run build          # turf-services only
+npm run build:socket   # socket only
+npm run build:all      # both
+```
+
+Production start:
+
+```bash
+npm run start:prod
+npm run start:prod:socket
+```
+
+## Deploy
+
+| App | Host | Build | Start |
+|---|---|---|---|
+| `turf-services` | Vercel | `nest build turf-services` | Existing Vercel Node adapter |
+| `socket` | Railway / Render / Fly / VPS + Redis | `nest build socket` | `node dist/apps/socket/main` |
+
+Do **not** deploy `apps/socket` to Vercel (WebSockets + Redis need a long-lived process).
+
+On Vercel set `REALTIME_TURF_BASE_URL` to the public socket URL. On the socket host set `TURF_SERVICES_BASE_URL` to the Vercel API URL.
+
+## Shared contracts
+
+Plain TypeScript utilities under `libs/` (not a Nest library project). Import via `@app/shared`:
+
+```ts
+import {
+  chatRefSchema,
+  scoringUpdatePayloadSchema,
+  notificationDispatchSchema,
+} from '@app/shared';
+```
 
 ## API Endpoints
 
@@ -215,86 +241,14 @@ Content-Type: application/json
 GET /auth/google
 ```
 
-## OTP System
-
-The application uses a secure OTP (One-Time Password) system for email verification and password reset:
-
-### Key Features:
-- **6-digit OTP**: Random 6-digit codes for verification
-- **Key Concatenation**: OTP is concatenated with a context key (e.g., "EMAIL_VERIFICATION:123456")
-- **Expiration**: OTPs expire after 10 minutes
-- **Context Validation**: Server validates both OTP and context key
-- **Security**: Keys are stored server-side only for identification
-
-### OTP Types:
-- `EMAIL_VERIFICATION`: For email verification
-- `PASSWORD_RESET`: For password reset
-
-## Email Templates
-
-The application uses React Email for beautiful, responsive email templates located in `/src/templates/`:
-
-- **Verification Email**: For email verification with OTP
-- **Password Reset Email**: For password reset with OTP
-
-### Template Development
-```bash
-cd src/templates
-npm run dev  # Preview templates in development
-```
-
 ## Testing
 
 ```bash
-# Unit tests
 npm run test
-
-# E2E tests
 npm run test:e2e
-
-# Test coverage
 npm run test:cov
 ```
-
-## File Structure
-
-```
-src/
-├── auth/                    # Authentication module
-│   ├── decorators/         # Custom decorators
-│   ├── dto/                # Data transfer objects
-│   ├── guards/             # Authentication guards
-│   ├── interfaces/         # TypeScript interfaces
-│   └── strategies/         # Passport strategies
-├── common/
-│   ├── services/           # Shared services
-│   └── utils/              # Utility functions
-├── config/                 # Configuration files
-├── templates/              # React Email templates
-└── users/                  # User management module
-```
-
-## Security Features
-
-- **Password Hashing**: bcrypt with 12 salt rounds
-- **JWT Tokens**: Access and refresh token system
-- **Email Verification**: Required for account activation
-- **Rate Limiting**: Built-in protection against brute force
-- **OTP Security**: Context-aware OTP validation
-- **OAuth Integration**: Secure third-party authentication
-
-## Contributing
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
 
 ## License
 
 This project is licensed under the MIT License.
-
-## Support
-
-For support, email support@turfservices.com or create an issue in the repository.
