@@ -2,7 +2,7 @@ import { createZodDto, type ZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 import { NotificationModule } from '../schemas/notification.schema';
 import type {
-  ConnectionNotificationData,
+  FollowingNotificationData,
   EventBookingNotificationData,
   MatchmakingNotificationData,
   TeamNotificationData,
@@ -68,8 +68,8 @@ export type CreateNotificationInput =
     })
   | (NotificationPayloadBase & {
       recipientUserId: string;
-      module: NotificationModule.CONNECTIONS;
-      data: ConnectionNotificationData;
+      module: NotificationModule.FOLLOWINGS;
+      data: FollowingNotificationData;
     })
   | (NotificationPayloadBase & {
       recipientUserId: string;

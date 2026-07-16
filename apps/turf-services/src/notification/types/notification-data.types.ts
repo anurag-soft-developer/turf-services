@@ -35,10 +35,10 @@ export type TeamNotificationKind =
   | 'team_join_accepted'
   | 'team_join_rejected';
 
-export type ConnectionNotificationKind =
-  | 'connection_request'
-  | 'connection_accepted'
-  | 'connection_rejected';
+export type FollowingNotificationKind =
+  | 'following_request'
+  | 'following_accepted'
+  | 'following_rejected';
 
 export type WithdrawalNotificationKind =
   | 'withdrawal_submitted'
@@ -54,7 +54,7 @@ export type NotificationKind =
   | EventBookingNotificationKind
   | MatchmakingNotificationKind
   | TeamNotificationKind
-  | ConnectionNotificationKind
+  | FollowingNotificationKind
   | WithdrawalNotificationKind
   | TurfApprovalNotificationKind;
 
@@ -117,14 +117,14 @@ export type TeamNotificationData =
       membershipId: string;
     };
 
-export type ConnectionNotificationData =
+export type FollowingNotificationData =
   | {
-      kind: 'connection_request';
-      connectionId: string;
+      kind: 'following_request';
+      followingId: string;
       actorUserId: string;
     }
-  | { kind: 'connection_accepted'; connectionId: string }
-  | { kind: 'connection_rejected'; connectionId: string };
+  | { kind: 'following_accepted'; followingId: string }
+  | { kind: 'following_rejected'; followingId: string };
 
 export type WithdrawalNotificationData =
   | {
@@ -157,6 +157,6 @@ export type NotificationData =
   | EventBookingNotificationData
   | MatchmakingNotificationData
   | TeamNotificationData
-  | ConnectionNotificationData
+  | FollowingNotificationData
   | WithdrawalNotificationData
   | TurfApprovalNotificationData;

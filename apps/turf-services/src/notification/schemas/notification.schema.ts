@@ -9,7 +9,7 @@ export enum NotificationModule {
   MATCHMAKING = 'matchmaking',
   EVENT_BOOKING = 'eventBooking',
   TEAMS = 'teams',
-  CONNECTIONS = 'connections',
+  FOLLOWINGS = 'followings',
   WITHDRAWALS = 'withdrawals',
   TURF_APPROVAL = 'turfApproval',
 }

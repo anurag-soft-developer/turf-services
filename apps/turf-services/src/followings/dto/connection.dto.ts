@@ -16,6 +16,11 @@ const ResolveConnectionRequestSchema = z.object({
   status: z.enum(['accepted', 'rejected']),
 });
 
+const FriendsPaginationSchema = z.object({
+  page: z.coerce.number().min(1).default(1),
+  limit: z.coerce.number().min(1).max(100).default(20),
+});
+
 const SendConnectionRequestDtoBase: ZodDto<typeof SendConnectionRequestSchema> =
   createZodDto(SendConnectionRequestSchema);
 const ConnectionFilterDtoBase: ZodDto<typeof ConnectionFilterSchema> =
@@ -23,7 +28,10 @@ const ConnectionFilterDtoBase: ZodDto<typeof ConnectionFilterSchema> =
 const ResolveConnectionRequestDtoBase: ZodDto<
   typeof ResolveConnectionRequestSchema
 > = createZodDto(ResolveConnectionRequestSchema);
+const FriendsPaginationDtoBase: ZodDto<typeof FriendsPaginationSchema> =
+  createZodDto(FriendsPaginationSchema);
 
 export class SendConnectionRequestDto extends SendConnectionRequestDtoBase {}
 export class ConnectionFilterDto extends ConnectionFilterDtoBase {}
 export class ResolveConnectionRequestDto extends ResolveConnectionRequestDtoBase {}
+export class FriendsPaginationDto extends FriendsPaginationDtoBase {}

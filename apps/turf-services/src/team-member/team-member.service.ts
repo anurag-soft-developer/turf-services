@@ -25,7 +25,7 @@ import {
   SPORT_ROSTER_CONFIG,
   SportType,
 } from '../team/schemas/team.schema';
-import { ConnectionsService } from '../connections/connections.service';
+import { FollowingsService } from '../followings/followings.service';
 import { PaginatedResult } from '../core/interfaces/common';
 import { resolveId } from '../core/utils/mongo-ref.util';
 import { userSelectFields } from '../users/schemas/user.schema';
@@ -52,7 +52,7 @@ export class TeamMemberService {
     private teamMemberModel: Model<TeamMemberDocument>,
     @Inject(forwardRef(() => TeamService))
     private teamService: TeamService,
-    private connectionsService: ConnectionsService,
+    private followingsService: FollowingsService,
     private readonly notificationService: NotificationService,
   ) {}
 
@@ -211,7 +211,7 @@ export class TeamMemberService {
     await this.assertNoOpenStint(teamId, userId);
 
     if (team.visibility === TeamVisibility.PRIVATE) {
-      const allowed = await this.connectionsService.isConnectedToAny(
+      const allowed = await this.followingsService.isConnectedToAny(
         userId,
         team.ownerIds,
       );

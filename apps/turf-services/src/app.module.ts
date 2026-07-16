@@ -11,7 +11,7 @@ import { TurfModule } from './turf/turf.module';
 import { TurfBookingModule } from './turf-booking/turf-booking.module';
 import { TurfReviewModule } from './turf-review/turf-review.module';
 import { AppMetadataModule } from './app-metadata/app-metadata.module';
-import { ConnectionsModule } from './connections/connections.module';
+import { FollowingsModule } from './followings/followings.module';
 import { TeamModule } from './team/team.module';
 import { PostModule } from './post/post.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
@@ -43,7 +43,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
     WebhookModule,
     TurfReviewModule,
     AppMetadataModule,
-    ConnectionsModule,
+    FollowingsModule,
     TeamModule,
     PostModule,
     MatchmakingModule,

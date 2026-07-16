@@ -2,9 +2,9 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Schema as MongooseSchema, Types } from 'mongoose';
 import { User } from '../../users/schemas/user.schema';
 
-export type ConnectionDocument = Connection & Document;
+export type FollowingDocument = Following & Document;
 
-export enum ConnectionStatus {
+export enum FollowingStatus {
   PENDING = 'pending',
   ACCEPTED = 'accepted',
   REJECTED = 'rejected',
@@ -12,9 +12,9 @@ export enum ConnectionStatus {
 
 @Schema({
   timestamps: true,
-  collection: 'connections',
+  collection: 'followings',
 })
-export class Connection {
+export class Following {
   @Prop({
     type: MongooseSchema.Types.ObjectId,
     ref: User.name,
@@ -31,10 +31,10 @@ export class Connection {
 
   @Prop({
     type: String,
-    enum: Object.values(ConnectionStatus),
-    default: ConnectionStatus.PENDING,
+    enum: Object.values(FollowingStatus),
+    default: FollowingStatus.PENDING,
   })
-  status!: ConnectionStatus;
+  status!: FollowingStatus;
 
   /** When set (rejected only), MongoDB TTL deletes the document at this instant. */
   @Prop({ type: Date })
@@ -44,11 +44,13 @@ export class Connection {
   updatedAt!: Date;
 }
 
-export const ConnectionSchema = SchemaFactory.createForClass(Connection);
+export const FollowingSchema = SchemaFactory.createForClass(Following);
 
-ConnectionSchema.index({ requester: 1, recipient: 1 }, { unique: true });
+FollowingSchema.index({ requester: 1, recipient: 1 }, { unique: true });
 
-ConnectionSchema.index({ purgeAt: 1 }, { expireAfterSeconds: 0 });
+FollowingSchema.index({ purgeAt: 1 }, { expireAfterSeconds: 0 });
 
-ConnectionSchema.index({ requester: 1, status: 1 });
-ConnectionSchema.index({ recipient: 1, status: 1 });
+FollowingSchema.index({ requester: 1, status: 1 });
+FollowingSchema.index({ recipient: 1, status: 1 });
+/** Speeds reverse-edge checks used by friends aggregations. */
+FollowingSchema.index({ recipient: 1, requester: 1, status: 1 });

@@ -7,7 +7,7 @@ import {
   TeamMembershipSelfController,
 } from './team-member.controller';
 import { TeamModule } from '../team/team.module';
-import { ConnectionsModule } from '../connections/connections.module';
+import { FollowingsModule } from '../followings/followings.module';
 import { NotificationModule } from '../notification/notification.module';
 
 @Module({
@@ -16,7 +16,7 @@ import { NotificationModule } from '../notification/notification.module';
       { name: TeamMember.name, schema: TeamMemberSchema },
     ]),
     forwardRef(() => TeamModule),
-    ConnectionsModule,
+    FollowingsModule,
     NotificationModule,
   ],
   controllers: [TeamMemberController, TeamMembershipSelfController],
