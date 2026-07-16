@@ -24,11 +24,6 @@
     "types": [
       "node",
       "jest"
-    ],
-    "baseUrl": "./",
-    "paths": {
-      "@app/shared": ["libs"],
-      "@app/shared/*": ["libs/*"]
-    }
+    ]
   }
 }

@@ -118,9 +118,6 @@
     "roots": [
       "<rootDir>/apps/",
       "<rootDir>/libs/"
-    ],
-    "moduleNameMapper": {
-      "^@app/shared(|/.*)$": "<rootDir>/libs/$1"
-    }
+    ]
   }
 }

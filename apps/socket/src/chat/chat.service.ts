@@ -13,7 +13,7 @@ import {
   chatMessageSchema,
   getChatRoomKey,
   sendMessageEventSchema,
-} from '@app/shared';
+} from '../../../../libs';
 import { getChatRuntimeConfig } from '../core/config/chat.config';
 import { RedisService } from '../core/redis/redis.service';
 

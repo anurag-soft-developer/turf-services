@@ -1,6 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
-import type { ChatScope } from '@app/shared';
+import type { ChatScope } from '../../../../../libs';
 
 export type ChatMessageDocument = ChatMessage & Document;
 

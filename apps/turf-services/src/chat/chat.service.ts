@@ -12,7 +12,7 @@ import {
   ChatMessage as SharedChatMessage,
   ChatScope,
   normalizePlayerScopeId,
-} from '@app/shared';
+} from '../../../../libs';
 import {
   ChatMessage,
   ChatMessageDocument,

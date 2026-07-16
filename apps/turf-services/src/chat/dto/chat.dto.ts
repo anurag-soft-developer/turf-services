@@ -3,7 +3,7 @@ import { createZodDto, type ZodDto } from 'nestjs-zod';
 import {
   batchPersistRequestSchema,
   chatHistoryQuerySchema,
-} from '@app/shared';
+} from '../../../../../libs';
 
 const batchPersistMessagesSchema = batchPersistRequestSchema;
 export class BatchPersistMessagesDto extends createZodDto(

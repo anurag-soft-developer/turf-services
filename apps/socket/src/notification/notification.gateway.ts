@@ -4,7 +4,7 @@ import {
   WebSocketServer,
 } from '@nestjs/websockets';
 import { Socket, Server } from 'socket.io';
-import type { NotificationDispatchPayload } from '@app/shared';
+import type { NotificationDispatchPayload } from '../../../../libs';
 import { socketJwtAuthMiddleware } from '../core/websocket/socket-jwt';
 
 @WebSocketGateway({

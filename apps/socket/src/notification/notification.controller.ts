@@ -5,7 +5,7 @@ import {
   Post,
   UnauthorizedException,
 } from '@nestjs/common';
-import { notificationDispatchSchema } from '@app/shared';
+import { notificationDispatchSchema } from '../../../../libs';
 import { config } from '../core/config/env.config';
 import { NotificationGateway } from './notification.gateway';
 

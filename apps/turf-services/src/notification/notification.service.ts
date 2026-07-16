@@ -18,7 +18,7 @@ import {
   Notification,
   NotificationDocument,
 } from './schemas/notification.schema';
-import { notificationDispatchSchema } from '@app/shared';
+import { notificationDispatchSchema } from '../../../../libs';
 import { buildPushDataStrings } from './utility/fcm.utility';
 
 @Injectable()

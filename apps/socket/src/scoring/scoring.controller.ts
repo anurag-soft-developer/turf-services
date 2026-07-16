@@ -5,7 +5,7 @@ import {
   Post,
   UnauthorizedException,
 } from '@nestjs/common';
-import { scoringUpdatePayloadSchema } from '@app/shared';
+import { scoringUpdatePayloadSchema } from '../../../../libs';
 import { config } from '../core/config/env.config';
 import { ScoringGateway } from './scoring.gateway';
 

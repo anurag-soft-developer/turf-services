@@ -7,7 +7,7 @@ import {
   WebSocketServer,
 } from '@nestjs/websockets';
 import { Socket, Server } from 'socket.io';
-import { chatRefSchema } from '@app/shared';
+import { chatRefSchema } from '../../../../libs';
 import { socketJwtAuthMiddleware } from '../core/websocket/socket-jwt';
 import { ChatService } from './chat.service';
 

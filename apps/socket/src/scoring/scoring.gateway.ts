@@ -13,7 +13,7 @@ import { Server, Socket } from 'socket.io';
 import {
   scoringMatchRefSchema,
   type ScoringUpdatePayload,
-} from '@app/shared';
+} from '../../../../libs';
 import { socketJwtAuthMiddleware } from '../core/websocket/socket-jwt';
 import { WsLoggingInterceptor } from '../core/websocket/ws-logging.interceptor';
 

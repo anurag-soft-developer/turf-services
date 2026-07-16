@@ -6,7 +6,7 @@ import {
   type ScoringAction,
   type ScoringSport,
   type ScoringUpdatePayload,
-} from '@app/shared';
+} from '../../../../../libs';
 
 interface DispatchInput {
   sport: ScoringSport;

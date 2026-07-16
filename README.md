@@ -1,6 +1,6 @@
 # Turf Services (Nest monorepo)
 
-HTTP API (`apps/turf-services`) and Socket.io realtime (`apps/socket`) share Zod contracts from `libs/` (plain TS utilities, imported as `@app/shared`). Apps communicate over HTTP with `x-internal-token` — they do not import Nest gateways across process boundaries.
+HTTP API (`apps/turf-services`) and Socket.io realtime (`apps/socket`) share Zod contracts from `libs/` (plain TS utilities). Apps communicate over HTTP with `x-internal-token` — they do not import Nest gateways across process boundaries.
 
 ```text
 turf-services/
@@ -105,14 +105,14 @@ On Vercel set `REALTIME_TURF_BASE_URL` to the public socket URL. On the socket h
 
 ## Shared contracts
 
-Plain TypeScript utilities under `libs/` (not a Nest library project). Import via `@app/shared`:
+Plain TypeScript utilities under `libs/` (not a Nest library project). Import with a relative path:
 
 ```ts
 import {
   chatRefSchema,
   scoringUpdatePayloadSchema,
   notificationDispatchSchema,
-} from '@app/shared';
+} from '../../../../libs';
 ```
 
 ## API Endpoints
