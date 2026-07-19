@@ -38,7 +38,8 @@ export type TeamNotificationKind =
 export type FollowingNotificationKind =
   | 'following_request'
   | 'following_accepted'
-  | 'following_rejected';
+  | 'following_rejected'
+  | 'new_follower';
 
 export type WithdrawalNotificationKind =
   | 'withdrawal_submitted'
@@ -120,6 +121,11 @@ export type TeamNotificationData =
 export type FollowingNotificationData =
   | {
       kind: 'following_request';
+      followingId: string;
+      actorUserId: string;
+    }
+  | {
+      kind: 'new_follower';
       followingId: string;
       actorUserId: string;
     }

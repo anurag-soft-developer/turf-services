@@ -6,34 +6,40 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, PipelineStage, Types } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import {
   Following,
   FollowingDocument,
   FollowingStatus,
+  FollowTargetType,
 } from './schemas/following.schema';
 import {
-  ConnectionFilterDto,
+  FollowingFilterDto,
   FriendsPaginationDto,
-  SendConnectionRequestDto,
-} from './dto/connection.dto';
+  SendFollowingRequestDto,
+} from './dto/following.dto';
 import { resolveId } from '../core/utils/mongo-ref.util';
 import { PaginatedResult } from '../core/interfaces/common';
 import { buildMongoSortOptions } from '../core/utils/mongo-sort.util';
 import { User, UserDocument, userSelectFields } from '../users/schemas/user.schema';
+import { Team, TeamDocument } from '../team/schemas/team.schema';
 import { NotificationService } from '../notification/notification.service';
 import {
-  notifyFollowingRequest,
   notifyFollowingResolved,
+  notifyNewFollower,
 } from './utility/followings-notification.utility';
+import { FollowingsUtility } from './utility/followings.utility';
 
 const REJECTED_TTL_MS = 24 * 60 * 60 * 1000;
 
+const recipientPopulateSelect =
+  '_id fullName avatar email name logo location sportType';
+
 @Injectable()
 export class FollowingsService {
-  static readonly userPopulate = [
+  static readonly populatePaths = [
     { path: 'requester', select: userSelectFields },
-    { path: 'recipient', select: userSelectFields },
+    { path: 'recipient', select: recipientPopulateSelect },
   ];
 
   constructor(
@@ -41,22 +47,37 @@ export class FollowingsService {
     private followingModel: Model<FollowingDocument>,
     @InjectModel(User.name)
     private userModel: Model<UserDocument>,
+    @InjectModel(Team.name)
+    private teamModel: Model<TeamDocument>,
     private readonly notificationService: NotificationService,
   ) {}
 
   async sendRequest(
     userId: string,
-    dto: SendConnectionRequestDto,
+    dto: SendFollowingRequestDto,
   ): Promise<FollowingDocument> {
-    if (dto.recipientId === userId) {
+    const recipientType = dto.recipientType as FollowTargetType;
+
+    if (
+      recipientType === FollowTargetType.USER &&
+      dto.recipientId === userId
+    ) {
       throw new BadRequestException('Cannot follow yourself');
     }
+
+    await FollowingsUtility.validateFollowTarget(
+      this.userModel,
+      this.teamModel,
+      dto.recipientId,
+      recipientType,
+    );
 
     const recipientOid = new Types.ObjectId(dto.recipientId);
 
     const existingSame = await this.followingModel.findOne({
       requester: userId,
       recipient: recipientOid,
+      recipientType,
     });
 
     if (existingSame) {
@@ -73,36 +94,29 @@ export class FollowingsService {
       }
     }
 
-    const reverse = await this.followingModel.findOne({
-      requester: recipientOid,
-      recipient: userId,
-    });
-
-    if (reverse) {
-      if (reverse.status === FollowingStatus.PENDING) {
-        throw new ConflictException(
-          'This user has already sent you a request; accept or reject it',
-        );
-      }
-      if (reverse.status === FollowingStatus.ACCEPTED) {
-        throw new ConflictException('Already following');
-      }
-    }
-
     const doc = await this.followingModel.create({
       requester: userId,
       recipient: recipientOid,
-      status: FollowingStatus.PENDING,
+      recipientType,
+      status: FollowingStatus.ACCEPTED,
     });
 
-    await notifyFollowingRequest(this.notificationService, {
-      recipientUserId: dto.recipientId,
-      followingId: doc._id.toString(),
-      requesterUserId: userId,
-    });
+    await FollowingsUtility.applyAcceptedFollowingCounts(
+      this.userModel,
+      this.teamModel,
+      doc,
+    );
+
+    if (recipientType === FollowTargetType.USER) {
+      await notifyNewFollower(this.notificationService, {
+        recipientUserId: dto.recipientId,
+        followingId: doc._id.toString(),
+        requesterUserId: userId,
+      });
+    }
 
     return (await doc.populate(
-      FollowingsService.userPopulate,
+      FollowingsService.populatePaths,
     )) as FollowingDocument;
   }
 
@@ -114,6 +128,10 @@ export class FollowingsService {
     const following = await this.followingModel.findById(followingId);
     if (!following) {
       throw new NotFoundException('Following request not found');
+    }
+
+    if (following.recipientType !== FollowTargetType.USER) {
+      throw new BadRequestException('Only user follow requests can be resolved');
     }
 
     if (resolveId(following.recipient) !== resolveId(userId)) {
@@ -129,12 +147,17 @@ export class FollowingsService {
     if (status === FollowingStatus.ACCEPTED) {
       following.status = FollowingStatus.ACCEPTED;
       following.purgeAt = undefined;
+      await following.save();
+      await FollowingsUtility.applyAcceptedFollowingCounts(
+        this.userModel,
+        this.teamModel,
+        following,
+      );
     } else {
       following.status = FollowingStatus.REJECTED;
       following.purgeAt = new Date(Date.now() + REJECTED_TTL_MS);
+      await following.save();
     }
-
-    await following.save();
 
     await notifyFollowingResolved(this.notificationService, {
       recipientUserId: following.requester.toString(),
@@ -143,7 +166,7 @@ export class FollowingsService {
     });
 
     return (await following.populate(
-      FollowingsService.userPopulate,
+      FollowingsService.populatePaths,
     )) as FollowingDocument;
   }
 
@@ -153,12 +176,21 @@ export class FollowingsService {
       throw new NotFoundException('Following not found');
     }
 
-    const isParticipant =
-      resolveId(following.requester) === resolveId(userId) ||
+    const isRequester = resolveId(following.requester) === resolveId(userId);
+    const isUserRecipient =
+      following.recipientType === FollowTargetType.USER &&
       resolveId(following.recipient) === resolveId(userId);
 
-    if (!isParticipant) {
+    if (!isRequester && !isUserRecipient) {
       throw new ForbiddenException('Not a participant in this following');
+    }
+
+    if (following.status === FollowingStatus.ACCEPTED) {
+      await FollowingsUtility.revertAcceptedFollowingCounts(
+        this.userModel,
+        this.teamModel,
+        following,
+      );
     }
 
     await this.followingModel.findByIdAndDelete(followingId);
@@ -166,15 +198,30 @@ export class FollowingsService {
 
   async listMine(
     userId: string,
-    filter: ConnectionFilterDto,
+    filter: FollowingFilterDto,
   ): Promise<PaginatedResult<FollowingDocument>> {
-    const { status, direction = 'all', page = 1, limit = 20 } = filter;
+    const {
+      status,
+      direction = 'all',
+      recipientType,
+      recipientId,
+      page = 1,
+      limit = 20,
+    } = filter;
 
     const uid = new Types.ObjectId(userId);
     const base: Record<string, unknown> = {};
 
     if (status) {
       base.status = status;
+    }
+
+    if (recipientType) {
+      base.recipientType = recipientType;
+    }
+
+    if (recipientId) {
+      base.recipient = new Types.ObjectId(recipientId);
     }
 
     let filterQuery: Record<string, unknown> = {};
@@ -190,12 +237,52 @@ export class FollowingsService {
       };
     }
 
+    return this.paginateFollowingEdges(filterQuery, page, limit);
+  }
+
+  async listUserFollowers(
+    targetUserId: string,
+    pagination: FriendsPaginationDto,
+  ): Promise<PaginatedResult<FollowingDocument>> {
+    const { page = 1, limit = 20 } = pagination;
+    return this.paginateFollowingEdges(
+      {
+        recipient: new Types.ObjectId(targetUserId),
+        recipientType: FollowTargetType.USER,
+        status: FollowingStatus.ACCEPTED,
+      },
+      page,
+      limit,
+    );
+  }
+
+  async listUserFollowing(
+    targetUserId: string,
+    pagination: FriendsPaginationDto,
+  ): Promise<PaginatedResult<FollowingDocument>> {
+    const { page = 1, limit = 20 } = pagination;
+    return this.paginateFollowingEdges(
+      {
+        requester: new Types.ObjectId(targetUserId),
+        recipientType: FollowTargetType.USER,
+        status: FollowingStatus.ACCEPTED,
+      },
+      page,
+      limit,
+    );
+  }
+
+  private async paginateFollowingEdges(
+    filterQuery: Record<string, unknown>,
+    page: number,
+    limit: number,
+  ): Promise<PaginatedResult<FollowingDocument>> {
     const skip = (page - 1) * limit;
 
     const [data, totalDocuments] = await Promise.all([
       this.followingModel
         .find(filterQuery)
-        .populate(FollowingsService.userPopulate)
+        .populate(FollowingsService.populatePaths)
         .sort(
           buildMongoSortOptions(undefined, {
             defaultSort: { updatedAt: -1 },
@@ -222,7 +309,13 @@ export class FollowingsService {
     pagination: FriendsPaginationDto,
   ): Promise<PaginatedResult<UserDocument>> {
     const { page = 1, limit = 20 } = pagination;
-    return this.paginateMutualFriends(new Types.ObjectId(userId), page, limit);
+    return FollowingsUtility.paginateMutualFriends(
+      this.followingModel,
+      this.userModel,
+      new Types.ObjectId(userId),
+      page,
+      limit,
+    );
   }
 
   async listMutualFriendsWith(
@@ -237,7 +330,9 @@ export class FollowingsService {
     }
 
     const { page = 1, limit = 20 } = pagination;
-    return this.paginateMutualFriends(
+    return FollowingsUtility.paginateMutualFriends(
+      this.followingModel,
+      this.userModel,
       new Types.ObjectId(userId),
       page,
       limit,
@@ -245,166 +340,25 @@ export class FollowingsService {
     );
   }
 
-  /**
-   * Friends = accepted followings in both directions.
-   * Intersection + pagination run in MongoDB; only one page of users is returned.
-   * When `alsoFriendsWith` is set, candidates must also be mutual friends with that user.
-   */
-  private async paginateMutualFriends(
-    userId: Types.ObjectId,
-    page: number,
-    limit: number,
-    alsoFriendsWith?: Types.ObjectId,
-  ): Promise<PaginatedResult<UserDocument>> {
-    const skip = (page - 1) * limit;
-    const followingsCollection = this.followingModel.collection.name;
-    const usersCollection = this.userModel.collection.name;
+  // async areConnected(userIdA: string, userIdB: string): Promise<boolean> {
+  //   if (userIdA === userIdB) {
+  //     return true;
+  //   }
 
-    const reverseEdgeExists = (
-      localFriendField: string,
-      againstUser: Types.ObjectId,
-      as: string,
-    ): PipelineStage.Lookup => ({
-      $lookup: {
-        from: followingsCollection,
-        let: { friendId: `$${localFriendField}` },
-        pipeline: [
-          {
-            $match: {
-              $expr: {
-                $and: [
-                  { $eq: ['$requester', '$$friendId'] },
-                  { $eq: ['$recipient', againstUser] },
-                  { $eq: ['$status', FollowingStatus.ACCEPTED] },
-                ],
-              },
-            },
-          },
-          { $limit: 1 },
-          { $project: { _id: 1 } },
-        ],
-        as,
-      },
-    });
+  //   const a = new Types.ObjectId(userIdA);
+  //   const b = new Types.ObjectId(userIdB);
 
-    const forwardEdgeExists = (
-      localFriendField: string,
-      fromUser: Types.ObjectId,
-      as: string,
-    ): PipelineStage.Lookup => ({
-      $lookup: {
-        from: followingsCollection,
-        let: { friendId: `$${localFriendField}` },
-        pipeline: [
-          {
-            $match: {
-              $expr: {
-                $and: [
-                  { $eq: ['$requester', fromUser] },
-                  { $eq: ['$recipient', '$$friendId'] },
-                  { $eq: ['$status', FollowingStatus.ACCEPTED] },
-                ],
-              },
-            },
-          },
-          { $limit: 1 },
-          { $project: { _id: 1 } },
-        ],
-        as,
-      },
-    });
+  //   const found = await this.followingModel.exists({
+  //     status: FollowingStatus.ACCEPTED,
+  //     recipientType: FollowTargetType.USER,
+  //     $or: [
+  //       { requester: a, recipient: b },
+  //       { requester: b, recipient: a },
+  //     ],
+  //   });
 
-    const pipeline: PipelineStage[] = [
-      {
-        $match: {
-          requester: userId,
-          status: FollowingStatus.ACCEPTED,
-        },
-      },
-      reverseEdgeExists('recipient', userId, 'followsBack'),
-      { $match: { 'followsBack.0': { $exists: true } } },
-    ];
-
-    if (alsoFriendsWith) {
-      pipeline.push(
-        reverseEdgeExists('recipient', alsoFriendsWith, 'followsOther'),
-        forwardEdgeExists('recipient', alsoFriendsWith, 'followedByOther'),
-        {
-          $match: {
-            'followsOther.0': { $exists: true },
-            'followedByOther.0': { $exists: true },
-          },
-        },
-      );
-    }
-
-    pipeline.push(
-      {
-        $lookup: {
-          from: usersCollection,
-          localField: 'recipient',
-          foreignField: '_id',
-          as: 'user',
-          pipeline: [
-            {
-              $project: {
-                _id: 1,
-                fullName: 1,
-                avatar: 1,
-                email: 1,
-              },
-            },
-          ],
-        },
-      },
-      { $unwind: '$user' },
-      { $sort: { 'user.fullName': 1 } },
-      {
-        $facet: {
-          meta: [{ $count: 'total' }],
-          data: [
-            { $skip: skip },
-            { $limit: limit },
-            { $replaceRoot: { newRoot: '$user' } },
-          ],
-        },
-      },
-    );
-
-    const [result] = await this.followingModel.aggregate<{
-      meta: Array<{ total: number }>;
-      data: UserDocument[];
-    }>(pipeline);
-
-    const totalDocuments = result?.meta[0]?.total ?? 0;
-
-    return {
-      data: result?.data ?? [],
-      totalDocuments,
-      page,
-      limit,
-      totalPages: Math.ceil(totalDocuments / limit) || 0,
-    };
-  }
-
-  async areConnected(userIdA: string, userIdB: string): Promise<boolean> {
-    if (userIdA === userIdB) {
-      return true;
-    }
-
-    const a = new Types.ObjectId(userIdA);
-    const b = new Types.ObjectId(userIdB);
-
-    const found = await this.followingModel.exists({
-      status: FollowingStatus.ACCEPTED,
-      $or: [
-        { requester: a, recipient: b },
-        { requester: b, recipient: a },
-      ],
-    });
-
-    return !!found;
-  }
+  //   return !!found;
+  // }
 
   async isConnectedToAny(
     userId: string,
@@ -417,6 +371,7 @@ export class FollowingsService {
     const uid = new Types.ObjectId(userId);
     const found = await this.followingModel.exists({
       status: FollowingStatus.ACCEPTED,
+      recipientType: FollowTargetType.USER,
       $or: [
         { requester: uid, recipient: { $in: otherUserIds } },
         { recipient: uid, requester: { $in: otherUserIds } },
@@ -429,7 +384,7 @@ export class FollowingsService {
   async findById(id: string): Promise<FollowingDocument | null> {
     return this.followingModel
       .findById(id)
-      .populate(FollowingsService.userPopulate)
+      .populate(FollowingsService.populatePaths)
       .exec();
   }
 }

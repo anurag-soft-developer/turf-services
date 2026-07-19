@@ -423,6 +423,8 @@ export class UsersService {
       playerSportStats: user.playerSportStats || [],
       sportRankingPoints: user.sportRankingPoints || [],
       badges: user.badges || [],
+      followerCount: user.followerCount ?? 0,
+      followingCount: user.followingCount ?? 0,
       createdAt,
       updatedAt,
     };
@@ -447,6 +449,8 @@ export class UsersService {
       sportRankingPoints,
       badges,
       isVerified,
+      followerCount: user.followerCount ?? 0,
+      followingCount: user.followingCount ?? 0,
     };
   }
 

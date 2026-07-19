@@ -15,11 +15,11 @@ import { FollowingStatus } from './schemas/following.schema';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import {
-  ConnectionFilterDto,
+  FollowingFilterDto,
   FriendsPaginationDto,
-  ResolveConnectionRequestDto,
-  SendConnectionRequestDto,
-} from './dto/connection.dto';
+  ResolveFollowingRequestDto,
+  SendFollowingRequestDto,
+} from './dto/following.dto';
 import { Types } from 'mongoose';
 
 @Controller('followings')
@@ -30,7 +30,7 @@ export class FollowingsController {
   @Post('request')
   @HttpCode(HttpStatus.CREATED)
   async sendRequest(
-    @Body() dto: SendConnectionRequestDto,
+    @Body() dto: SendFollowingRequestDto,
     @CurrentUser('_id') userId: Types.ObjectId,
   ) {
     return this.followingsService.sendRequest(userId.toString(), dto);
@@ -38,7 +38,7 @@ export class FollowingsController {
 
   @Get()
   async list(
-    @Query() filter: ConnectionFilterDto,
+    @Query() filter: FollowingFilterDto,
     @CurrentUser('_id') userId: Types.ObjectId,
   ) {
     return this.followingsService.listMine(userId.toString(), filter);
@@ -50,6 +50,22 @@ export class FollowingsController {
     @CurrentUser('_id') userId: Types.ObjectId,
   ) {
     return this.followingsService.listFriends(userId.toString(), pagination);
+  }
+
+  @Get('users/:userId/followers')
+  async listUserFollowers(
+    @Param('userId') targetUserId: string,
+    @Query() pagination: FriendsPaginationDto,
+  ) {
+    return this.followingsService.listUserFollowers(targetUserId, pagination);
+  }
+
+  @Get('users/:userId/following')
+  async listUserFollowing(
+    @Param('userId') targetUserId: string,
+    @Query() pagination: FriendsPaginationDto,
+  ) {
+    return this.followingsService.listUserFollowing(targetUserId, pagination);
   }
 
   @Get('mutual-friends/:userId')
@@ -68,7 +84,7 @@ export class FollowingsController {
   @Post(':id/resolve-request')
   async resolveRequest(
     @Param('id') id: string,
-    @Body() dto: ResolveConnectionRequestDto,
+    @Body() dto: ResolveFollowingRequestDto,
     @CurrentUser('_id') userId: Types.ObjectId,
   ) {
     const status =

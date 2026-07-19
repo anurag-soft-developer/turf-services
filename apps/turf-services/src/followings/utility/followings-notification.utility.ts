@@ -34,6 +34,36 @@ export async function notifyFollowingRequest(
   }
 }
 
+export async function notifyNewFollower(
+  notificationService: NotificationService,
+  params: {
+    recipientUserId: string;
+    followingId: string;
+    requesterUserId: string;
+  },
+): Promise<void> {
+  try {
+    await notificationService.createAndDispatch({
+      recipientUserId: params.recipientUserId,
+      module: NotificationModule.FOLLOWINGS,
+      title: 'New follower',
+      body: 'Someone started following you.',
+      data: {
+        kind: 'new_follower',
+        followingId: params.followingId,
+        actorUserId: params.requesterUserId,
+      },
+      sourceType: 'following',
+      sourceId: params.followingId,
+    });
+  } catch (err) {
+    logger.warn(
+      `notifyNewFollower failed for following ${params.followingId}`,
+      err instanceof Error ? err.stack : String(err),
+    );
+  }
+}
+
 export async function notifyFollowingResolved(
   notificationService: NotificationService,
   params: {

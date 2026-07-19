@@ -245,6 +245,9 @@ export class Team {
   })
   badges!: EarnedBadge[];
 
+  @Prop({ type: Number, default: 0, min: 0 })
+  followerCount!: number;
+
   createdAt!: Date;
   updatedAt!: Date;
 }

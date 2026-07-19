@@ -262,6 +262,12 @@ export class User extends Document implements UserDocument {
   })
   badges!: EarnedBadge[];
 
+  @Prop({ type: Number, default: 0, min: 0 })
+  followingCount!: number;
+
+  @Prop({ type: Number, default: 0, min: 0 })
+  followerCount!: number;
+
   @Prop({
     type: Date,
     default: Date.now,

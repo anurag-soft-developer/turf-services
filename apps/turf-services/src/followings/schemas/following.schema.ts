@@ -10,6 +10,11 @@ export enum FollowingStatus {
   REJECTED = 'rejected',
 }
 
+export enum FollowTargetType {
+  USER = 'User',
+  TEAM = 'Team',
+}
+
 @Schema({
   timestamps: true,
   collection: 'followings',
@@ -23,8 +28,16 @@ export class Following {
   requester!: Types.ObjectId;
 
   @Prop({
+    type: String,
+    enum: Object.values(FollowTargetType),
+    required: true,
+    default: FollowTargetType.USER,
+  })
+  recipientType!: FollowTargetType;
+
+  @Prop({
     type: MongooseSchema.Types.ObjectId,
-    ref: User.name,
+    refPath: 'recipientType',
     required: true,
   })
   recipient!: Types.ObjectId;
@@ -32,7 +45,7 @@ export class Following {
   @Prop({
     type: String,
     enum: Object.values(FollowingStatus),
-    default: FollowingStatus.PENDING,
+    default: FollowingStatus.ACCEPTED,
   })
   status!: FollowingStatus;
 
@@ -46,11 +59,14 @@ export class Following {
 
 export const FollowingSchema = SchemaFactory.createForClass(Following);
 
-FollowingSchema.index({ requester: 1, recipient: 1 }, { unique: true });
+FollowingSchema.index(
+  { requester: 1, recipient: 1, recipientType: 1 },
+  { unique: true },
+);
 
 FollowingSchema.index({ purgeAt: 1 }, { expireAfterSeconds: 0 });
 
-FollowingSchema.index({ requester: 1, status: 1 });
-FollowingSchema.index({ recipient: 1, status: 1 });
+FollowingSchema.index({ requester: 1, recipientType: 1, status: 1 });
+FollowingSchema.index({ recipient: 1, recipientType: 1, status: 1 });
 /** Speeds reverse-edge checks used by friends aggregations. */
 FollowingSchema.index({ recipient: 1, requester: 1, status: 1 });

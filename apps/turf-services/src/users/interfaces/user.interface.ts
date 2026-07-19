@@ -39,6 +39,8 @@ export interface Profile {
   playerSportStats?: PlayerSportEntry[];
   sportRankingPoints?: SportRankingPointsEntry[];
   badges?: EarnedBadge[];
+  followingCount?: number;
+  followerCount?: number;
   isPasswordExists?: boolean;
   phone?: string;
   lastLogin?: string;
@@ -56,6 +58,8 @@ export interface PublicProfile extends Pick<
   | 'playerSportStats'
   | 'sportRankingPoints'
   | 'badges'
+  | 'followingCount'
+  | 'followerCount'
 > {}
 
 export interface IUser extends Profile {

@@ -5,12 +5,14 @@ import { FollowingsService } from './followings.service';
 import { FollowingsController } from './followings.controller';
 import { NotificationModule } from '../notification/notification.module';
 import { User, UserSchema } from '../users/schemas/user.schema';
+import { Team, TeamSchema } from '../team/schemas/team.schema';
 
 @Module({
   imports: [
     MongooseModule.forFeature([
       { name: Following.name, schema: FollowingSchema },
       { name: User.name, schema: UserSchema },
+      { name: Team.name, schema: TeamSchema },
     ]),
     NotificationModule,
   ],
