@@ -272,6 +272,22 @@ export class FollowingsService {
     );
   }
 
+  async listTeamFollowers(
+    targetTeamId: string,
+    pagination: FriendsPaginationDto,
+  ): Promise<PaginatedResult<FollowingDocument>> {
+    const { page = 1, limit = 20 } = pagination;
+    return this.paginateFollowingEdges(
+      {
+        recipient: new Types.ObjectId(targetTeamId),
+        recipientType: FollowTargetType.TEAM,
+        status: FollowingStatus.ACCEPTED,
+      },
+      page,
+      limit,
+    );
+  }
+
   private async paginateFollowingEdges(
     filterQuery: Record<string, unknown>,
     page: number,

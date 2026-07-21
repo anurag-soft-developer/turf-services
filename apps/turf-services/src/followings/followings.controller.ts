@@ -68,6 +68,14 @@ export class FollowingsController {
     return this.followingsService.listUserFollowing(targetUserId, pagination);
   }
 
+  @Get('teams/:teamId/followers')
+  async listTeamFollowers(
+    @Param('teamId') targetTeamId: string,
+    @Query() pagination: FriendsPaginationDto,
+  ) {
+    return this.followingsService.listTeamFollowers(targetTeamId, pagination);
+  }
+
   @Get('mutual-friends/:userId')
   async listMutualFriendsWith(
     @Param('userId') otherUserId: string,
