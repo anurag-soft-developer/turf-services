@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   NotFoundException,
   Param,
@@ -90,6 +91,20 @@ export class UsersController {
     const updated = await this.usersService.upsertFcmDevice(
       user._id.toString(),
       dto,
+    );
+    return UsersService.sanitizeProfile(updated);
+  }
+
+  /** Removes a single FCM device by `deviceKey` (e.g. on logout). */
+  @UseGuards(JwtAuthGuard)
+  @Delete('fcm-devices/:deviceKey')
+  async removeFcmDevice(
+    @CurrentUser() user: IUser,
+    @Param('deviceKey') deviceKey: string,
+  ) {
+    const updated = await this.usersService.removeFcmDevice(
+      user._id.toString(),
+      deviceKey,
     );
     return UsersService.sanitizeProfile(updated);
   }

@@ -239,6 +239,19 @@ export class UsersService {
     return this.updateById(id, { fcmTokens: list } as Partial<IUser>);
   }
 
+  async removeFcmDevice(id: string, deviceKey: string): Promise<UserDocument> {
+    const trimmedKey = deviceKey.trim();
+    if (!trimmedKey) {
+      throw new BadRequestException('deviceKey is required');
+    }
+    const user = await this.userModel.findById(id).select('+fcmTokens').exec();
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    const list = (user.fcmTokens || []).filter((d) => d.deviceKey !== trimmedKey);
+    return this.updateById(id, { fcmTokens: list } as Partial<IUser>);
+  }
+
   async changePassword(id: string, newPassword: string): Promise<void> {
     const saltRounds = 12;
     const hashedPassword = await bcrypt.hash(newPassword, saltRounds);

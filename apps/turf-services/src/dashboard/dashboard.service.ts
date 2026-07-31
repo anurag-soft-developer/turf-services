@@ -3,6 +3,7 @@ import { TurfService } from '../turf/turf.service';
 import { TeamService } from '../team/team.service';
 import { TeamStatus } from '../team/schemas/team.schema';
 import { ITurf } from '../turf/interfaces/turf.interface';
+import { NotificationService } from '../notification/notification.service';
 import { PlayerDashboardQueryDto } from './dto/player-dashboard.dto';
 
 const DASHBOARD_TURF_LIMIT = 5;
@@ -12,6 +13,7 @@ export type PlayerDashboardResponse = {
   turfsTitle: 'Nearby turfs' | 'Featured turfs';
   turfs: ITurf[];
   nearbyTeamsCount: number;
+  unreadNotificationCount: number;
 };
 
 @Injectable()
@@ -19,6 +21,7 @@ export class DashboardService {
   constructor(
     private readonly turfService: TurfService,
     private readonly teamService: TeamService,
+    private readonly notificationService: NotificationService,
   ) {}
 
   async getPlayerDashboard(
@@ -31,13 +34,16 @@ export class DashboardService {
     const nearbyRadiusKm =
       location?.nearbyRadiusKm ?? DEFAULT_NEARBY_RADIUS_KM;
 
-    const nearbyTeamsCount = hasLocation
-      ? await this.countNearbyOpenForMatchTeams(userId, {
-          nearbyLat: location.nearbyLat,
-          nearbyLng: location.nearbyLng,
-          nearbyRadiusKm,
-        })
-      : 0;
+    const [nearbyTeamsCount, unreadNotificationCount] = await Promise.all([
+      hasLocation
+        ? this.countNearbyOpenForMatchTeams(userId, {
+            nearbyLat: location.nearbyLat,
+            nearbyLng: location.nearbyLng,
+            nearbyRadiusKm,
+          })
+        : Promise.resolve(0),
+      this.notificationService.countUnreadForUser(userId),
+    ]);
 
     if (hasLocation) {
       const nearbyTurfs = await this.fetchTurfsWithImages({
@@ -52,6 +58,7 @@ export class DashboardService {
           turfsTitle: 'Nearby turfs',
           turfs: nearbyTurfs,
           nearbyTeamsCount,
+          unreadNotificationCount,
         };
       }
     }
@@ -64,6 +71,7 @@ export class DashboardService {
       turfsTitle: 'Featured turfs',
       turfs: featuredTurfs,
       nearbyTeamsCount,
+      unreadNotificationCount,
     };
   }
 

@@ -152,6 +152,15 @@ export class NotificationService {
     return { updatedCount: result.modifiedCount };
   }
 
+  async countUnreadForUser(userId: string): Promise<number> {
+    return this.notificationModel
+      .countDocuments({
+        recipientUserId: userId,
+        readAt: { $exists: false },
+      })
+      .exec();
+  }
+
   async deleteForUser(
     userId: string,
     notificationId: string,

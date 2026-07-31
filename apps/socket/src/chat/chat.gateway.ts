@@ -1,11 +1,14 @@
 import {
   ConnectedSocket,
+  OnGatewayConnection,
+  OnGatewayDisconnect,
   MessageBody,
   OnGatewayInit,
   SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
+import { Logger } from '@nestjs/common';
 import { Socket, Server } from 'socket.io';
 import { chatRefSchema } from '../../../../libs';
 import { socketJwtAuthMiddleware } from '../core/websocket/socket-jwt';
@@ -17,9 +20,13 @@ import { ChatService } from './chat.service';
     origin: '*',
   },
 })
-export class ChatGateway implements OnGatewayInit {
+export class ChatGateway
+  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
+{
   @WebSocketServer()
   server!: Server;
+
+  private readonly logger = new Logger(ChatGateway.name);
 
   constructor(private readonly chatService: ChatService) {}
 
@@ -28,9 +35,15 @@ export class ChatGateway implements OnGatewayInit {
   }
 
   handleConnection(client: Socket): void {
+    this.logger.log(`Client connected: chat socketId=${client.id}`);
     if (!client.data.userId) {
+      this.logger.warn(`Client disconnected (unauthorized): chat socketId=${client.id}`);
       client.disconnect(true);
     }
+  }
+
+  handleDisconnect(client: Socket): void {
+    this.logger.log(`Client disconnected: chat socketId=${client.id}`);
   }
 
   @SubscribeMessage('chat.join')
