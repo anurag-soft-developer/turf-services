@@ -28,6 +28,8 @@ import { NotificationService } from '../../notification/notification.service';
 import { notifyAnnouncedPlayers } from '../util/matchmaking-notification.utility';
 import { StorageLifecycleService } from '../../storage/storage-lifecycle.service';
 import { resolveId } from '../../core/utils/mongo-ref.util';
+import { ScoringRealtimeDispatcher } from '../../scoring/common/scoring-realtime-dispatcher.service';
+import { SportType } from '../../team/schemas/team.schema';
 
 @Injectable()
 export class AnnouncedPlayersService {
@@ -38,7 +40,24 @@ export class AnnouncedPlayersService {
     private readonly teamMemberService: TeamMemberService,
     private readonly notificationService: NotificationService,
     private readonly storageLifecycle: StorageLifecycleService,
+    private readonly realtimeDispatcher: ScoringRealtimeDispatcher,
   ) {}
+
+  private async dispatchAnnouncedPlayersUpdated(
+    match: TeamMatchDocument,
+    userId: string,
+  ): Promise<void> {
+    await this.realtimeDispatcher.dispatch({
+      sport: match.sportType === SportType.FOOTBALL ? 'football' : 'cricket',
+      teamMatchId: match._id.toString(),
+      actorUserId: userId,
+      action: 'append_event',
+      data: {
+        kind: 'announced_players_updated',
+        announcedPlayers: match.announcedPlayers ?? [],
+      },
+    });
+  }
 
   async addAnnouncedPlayers(
     matchId: string,
@@ -110,6 +129,7 @@ export class AnnouncedPlayersService {
 
     match.announcedPlayers = [...existing, ...additions];
     await match.save();
+    await this.dispatchAnnouncedPlayersUpdated(match, userId);
     await notifyAnnouncedPlayers(this.notificationService, {
       userIds: incomingIds,
       matchId,
@@ -183,6 +203,7 @@ export class AnnouncedPlayersService {
         ),
     );
     await match.save();
+    await this.dispatchAnnouncedPlayersUpdated(match, userId);
     await notifyAnnouncedPlayers(this.notificationService, {
       userIds: dto.userIds,
       matchId,
@@ -251,6 +272,7 @@ export class AnnouncedPlayersService {
     match.announcedPlayers = existing;
     match.markModified('announcedPlayers');
     await match.save();
+    await this.dispatchAnnouncedPlayersUpdated(match, userId);
     return this.announcedPlayersForTeam(match, actorOid);
   }
 

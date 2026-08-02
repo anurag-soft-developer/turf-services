@@ -140,7 +140,21 @@ export class CricketScoringService {
 
     match.cricketState = cricketState;
     match.status = TeamMatchStatus.ONGOING;
-    return await (await match.save()).populate(TEAM_MATCH_POPULATE);
+    const saved = await (await match.save()).populate(TEAM_MATCH_POPULATE);
+
+    await this.realtimeDispatcher.dispatch({
+      sport: 'cricket',
+      teamMatchId: match._id.toString(),
+      actorUserId: userId,
+      action: 'append_event',
+      data: {
+        kind: 'cricket_create_session',
+        cricketState: saved.cricketState,
+        status: saved.status,
+      },
+    });
+
+    return saved;
   }
 
   async appendBall(
@@ -315,15 +329,20 @@ export class CricketScoringService {
 
     await Promise.all([overDoc.save(), match.save()]);
 
+    const populatedOver = await overDoc.populate(CRICKET_OVER_EVENT_POPULATE);
+
     await this.realtimeDispatcher.dispatch({
       sport: 'cricket',
       teamMatchId: match._id.toString(),
       actorUserId: userId,
       action: 'append_ball',
-      data: dto as unknown as Record<string, unknown>,
+      data: {
+        over: populatedOver,
+        cricketState: match.cricketState,
+      },
     });
 
-    return await overDoc.populate(CRICKET_OVER_EVENT_POPULATE);
+    return populatedOver;
   }
 
   async changeInning(
@@ -382,16 +401,20 @@ export class CricketScoringService {
     }
 
     await match.save();
+    const populated = await match.populate(TEAM_MATCH_POPULATE);
 
     await this.realtimeDispatcher.dispatch({
       sport: 'cricket',
       teamMatchId: match._id.toString(),
       actorUserId: userId,
       action: 'append_event',
-      data: { kind: 'cricket_change_inning' },
+      data: {
+        kind: 'cricket_change_inning',
+        cricketState: populated.cricketState,
+      },
     });
 
-    return await match.populate(TEAM_MATCH_POPULATE);
+    return populated;
   }
 
   async completeMatch(
@@ -479,16 +502,24 @@ export class CricketScoringService {
     );
 
     await match.save();
+    const populated = await match.populate(TEAM_MATCH_POPULATE);
 
     await this.realtimeDispatcher.dispatch({
       sport: 'cricket',
       teamMatchId: match._id.toString(),
       actorUserId: userId,
       action: 'append_event',
-      data: { kind: 'cricket_complete_match' },
+      data: {
+        kind: 'cricket_complete_match',
+        cricketState: populated.cricketState,
+        status: populated.status,
+        winnerTeamId: populated.winnerTeam
+          ? resolveId(populated.winnerTeam)
+          : null,
+      },
     });
 
-    return await match.populate(TEAM_MATCH_POPULATE);
+    return populated;
   }
 
   async undoLastBall(
@@ -536,6 +567,7 @@ export class CricketScoringService {
       match.closedAt = undefined;
     }
 
+    const overId = overDoc._id.toString();
     let savedOver: CricketOverEventDocument | null = overDoc;
     if (overDoc.ballEvents.length === 0) {
       await overDoc.deleteOne();
@@ -546,22 +578,25 @@ export class CricketScoringService {
 
     await match.save();
 
+    const populatedOver = savedOver
+      ? await savedOver.populate(CRICKET_OVER_EVENT_POPULATE)
+      : null;
+
     await this.realtimeDispatcher.dispatch({
       sport: 'cricket',
       teamMatchId: match._id.toString(),
       actorUserId: userId,
       action: 'undo_ball',
       data: {
-        overId: overDoc._id.toString(),
+        overId,
         removedBall,
+        over: populatedOver,
+        cricketState: match.cricketState,
+        status: match.status,
       },
     });
 
-    if (!savedOver) {
-      return null;
-    }
-
-    return await savedOver.populate(CRICKET_OVER_EVENT_POPULATE);
+    return populatedOver;
   }
 
   async getSessionView(teamMatchId: string): Promise<TeamMatchDocument> {
@@ -706,6 +741,7 @@ export class CricketScoringService {
     cs.bowlerUserId = nextBowler;
 
     await match.save();
+    const populated = await match.populate(TEAM_MATCH_POPULATE);
 
     await this.realtimeDispatcher.dispatch({
       sport: 'cricket',
@@ -714,12 +750,10 @@ export class CricketScoringService {
       action: 'append_event',
       data: {
         kind: 'cricket_update_lineup',
-        strikerUserId: nextStriker.toString(),
-        nonStrikerUserId: nextNonStriker.toString(),
-        bowlerUserId: nextBowler.toString(),
+        cricketState: populated.cricketState,
       },
     });
 
-    return await match.populate(TEAM_MATCH_POPULATE);
+    return populated;
   }
 }

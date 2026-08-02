@@ -48,6 +48,10 @@ import { FootballScoringController } from './football/football-scoring.controlle
     FootballRankingPointsService,
     FootballScoringService,
   ],
-  exports: [CricketScoringService, FootballScoringService],
+  exports: [
+    CricketScoringService,
+    FootballScoringService,
+    ScoringRealtimeDispatcher,
+  ],
 })
 export class ScoringModule {}
