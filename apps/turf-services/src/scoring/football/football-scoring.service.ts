@@ -113,7 +113,21 @@ export class FootballScoringService {
 
     match.footballState = footballState;
     match.status = TeamMatchStatus.ONGOING;
-    return await (await match.save()).populate(TEAM_MATCH_POPULATE);
+    const saved = await (await match.save()).populate(TEAM_MATCH_POPULATE);
+
+    await this.realtimeDispatcher.dispatch({
+      sport: 'football',
+      teamMatchId: match._id.toString(),
+      actorUserId: userId,
+      action: 'append_event',
+      data: {
+        kind: 'football_create_session',
+        footballState: saved.footballState,
+        status: saved.status,
+      },
+    });
+
+    return saved;
   }
 
   async appendEvent(
@@ -150,15 +164,21 @@ export class FootballScoringService {
 
     await Promise.all([built.save(), match.save()]);
 
+    const populated = await built.populate(FOOTBALL_EVENT_POPULATE);
+
     await this.realtimeDispatcher.dispatch({
       sport: 'football',
       teamMatchId: match._id.toString(),
       actorUserId: userId,
       action: 'append_event',
-      data: dto as unknown as Record<string, unknown>,
+      data: {
+        kind: 'football_append_event',
+        event: populated,
+        footballState: match.footballState,
+      },
     });
 
-    return built;
+    return populated;
   }
 
   async changeInning(
@@ -208,16 +228,20 @@ export class FootballScoringService {
     }
 
     await match.save();
+    const populated = await match.populate(TEAM_MATCH_POPULATE);
 
     await this.realtimeDispatcher.dispatch({
       sport: 'football',
       teamMatchId: match._id.toString(),
       actorUserId: userId,
       action: 'append_event',
-      data: { kind: 'football_change_inning', innings: fs.currentInnings },
+      data: {
+        kind: 'football_change_inning',
+        footballState: populated.footballState,
+      },
     });
 
-    return await match.populate(TEAM_MATCH_POPULATE);
+    return populated;
   }
 
   async pauseTimer(
@@ -227,16 +251,20 @@ export class FootballScoringService {
     const match = await this.requireFootballMatchForTimer(userId, teamMatchId);
     pauseFootballTimer(match.footballState!);
     await match.save();
+    const populated = await match.populate(TEAM_MATCH_POPULATE);
 
     await this.realtimeDispatcher.dispatch({
       sport: 'football',
       teamMatchId: match._id.toString(),
       actorUserId: userId,
       action: 'append_event',
-      data: { kind: 'football_timer_pause' },
+      data: {
+        kind: 'football_timer_pause',
+        footballState: populated.footballState,
+      },
     });
 
-    return await match.populate(TEAM_MATCH_POPULATE);
+    return populated;
   }
 
   async resumeTimer(
@@ -246,16 +274,20 @@ export class FootballScoringService {
     const match = await this.requireFootballMatchForTimer(userId, teamMatchId);
     resumeFootballTimer(match.footballState!);
     await match.save();
+    const populated = await match.populate(TEAM_MATCH_POPULATE);
 
     await this.realtimeDispatcher.dispatch({
       sport: 'football',
       teamMatchId: match._id.toString(),
       actorUserId: userId,
       action: 'append_event',
-      data: { kind: 'football_timer_resume' },
+      data: {
+        kind: 'football_timer_resume',
+        footballState: populated.footballState,
+      },
     });
 
-    return await match.populate(TEAM_MATCH_POPULATE);
+    return populated;
   }
 
   async completeMatch(
@@ -334,16 +366,24 @@ export class FootballScoringService {
     );
 
     await match.save();
+    const populated = await match.populate(TEAM_MATCH_POPULATE);
 
     await this.realtimeDispatcher.dispatch({
       sport: 'football',
       teamMatchId: match._id.toString(),
       actorUserId: userId,
       action: 'append_event',
-      data: { kind: 'football_complete_match' },
+      data: {
+        kind: 'football_complete_match',
+        footballState: populated.footballState,
+        status: populated.status,
+        winnerTeamId: populated.winnerTeam
+          ? resolveId(populated.winnerTeam)
+          : null,
+      },
     });
 
-    return await match.populate(TEAM_MATCH_POPULATE);
+    return populated;
   }
 
   async getSessionView(teamMatchId: string): Promise<TeamMatchDocument> {
@@ -429,6 +469,8 @@ export class FootballScoringService {
       data: {
         eventId: lastEvent._id.toString(),
         removedEvent: removed,
+        footballState: match.footballState,
+        status: match.status,
       },
     });
 
