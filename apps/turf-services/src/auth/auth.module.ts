@@ -16,10 +16,12 @@ import {
   GoogleStrategy,
   GoogleMobileStrategy,
 } from './strategies/google.strategy';
+import { TeamInviteModule } from '../team-invite/team-invite.module';
 
 @Module({
   imports: [
     UsersModule,
+    TeamInviteModule,
     PassportModule,
     JwtModule.register({
       secret: config.JWT_SECRET,

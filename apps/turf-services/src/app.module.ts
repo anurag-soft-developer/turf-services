@@ -13,6 +13,7 @@ import { TurfReviewModule } from './turf-review/turf-review.module';
 import { AppMetadataModule } from './app-metadata/app-metadata.module';
 import { FollowingsModule } from './followings/followings.module';
 import { TeamModule } from './team/team.module';
+import { TeamInviteModule } from './team-invite/team-invite.module';
 import { PostModule } from './post/post.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { ConfigModule } from '@nestjs/config';
@@ -45,6 +46,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
     AppMetadataModule,
     FollowingsModule,
     TeamModule,
+    TeamInviteModule,
     PostModule,
     MatchmakingModule,
     ScoringModule,

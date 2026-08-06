@@ -35,6 +35,7 @@ import { EmailService } from '../core/services/email.service';
 import { SmsService } from '../core/services/sms.service';
 import type { CookieOptions, Response } from 'express';
 import { config } from '../core/config/env.config';
+import { TeamInviteService } from '../team-invite/team-invite.service';
 
 type OtpChannel = 'email' | 'sms';
 
@@ -45,6 +46,7 @@ export class AuthService {
     private jwtAuthService: JwtAuthService,
     private emailService: EmailService,
     private smsService: SmsService,
+    private teamInviteService: TeamInviteService,
   ) {}
 
   async register(registerDto: RegisterDto): Promise<IAuthResponse> {
@@ -68,6 +70,12 @@ export class AuthService {
 
     const user = await this.usersService.create({
       ...registerDto,
+    });
+
+    await this.teamInviteService.attachUserToPendingInvites({
+      userId: user._id.toString(),
+      email: user.email,
+      phone: user.phone,
     });
 
     const accessToken = this.jwtAuthService.generateAccessToken(user);
@@ -165,6 +173,11 @@ export class AuthService {
     const refreshToken = this.jwtAuthService.generateRefreshToken(user);
 
     await this.usersService.updateLastLogin(user._id.toString());
+    await this.teamInviteService.attachUserToPendingInvites({
+      userId: user._id.toString(),
+      email: user.email,
+      phone: user.phone,
+    });
 
     return {
       user: UsersService.sanitizeProfile(user),
@@ -210,6 +223,11 @@ export class AuthService {
     const refreshToken = this.jwtAuthService.generateRefreshToken(user);
 
     await this.usersService.updateLastLogin(user._id.toString());
+    await this.teamInviteService.attachUserToPendingInvites({
+      userId: user._id.toString(),
+      email: user.email,
+      phone: user.phone,
+    });
 
     return {
       user: UsersService.sanitizeProfile(user),
@@ -247,6 +265,11 @@ export class AuthService {
     const refreshToken = this.jwtAuthService.generateRefreshToken(user);
 
     await this.usersService.updateLastLogin(user._id.toString());
+    await this.teamInviteService.attachUserToPendingInvites({
+      userId: user._id.toString(),
+      email: user.email,
+      phone: user.phone,
+    });
 
     return {
       user: UsersService.sanitizeProfile(user),

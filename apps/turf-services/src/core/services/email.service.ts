@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { render } from '@react-email/components';
 import * as nodemailer from 'nodemailer';
 import { OtpEmailTemplate } from '../templates/email/otp-email';
+import { TeamInviteEmailTemplate } from '../templates/email/team-invite-email';
 import { config } from '../config/env.config';
 
 interface SendVerificationEmailOptions {
@@ -120,6 +121,34 @@ export class EmailService {
     } catch (error) {
       console.error('Error sending OTP email:', error);
       throw new Error('Failed to send OTP email');
+    }
+  }
+
+  async sendTeamInviteEmail(options: {
+    to: string;
+    inviteeName?: string;
+    inviterName: string;
+    teamName: string;
+  }): Promise<void> {
+    try {
+      const emailHtml = await render(
+        TeamInviteEmailTemplate({
+          inviteeName: options.inviteeName,
+          inviterName: options.inviterName,
+          teamName: options.teamName,
+          companyName: config.APP_NAME,
+        }),
+      );
+
+      await this.transporter.sendMail({
+        from: config.SMTP_FROM,
+        to: options.to,
+        subject: `You're invited to join ${options.teamName}`,
+        html: emailHtml,
+      });
+    } catch (error) {
+      console.error('Error sending team invite email:', error);
+      throw new Error('Failed to send team invite email');
     }
   }
 

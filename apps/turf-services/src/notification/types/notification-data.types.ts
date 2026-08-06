@@ -33,7 +33,10 @@ export type MatchmakingNotificationKind =
 export type TeamNotificationKind =
   | 'team_join_request'
   | 'team_join_accepted'
-  | 'team_join_rejected';
+  | 'team_join_rejected'
+  | 'team_invite'
+  | 'team_invite_accepted'
+  | 'team_invite_rejected';
 
 export type FollowingNotificationKind =
   | 'following_request'
@@ -116,6 +119,24 @@ export type TeamNotificationData =
       kind: 'team_join_rejected';
       teamId: string;
       membershipId: string;
+    }
+  | {
+      kind: 'team_invite';
+      teamId: string;
+      inviteId: string;
+      actorUserId: string;
+    }
+  | {
+      kind: 'team_invite_accepted';
+      teamId: string;
+      inviteId: string;
+      actorUserId: string;
+    }
+  | {
+      kind: 'team_invite_rejected';
+      teamId: string;
+      inviteId: string;
+      actorUserId: string;
     };
 
 export type FollowingNotificationData =

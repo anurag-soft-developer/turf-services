@@ -31,4 +31,23 @@ export class SmsService {
       throw new Error('Failed to send OTP SMS');
     }
   }
+
+  async sendTeamInviteSms(options: {
+    to: string;
+    inviterName: string;
+    teamName: string;
+  }): Promise<void> {
+    const body = `${config.APP_NAME}: ${options.inviterName} invited you to join ${options.teamName}. Open the app, sign up or log in with this number, then go to Invitations to accept or decline.`;
+
+    try {
+      await this.client.messages.create({
+        body,
+        from: config.TWILIO_FROM_NUMBER,
+        to: options.to,
+      });
+    } catch (error) {
+      this.logger.error('Error sending team invite SMS', error);
+      throw new Error('Failed to send team invite SMS');
+    }
+  }
 }

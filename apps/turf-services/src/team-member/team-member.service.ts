@@ -97,6 +97,47 @@ export class TeamMemberService {
     return !!found;
   }
 
+  /** True if user has pending, active, or suspended membership for the team. */
+  async hasOpenStint(teamId: string, userId: string): Promise<boolean> {
+    const found = await this.teamMemberModel.findOne({
+      team: new Types.ObjectId(teamId),
+      user: new Types.ObjectId(userId),
+      status: {
+        $in: [
+          TeamMemberStatus.PENDING,
+          TeamMemberStatus.ACTIVE,
+          TeamMemberStatus.SUSPENDED,
+        ],
+      },
+    });
+    return !!found;
+  }
+
+  /**
+   * Creates an active membership for an accepted invite.
+   * Caller must ensure the invitee has no open stint and roster has room.
+   */
+  async createActiveFromInvite(
+    teamId: string,
+    userId: string,
+  ): Promise<TeamMemberDocument> {
+    const team = await this.teamService.requireTeam(teamId);
+    await this.assertNoOpenStint(teamId, userId);
+    await this.assertRosterHasRoom(teamId, team);
+
+    const doc = new this.teamMemberModel({
+      team: new Types.ObjectId(teamId),
+      user: new Types.ObjectId(userId),
+      status: TeamMemberStatus.ACTIVE,
+      lineupCategory: LineupCategory.STARTER,
+      joinedAt: new Date(),
+    });
+    const saved = await doc.save();
+    return (await saved.populate(
+      TeamMemberService.populate,
+    )) as TeamMemberDocument;
+  }
+
   async hasActiveLeadershipMembership(
     teamId: string,
     userId: string,
