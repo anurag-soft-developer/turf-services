@@ -869,4 +869,24 @@ export class MatchmakingService {
 
     return populateTeamMatch(match);
   }
+
+  /** Bulk-expire matches past expiresAt that are not already terminal. */
+  async expireStaleMatches(): Promise<number> {
+    const now = new Date();
+    const result = await this.teamMatchModel.updateMany(
+      {
+        expiresAt: { $lte: now, $exists: true },
+        status: { $nin: TERMINAL_ALL_STATUSES },
+      },
+      {
+        $set: {
+          status: TeamMatchStatus.EXPIRED,
+          closedAt: now,
+          statusUpdatedAt: now,
+        },
+        $unset: { statusUpdatedBy: 1 },
+      },
+    );
+    return result.modifiedCount;
+  }
 }

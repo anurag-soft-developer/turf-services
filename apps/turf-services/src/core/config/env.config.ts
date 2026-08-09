@@ -66,6 +66,12 @@ export function validateConfig() {
         process.env.UNUSED_UPLOAD_REGISTRY_TTL_HOURS || '48',
       UNUSED_UPLOAD_REGISTRY_PURGE_CRON:
         process.env.UNUSED_UPLOAD_REGISTRY_PURGE_CRON || '0 * * * *',
+      PAYMENT_HOLD_RELEASE_CRON:
+        process.env.PAYMENT_HOLD_RELEASE_CRON || '*/2 * * * *',
+      TEAM_INVITE_EXPIRY_CRON:
+        process.env.TEAM_INVITE_EXPIRY_CRON || '0 * * * *',
+      TEAM_MATCH_EXPIRY_CRON:
+        process.env.TEAM_MATCH_EXPIRY_CRON || '*/5 * * * *',
       STORAGE_RECONCILE_ENABLED:
         process.env.STORAGE_RECONCILE_ENABLED || 'false',
 

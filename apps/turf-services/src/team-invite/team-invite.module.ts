@@ -2,6 +2,7 @@ import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { TeamInvite, TeamInviteSchema } from './schemas/team-invite.schema';
 import { TeamInviteService } from './team-invite.service';
+import { TeamInviteExpiryCleanupService } from './team-invite-expiry-cleanup.service';
 import {
   TeamInviteController,
   TeamInviteSelfController,
@@ -24,7 +25,12 @@ import { SmsService } from '../core/services/sms.service';
     NotificationModule,
   ],
   controllers: [TeamInviteController, TeamInviteSelfController],
-  providers: [TeamInviteService, EmailService, SmsService],
+  providers: [
+    TeamInviteService,
+    TeamInviteExpiryCleanupService,
+    EmailService,
+    SmsService,
+  ],
   exports: [TeamInviteService],
 })
 export class TeamInviteModule {}

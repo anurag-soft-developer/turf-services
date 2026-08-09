@@ -18,6 +18,7 @@ import { AnnouncedPlayersController } from './announcedPlayers/announced-players
 import { AnnouncedPlayersService } from './announcedPlayers/announced-players.service';
 import { MatchmakingController } from './matchmaking.controller';
 import { MatchmakingService } from './matchmaking.service';
+import { MatchmakingExpiryCleanupService } from './matchmaking-expiry-cleanup.service';
 import { TeamMatch, TeamMatchSchema } from './schemas/team-match.schema';
 
 @Module({
@@ -35,7 +36,11 @@ import { TeamMatch, TeamMatchSchema } from './schemas/team-match.schema';
     ScoringModule,
   ],
   controllers: [MatchmakingController, AnnouncedPlayersController],
-  providers: [MatchmakingService, AnnouncedPlayersService],
+  providers: [
+    MatchmakingService,
+    MatchmakingExpiryCleanupService,
+    AnnouncedPlayersService,
+  ],
   exports: [MatchmakingService],
 })
 export class MatchmakingModule {}

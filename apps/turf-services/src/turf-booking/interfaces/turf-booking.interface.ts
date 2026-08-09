@@ -11,6 +11,8 @@ export interface ITurfTimeSlotListing {
   isAvailable: boolean;
   price: number;
   isBooked: boolean;
+  /** Unpaid active payment hold (not a confirmed booking). */
+  isHeld: boolean;
 }
 
 export interface ITurfBooking {

@@ -7,6 +7,7 @@ import {
 import { Event, EventSchema } from '../events/schemas/event.schema';
 import { EventBookingController } from './event-booking.controller';
 import { EventBookingService } from './event-booking.service';
+import { EventBookingHoldCleanupService } from './event-booking-hold-cleanup.service';
 import { EventsModule } from '../events/events.module';
 import { WalletModule } from '../wallet/wallet.module';
 import { NotificationModule } from '../notification/notification.module';
@@ -23,7 +24,11 @@ import { RajorpayService } from '../core/services/rajorpay/rajorpay.service';
     NotificationModule,
   ],
   controllers: [EventBookingController],
-  providers: [EventBookingService, RajorpayService],
+  providers: [
+    EventBookingService,
+    EventBookingHoldCleanupService,
+    RajorpayService,
+  ],
   exports: [EventBookingService],
 })
 export class EventBookingModule {}

@@ -309,6 +309,68 @@ export class TurfBookingService {
     )) as TurfBookingDocument;
   }
 
+  /**
+   * Releases an unpaid payment hold when the client abandons checkout
+   * (works without Razorpay webhooks). Does not notify the turf owner.
+   */
+  async abandonPayment(
+    bookingId: string,
+    userId: string,
+  ): Promise<TurfBookingDocument> {
+    const booking = await this.turfBookingModel.findById(bookingId);
+    if (!booking) {
+      throw new NotFoundException('Booking not found');
+    }
+
+    if (resolveId(booking.bookedBy) !== resolveId(userId)) {
+      throw new ForbiddenException('You can only abandon your own bookings');
+    }
+
+    const alreadyReleased =
+      booking.status === TurfBookingStatus.CANCELLED ||
+      booking.slotHoldStatus === SlotHoldStatus.RELEASED;
+
+    if (alreadyReleased) {
+      return (await booking.populate(
+        TurfBookingService.populateOptions,
+      )) as TurfBookingDocument;
+    }
+
+    if (
+      booking.status !== TurfBookingStatus.PENDING ||
+      booking.paymentStatus !== PaymentStatus.PENDING
+    ) {
+      throw new BadRequestException(
+        'Only unpaid pending bookings can be abandoned',
+      );
+    }
+
+    booking.paymentStatus = PaymentStatus.FAILED;
+    booking.status = TurfBookingStatus.CANCELLED;
+    booking.cancelledAt = new Date();
+    booking.cancelReason = 'Payment abandoned by user';
+    booking.slotHoldStatus = SlotHoldStatus.RELEASED;
+    booking.paymentExpiresAt = undefined;
+    await booking.save();
+
+    const turf = await this.turfModel
+      .findById(booking.turf)
+      .select('name')
+      .lean();
+    if (turf) {
+      await notifyBookerPaymentFailed(
+        this.notificationService,
+        booking,
+        turf.name,
+        'payment_failed',
+      );
+    }
+
+    return (await booking.populate(
+      TurfBookingService.populateOptions,
+    )) as TurfBookingDocument;
+  }
+
   async updateBooking(
     bookingId: string,
     updateBookingDto: UpdateTurfBookingDto & {
@@ -418,6 +480,13 @@ export class TurfBookingService {
     // Handle cancellation
     if (updateBookingDto.status === TurfBookingStatus.CANCELLED) {
       updateBookingDto.cancelledAt = new Date();
+      if (booking.status === TurfBookingStatus.PENDING) {
+        booking.slotHoldStatus = SlotHoldStatus.RELEASED;
+        booking.paymentExpiresAt = undefined;
+        if (booking.paymentStatus === PaymentStatus.PENDING) {
+          updateBookingDto.paymentStatus = PaymentStatus.FAILED;
+        }
+      }
     }
 
     // Handle confirmation
@@ -548,7 +617,7 @@ export class TurfBookingService {
           },
         },
       })
-      .select('timeSlots')
+      .select('timeSlots status slotHoldStatus')
       .lean()
       .exec();
 
@@ -559,18 +628,32 @@ export class TurfBookingService {
       const slotEnd = new Date(slotStart.getTime() + HOUR_MS);
       const slotBufferedEnd = new Date(slotEnd.getTime() + slotBufferMs);
       let isBooked = false;
+      let isHeld = false;
       for (const b of bookings) {
+        let overlaps = false;
         for (const ts of b.timeSlots) {
           const bStart = new Date(ts.startTime);
           const bBufferedEnd = new Date(
             new Date(ts.endTime).getTime() + slotBufferMs,
           );
           if (slotStart < bBufferedEnd && slotBufferedEnd > bStart) {
-            isBooked = true;
+            overlaps = true;
             break;
           }
         }
-        if (isBooked) break;
+        if (!overlaps) continue;
+
+        if (b.status === TurfBookingStatus.CONFIRMED) {
+          isBooked = true;
+          isHeld = false;
+          break;
+        }
+        if (
+          b.status === TurfBookingStatus.PENDING &&
+          b.slotHoldStatus === SlotHoldStatus.ACTIVE
+        ) {
+          isHeld = true;
+        }
       }
 
       const price = TurfBookingUtility.calculateBookingAmount(
@@ -580,7 +663,8 @@ export class TurfBookingService {
       );
 
       const isPast = slotEnd <= now;
-      const isAvailable = turfDoc.isAvailable && !isBooked && !isPast;
+      const isAvailable =
+        turfDoc.isAvailable && !isBooked && !isHeld && !isPast;
 
       result.push({
         startTime: slotStart.toISOString(),
@@ -588,6 +672,7 @@ export class TurfBookingService {
         isAvailable,
         price,
         isBooked,
+        isHeld,
       });
     }
 

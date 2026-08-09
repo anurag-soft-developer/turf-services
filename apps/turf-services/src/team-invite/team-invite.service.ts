@@ -377,4 +377,22 @@ export class TeamInviteService {
 
     return attached;
   }
+
+  /** Bulk-expire pending invites past expiresAt (scheduled cleanup). */
+  async expirePendingInvites(): Promise<number> {
+    const now = new Date();
+    const result = await this.teamInviteModel.updateMany(
+      {
+        status: TeamInviteStatus.PENDING,
+        expiresAt: { $lte: now },
+      },
+      {
+        $set: {
+          status: TeamInviteStatus.EXPIRED,
+          respondedAt: now,
+        },
+      },
+    );
+    return result.modifiedCount;
+  }
 }

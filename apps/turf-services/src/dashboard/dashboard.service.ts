@@ -10,7 +10,7 @@ const DASHBOARD_TURF_LIMIT = 5;
 const DEFAULT_NEARBY_RADIUS_KM = 10;
 
 export type PlayerDashboardResponse = {
-  turfsTitle: 'Nearby turfs' | 'Featured turfs';
+  turfsTitle: 'Nearby turves' | 'Featured turves';
   turfs: ITurf[];
   nearbyTeamsCount: number;
   unreadNotificationCount: number;
@@ -55,7 +55,7 @@ export class DashboardService {
 
       if (nearbyTurfs.length > 0) {
         return {
-          turfsTitle: 'Nearby turfs',
+          turfsTitle: 'Nearby turves',
           turfs: nearbyTurfs,
           nearbyTeamsCount,
           unreadNotificationCount,
@@ -68,7 +68,7 @@ export class DashboardService {
     });
 
     return {
-      turfsTitle: 'Featured turfs',
+      turfsTitle: 'Featured turves',
       turfs: featuredTurfs,
       nearbyTeamsCount,
       unreadNotificationCount,

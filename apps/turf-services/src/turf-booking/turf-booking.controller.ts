@@ -53,6 +53,15 @@ export class TurfBookingController {
     return booking;
   }
 
+  @Post(':id/abandon-payment')
+  @HttpCode(HttpStatus.OK)
+  async abandonPayment(
+    @Param('id') id: string,
+    @CurrentUser('_id') userId: string,
+  ) {
+    return this.turfBookingService.abandonPayment(id, userId.toString());
+  }
+
   @Get()
   async findAll(@Query() filterDto: TurfBookingFilterDto) {
     const result = await this.turfBookingService.findAll(filterDto);
