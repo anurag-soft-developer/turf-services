@@ -71,6 +71,7 @@ export class NotificationController {
     return this.notificationService.markAsRead(String(user._id), id);
   }
 
+  /** `:id` may be one ObjectId or comma-separated ids (`id1,id2`). */
   @Delete(':id')
   @HttpCode(200)
   async deleteOne(@CurrentUser() user: IUser, @Param('id') id: string) {

@@ -163,19 +163,35 @@ export class NotificationService {
 
   async deleteForUser(
     userId: string,
-    notificationId: string,
-  ): Promise<{ deleted: true }> {
-    if (!Types.ObjectId.isValid(notificationId)) {
-      throw new BadRequestException('Invalid notification id');
+    notificationIdParam: string,
+  ): Promise<{ deleted: true; deletedCount: number }> {
+    const ids = [
+      ...new Set(
+        notificationIdParam
+          .split(',')
+          .map((id) => id.trim())
+          .filter((id) => id.length > 0),
+      ),
+    ];
+    if (ids.length === 0) {
+      throw new BadRequestException('Notification id is required');
     }
-    const result = await this.notificationModel.deleteOne({
-      _id: new Types.ObjectId(notificationId),
+    const invalid = ids.filter((id) => !Types.ObjectId.isValid(id));
+    if (invalid.length > 0) {
+      throw new BadRequestException(
+        `Invalid notification id${invalid.length > 1 ? 's' : ''}: ${invalid.join(', ')}`,
+      );
+    }
+
+    const objectIds = ids.map((id) => new Types.ObjectId(id));
+    const result = await this.notificationModel.deleteMany({
+      _id: objectIds.length === 1 ? objectIds[0] : { $in: objectIds },
       recipientUserId: userId,
     });
     if (result.deletedCount === 0) {
       throw new NotFoundException('Notification not found');
     }
-    return { deleted: true };
+    return { deleted: true, deletedCount: result.deletedCount };
   }
 
   async deleteAllForUser(userId: string): Promise<{ deletedCount: number }> {
