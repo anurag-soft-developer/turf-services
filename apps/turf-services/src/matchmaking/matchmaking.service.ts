@@ -194,6 +194,10 @@ export class MatchmakingService {
       andClauses.push({ status: uniqueStatuses });
     }
 
+    if (filter.sportType) {
+      andClauses.push({ sportType: filter.sportType });
+    }
+
     const scopedTeamIds = hasExplicitTeamFilter ? uniqueScoped : actorTeamIds;
     if (scope === 'mine' || hasExplicitTeamFilter) {
       if (filter.type === 'incoming') {

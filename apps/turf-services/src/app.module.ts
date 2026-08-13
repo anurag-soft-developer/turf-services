@@ -29,6 +29,7 @@ import { WalletModule } from './wallet/wallet.module';
 import { EventsModule } from './events/events.module';
 import { EventBookingModule } from './event-booking/event-booking.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { ExploreModule } from './explore/explore.module';
 
 @Module({
   imports: [
@@ -56,6 +57,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
     WalletModule,
     WithdrawalsModule,
     DashboardModule,
+    ExploreModule,
   ],
   controllers: [AppController],
   providers: [

@@ -1,5 +1,6 @@
 import { createZodDto, type ZodDto } from 'nestjs-zod';
 import { z } from 'zod';
+import { sportTypeSchema } from '../../core/sports/sport-types';
 import { TeamMatchStatus } from '../schemas/team-match.schema';
 
 const matchResponseActionSchema = z.enum(['accept', 'reject']);
@@ -66,6 +67,7 @@ const ListNegotiationsFilterSchema = z.object({
   scope: z.enum(['mine', 'all']).default('mine'),
   /** Case-insensitive match on either team's name / shortName. */
   search: z.string().trim().min(1).max(80).optional(),
+  sportType: sportTypeSchema.optional(),
   /** e.g. `createdAt:desc` or `updatedAt:asc,createdAt:desc` */
   sort: z.string().trim().max(120).optional(),
   page: z.coerce.number().min(1).default(1),
