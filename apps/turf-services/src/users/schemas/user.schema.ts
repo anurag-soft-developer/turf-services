@@ -6,6 +6,8 @@ import type {
   IOAuthStrategy,
 } from '../interfaces/user.interface';
 import { type NotificationModule } from '../../notification/schemas/notification.schema';
+import type { GeoPoint } from '../../core/schemas/geo-location.schema';
+import { GeoPointSchema } from '../../core/schemas/geo-location.schema';
 import { UserRole } from '../../auth/decorators/roles.decorator';
 import type { PlayerSportEntry } from '../../core/sports/sport-stats';
 import type { SportRankingPointsEntry } from '../../core/points/ranking-points.types';
@@ -262,6 +264,10 @@ export class User extends Document implements UserDocument {
   })
   badges!: EarnedBadge[];
 
+  /** Last GPS ping from explore; not a required profile field. */
+  @Prop({ type: GeoPointSchema, required: false })
+  lastLocation?: GeoPoint;
+
   @Prop({ type: Number, default: 0, min: 0 })
   followingCount!: number;
 
@@ -285,6 +291,7 @@ export const UserSchema = SchemaFactory.createForClass(User);
 
 // Index for better query performance
 // UserSchema.index({ email: 1 });
+UserSchema.index({ lastLocation: '2dsphere' }, { sparse: true });
 UserSchema.index({ 'oAuthStrategies.provider': 1, 'oAuthStrategies.id': 1 });
 UserSchema.index({
   'sportRankingPoints.sportType': 1,

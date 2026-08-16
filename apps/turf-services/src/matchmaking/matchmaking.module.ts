@@ -4,6 +4,10 @@ import {
   TurfBooking,
   TurfBookingSchema,
 } from '../turf-booking/schemas/turf-booking.schema';
+import {
+  Turf,
+  TurfSchema,
+} from '../turf/schemas/turf.schema';
 import { Team, TeamSchema } from '../team/schemas/team.schema';
 import { TeamModule } from '../team/team.module';
 import { TeamMemberModule } from '../team-member/team-member.module';
@@ -28,6 +32,7 @@ import { TeamMatch, TeamMatchSchema } from './schemas/team-match.schema';
       { name: Team.name, schema: TeamSchema },
       { name: TurfBooking.name, schema: TurfBookingSchema },
       { name: TeamMember.name, schema: TeamMemberSchema },
+      { name: Turf.name, schema: TurfSchema },
     ]),
     TeamModule,
     TeamMemberModule,

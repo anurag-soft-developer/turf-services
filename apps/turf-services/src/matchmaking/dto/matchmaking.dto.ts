@@ -1,5 +1,6 @@
 import { createZodDto, type ZodDto } from 'nestjs-zod';
 import { z } from 'zod';
+import { nearbyLocationQuerySchema } from '../../core/dto';
 import { sportTypeSchema } from '../../core/sports/sport-types';
 import { TeamMatchStatus } from '../schemas/team-match.schema';
 
@@ -70,6 +71,7 @@ const ListNegotiationsFilterSchema = z.object({
   sportType: sportTypeSchema.optional(),
   /** e.g. `createdAt:desc` or `updatedAt:asc,createdAt:desc` */
   sort: z.string().trim().max(120).optional(),
+  location: nearbyLocationQuerySchema.optional(),
   page: z.coerce.number().min(1).default(1),
   limit: z.coerce.number().min(1).max(50).default(10),
 });

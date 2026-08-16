@@ -9,11 +9,17 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { PaginatedResult } from '../core/interfaces/common';
 import { resolveId } from '../core/utils/mongo-ref.util';
+import {
+  applyExcludeIds,
+  paginateSortedByDistance,
+} from '../core/utils/geo-near-page.util';
+import { GeoLocation } from '../core/schemas/geo-location.schema';
 import { Team, TeamDocument } from '../team/schemas/team.schema';
 import { TeamService } from '../team/team.service';
 import { TeamMemberService } from '../team-member/team-member.service';
 import { TeamMember } from '../team-member/schemas/team-member.schema';
 import { NotificationService } from '../notification/notification.service';
+import { Turf } from '../turf/schemas/turf.schema';
 import {
   notifyMatchCancelled,
   notifyMatchRequestReceived,
@@ -62,6 +68,7 @@ import {
   assertMatchAllowsProposalWithdraw,
   assertSchedulePhaseActionable,
   assertTeamEligibleForMatching,
+  buildListRequestsQuery,
   ensureMatchHasTeam,
   getActorTeamIds,
   parseScopedTeamIds,
@@ -82,6 +89,8 @@ export class MatchmakingService {
     private readonly teamMemberService: TeamMemberService,
     @InjectModel(TeamMember.name)
     private readonly teamMemberModel: Model<TeamMember>,
+    @InjectModel(Turf.name)
+    private readonly turfModel: Model<Turf>,
     private readonly notificationService: NotificationService,
   ) {}
 
@@ -156,6 +165,7 @@ export class MatchmakingService {
   async listRequests(
     userId: string,
     filter: ListNegotiationsFilterDto,
+    extra?: { excludeIds?: string[] },
   ): Promise<PaginatedResult<TeamMatchDocument>> {
     const emptyPage = (): PaginatedResult<TeamMatchDocument> => ({
       data: [],
@@ -165,78 +175,34 @@ export class MatchmakingService {
       totalPages: 0,
     });
 
-    const scope = filter.scope ?? 'mine';
-    const uniqueScoped = parseScopedTeamIds(filter);
-    const hasExplicitTeamFilter = uniqueScoped.length > 0;
-
-    let actorTeamIds: Types.ObjectId[] = [];
-    if (scope === 'mine' && !hasExplicitTeamFilter) {
-      actorTeamIds = await getActorTeamIds(
-        userId,
-        this.teamModel,
-        this.teamMemberService,
-      );
-      if (actorTeamIds.length === 0) {
-        return emptyPage();
-      }
+    const q = await buildListRequestsQuery(
+      userId,
+      filter,
+      this.teamModel,
+      this.teamMemberService,
+    );
+    if (q === null) {
+      return emptyPage();
     }
 
-    const andClauses: Record<string, unknown>[] = [];
+    applyExcludeIds(q, extra?.excludeIds);
 
-    const statusStrings: string[] = [];
-    if (filter.statuses?.length) {
-      statusStrings.push(...filter.statuses);
-    } else if (filter.status) {
-      statusStrings.push(filter.status);
-    }
-    const uniqueStatuses = [...new Set(statusStrings)];
-    if (uniqueStatuses.length > 0) {
-      andClauses.push({ status: uniqueStatuses });
-    }
-
-    if (filter.sportType) {
-      andClauses.push({ sportType: filter.sportType });
-    }
-
-    const scopedTeamIds = hasExplicitTeamFilter ? uniqueScoped : actorTeamIds;
-    if (scope === 'mine' || hasExplicitTeamFilter) {
-      if (filter.type === 'incoming') {
-        andClauses.push({ toTeam: scopedTeamIds });
-      } else if (filter.type === 'outgoing') {
-        andClauses.push({ fromTeam: scopedTeamIds });
-      } else {
-        andClauses.push({
-          $or: [{ fromTeam: scopedTeamIds }, { toTeam: scopedTeamIds }],
-        });
-      }
-    }
-
-    const search = filter.search?.trim();
-    if (search) {
-      const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const searchRegex = new RegExp(escaped, 'i');
-      const matchedTeams = await this.teamModel
-        .find({
-          $or: [{ name: searchRegex }, { shortName: searchRegex }],
-        })
-        .select('_id')
-        .lean()
-        .exec();
-      const searchTeamIds = matchedTeams.map((t) => t._id);
-      if (searchTeamIds.length === 0) {
-        return emptyPage();
-      }
-      andClauses.push({
-        $or: [{ fromTeam: searchTeamIds }, { toTeam: searchTeamIds }],
+    const location = filter.location;
+    const nearbyLat = location?.nearbyLat;
+    const nearbyLng = location?.nearbyLng;
+    // Soft distance: prefer closer; nearbyRadiusKm ignored; no-location included last.
+    if (location && nearbyLat !== undefined && nearbyLng !== undefined) {
+      return paginateSortedByDistance({
+        model: this.teamMatchModel,
+        geoKey: 'venueLocation.coordinates',
+        location,
+        match: q,
+        page: filter.page,
+        limit: filter.limit,
+        populate: TEAM_MATCH_POPULATE,
+        fallbackSort: { updatedAt: -1 },
       });
     }
-
-    const q: Record<string, unknown> =
-      andClauses.length === 0
-        ? {}
-        : andClauses.length === 1
-          ? andClauses[0]
-          : { $and: andClauses };
 
     const sortSpec = buildMongoSortOptions(filter.sort, {
       defaultSort: { updatedAt: -1 },
@@ -263,6 +229,25 @@ export class MatchmakingService {
       limit: filter.limit,
       totalPages: Math.ceil(totalDocuments / filter.limit) || 0,
     };
+  }
+
+  /** Hydrate matches by id for explore feed session cache (order preserved). */
+  async findByIdsForExplore(ids: string[]): Promise<TeamMatchDocument[]> {
+    if (!ids.length) return [];
+    const oids = ids
+      .filter((id) => Types.ObjectId.isValid(id))
+      .map((id) => new Types.ObjectId(id));
+    if (!oids.length) return [];
+    const docs = await this.teamMatchModel
+      .find({ _id: { $in: oids } })
+      .populate(TEAM_MATCH_POPULATE)
+      .exec();
+    const order = new Map(ids.map((id, i) => [id, i]));
+    docs.sort(
+      (a, b) =>
+        (order.get(a._id.toString()) ?? 0) - (order.get(b._id.toString()) ?? 0),
+    );
+    return docs;
   }
 
   async listInbox(
@@ -650,6 +635,7 @@ export class MatchmakingService {
 
     match.selectedSlotProposalId = slotProposal.proposalId;
     match.selectedTurfProposalId = turfProposal.proposalId;
+    await this.copyVenueLocationFromSelectedTurf(match);
     applyStatusUpdate(match, TeamMatchStatus.SCHEDULE_FINALIZED, userId);
     match.notes = dto.notes ?? match.notes;
     await match.save();
@@ -828,6 +814,7 @@ export class MatchmakingService {
     }
     if (dto.turfId) {
       appendSelfAcceptedTurfProposal(match, dto.turfId, selfTeam!);
+      await this.copyVenueLocationFromSelectedTurf(match);
     }
 
     if (match.selectedSlotProposalId && match.selectedTurfProposalId) {
@@ -892,5 +879,24 @@ export class MatchmakingService {
       },
     );
     return result.modifiedCount;
+  }
+
+  private async copyVenueLocationFromSelectedTurf(
+    match: TeamMatchDocument,
+  ): Promise<void> {
+    if (!match.selectedTurfProposalId) return;
+    const selected = match.proposedTurfs.find(
+      (p) =>
+        resolveId(p.proposalId) === resolveId(match.selectedTurfProposalId!),
+    );
+    if (!selected) return;
+    const turf = await this.turfModel
+      .findById(resolveId(selected.turfId))
+      .select('location')
+      .lean()
+      .exec();
+    if (turf?.location) {
+      match.venueLocation = turf.location as GeoLocation;
+    }
   }
 }

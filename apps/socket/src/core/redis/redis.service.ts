@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { createClient, RedisClientType } from 'redis';
-import { getRedisUrl } from '../config/redis.config';
+import { config } from '../config/env.config';
 
 @Injectable()
 export class RedisService implements OnModuleDestroy {
@@ -11,7 +11,7 @@ export class RedisService implements OnModuleDestroy {
 
   async getClient(): Promise<RedisClientType> {
     if (!this.client) {
-      this.client = createClient({ url: getRedisUrl() });
+      this.client = createClient({ url: config.REDIS_URL });
       this.attachErrorLogger(this.client, 'redis-client');
       try {
         await this.client.connect();
@@ -29,7 +29,7 @@ export class RedisService implements OnModuleDestroy {
     subClient: RedisClientType;
   }> {
     if (!this.pubClient || !this.subClient) {
-      this.pubClient = createClient({ url: getRedisUrl() });
+      this.pubClient = createClient({ url: config.REDIS_URL });
       this.subClient = this.pubClient.duplicate();
       this.attachErrorLogger(this.pubClient, 'redis-pub');
       this.attachErrorLogger(this.subClient, 'redis-sub');

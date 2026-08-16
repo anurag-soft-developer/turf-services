@@ -1,6 +1,7 @@
 import { createZodDto, type ZodDto } from 'nestjs-zod';
 import { z } from 'zod';
-import { geoLocationSchema } from '../../core/dto';
+import { geoLocationSchema, nearbyLocationQuerySchema } from '../../core/dto';
+import { sportTypeSchema } from '../../core/sports/sport-types';
 
 const postStatusSchema = z.enum(['draft', 'published', 'archived']);
 const mediaKindSchema = z.enum(['image', 'video']);
@@ -18,6 +19,7 @@ const CreatePostSchema = z
     tags: z.array(z.string().trim().min(1).max(64)).max(50).optional(),
     status: postStatusSchema.optional(),
     team: z.string().trim().min(1).optional(),
+    match: z.string().trim().min(1).optional(),
     location: geoLocationSchema.optional(),
     media: z.array(mediaInputSchema).max(30).optional(),
   })
@@ -61,9 +63,14 @@ const UpdatePostSchema = z
 
 const PostFilterSchema = z.object({
   team: z.string().trim().min(1).optional(),
+  match: z.string().trim().min(1).optional(),
+  turf: z.string().trim().min(1).optional(),
   postedBy: z.string().trim().min(1).optional(),
   status: postStatusSchema.optional(),
   mine: z.coerce.boolean().optional(),
+  search: z.string().trim().min(1).max(80).optional(),
+  sportType: sportTypeSchema.optional(),
+  location: nearbyLocationQuerySchema.optional(),
   page: z.coerce.number().min(1).default(1),
   limit: z.coerce.number().min(1).max(50).default(10),
 });

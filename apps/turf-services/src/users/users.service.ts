@@ -5,7 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import * as bcrypt from 'bcryptjs';
 import { OAuthProvider, User, UserDocument } from './schemas/user.schema';
 import type {
@@ -19,6 +19,11 @@ import { playerLeaderboardStatsFromEntry } from '../core/points/leaderboard-stat
 import type { PlayerLeaderboardRow } from '../core/points/ranking-points.types';
 import type { PlayerSportEntry } from '../core/sports/sport-stats';
 import type { PaginatedResult } from '../core/interfaces/common';
+import {
+  applyExcludeIds,
+  paginateSortedByDistance,
+  type NearbyLocationQuery,
+} from '../core/utils/geo-near-page.util';
 import type { UpdateNotificationSettingsDto } from './dto/users.dto';
 import type { FcmTokenEntryPayload } from './dto/fcm-devices.dto';
 import { UserRole } from '../auth/decorators/roles.decorator';
@@ -60,9 +65,13 @@ export class UsersService {
     return await user.save();
   }
 
-  async findById(id: string): Promise<UserDocument | null> {
+  async findById(id: string, projection?: string): Promise<UserDocument | null> {
     try {
-      return await this.userModel.findById(id).exec();
+      const query = this.userModel.findById(id);
+      if (projection) {
+        query.select(projection);
+      }
+      return await query.exec();
     } catch (error) {
       return null;
     }
@@ -535,6 +544,11 @@ export class UsersService {
     query?: string,
     page: number = 1,
     limit: number = 10,
+    options?: {
+      location?: NearbyLocationQuery;
+      excludeIds?: string[];
+      includeLastLocation?: boolean;
+    },
   ): Promise<PaginatedResult<PublicProfile>> {
     const filter: Record<string, unknown> = { isActive: true };
 
@@ -543,6 +557,40 @@ export class UsersService {
         { fullName: { $regex: query, $options: 'i' } },
         { email: { $regex: query, $options: 'i' } },
       ];
+    }
+
+    applyExcludeIds(filter, options?.excludeIds);
+
+    const toProfile = (user: UserDocument): PublicProfile => {
+      const profile = UsersService.sanitizePublicProfile(user);
+      if (options?.includeLastLocation && user.lastLocation) {
+        return { ...profile, lastLocation: user.lastLocation };
+      }
+      return profile;
+    };
+
+    const location = options?.location;
+    // Soft distance: prefer closer; nearbyRadiusKm ignored; no-location included last.
+    if (
+      location?.nearbyLat !== undefined &&
+      location?.nearbyLng !== undefined
+    ) {
+      const result = await paginateSortedByDistance({
+        model: this.userModel,
+        geoKey: 'lastLocation',
+        location,
+        match: filter,
+        page,
+        limit,
+        fallbackSort: { createdAt: -1 },
+      });
+      return {
+        data: result.data.map((user) => toProfile(user)),
+        totalDocuments: result.totalDocuments,
+        page: result.page,
+        limit: result.limit,
+        totalPages: result.totalPages,
+      };
     }
 
     const skip = (page - 1) * limit;
@@ -557,11 +605,54 @@ export class UsersService {
     ]);
 
     return {
-      data: users.map((user) => UsersService.sanitizePublicProfile(user)),
+      data: users.map((user) => toProfile(user)),
       totalDocuments: total,
       page,
       limit,
       totalPages: Math.ceil(total / limit) || 1,
     };
+  }
+
+  /** Hydrate public profiles by id for explore feed session cache (order preserved). */
+  async findPublicProfilesByIdsForExplore(
+    ids: string[],
+    options?: { includeLastLocation?: boolean },
+  ): Promise<PublicProfile[]> {
+    if (!ids.length) return [];
+    const oids = ids
+      .filter((id) => Types.ObjectId.isValid(id))
+      .map((id) => new Types.ObjectId(id));
+    if (!oids.length) return [];
+    const users = await this.userModel
+      .find({ _id: { $in: oids }, isActive: true })
+      .exec();
+    const byId = new Map(
+      users.map((user) => {
+        const profile = UsersService.sanitizePublicProfile(user);
+        const withLoc =
+          options?.includeLastLocation && user.lastLocation
+            ? { ...profile, lastLocation: user.lastLocation }
+            : profile;
+        return [user._id.toString(), withLoc] as const;
+      }),
+    );
+    return ids
+      .map((id) => byId.get(id))
+      .filter((p): p is PublicProfile => p != null);
+  }
+
+  async upsertLastLocation(
+    userId: string,
+    lat: number,
+    lng: number,
+  ): Promise<void> {
+    await this.userModel.updateOne(
+      { _id: userId },
+      {
+        $set: {
+          lastLocation: { type: 'Point', coordinates: [lng, lat] },
+        },
+      },
+    );
   }
 }

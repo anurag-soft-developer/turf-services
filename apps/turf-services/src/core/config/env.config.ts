@@ -72,6 +72,9 @@ export function validateConfig() {
         process.env.TEAM_INVITE_EXPIRY_CRON || '0 * * * *',
       TEAM_MATCH_EXPIRY_CRON:
         process.env.TEAM_MATCH_EXPIRY_CRON || '*/5 * * * *',
+      ENGAGEMENT_STATS_FLUSH_CRON:
+        process.env.ENGAGEMENT_STATS_FLUSH_CRON || '*/2 * * * *',
+      REDIS_URL: process.env.REDIS_URL || 'redis://127.0.0.1:6379',
       STORAGE_RECONCILE_ENABLED:
         process.env.STORAGE_RECONCILE_ENABLED || 'false',
 

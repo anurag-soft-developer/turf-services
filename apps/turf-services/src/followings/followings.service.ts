@@ -29,6 +29,11 @@ import {
   notifyNewFollower,
 } from './utility/followings-notification.utility';
 import { FollowingsUtility } from './utility/followings.utility';
+import { RedisService } from '../core/redis/redis.service';
+import {
+  FOLLOW_IDS_CACHE_TTL_SECONDS,
+  followIdsCacheKey,
+} from '../engagement/engagement.constants';
 
 const REJECTED_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -50,6 +55,7 @@ export class FollowingsService {
     @InjectModel(Team.name)
     private teamModel: Model<TeamDocument>,
     private readonly notificationService: NotificationService,
+    private readonly redis: RedisService,
   ) {}
 
   async sendRequest(
@@ -395,6 +401,41 @@ export class FollowingsService {
     });
 
     return !!found;
+  }
+
+  async distinctAcceptedRecipientIds(
+    userId: string,
+    recipientType: FollowTargetType,
+  ): Promise<string[]> {
+    const cacheKey = followIdsCacheKey(userId, recipientType);
+    const cached = await this.redis.get(cacheKey);
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached) as unknown;
+        if (Array.isArray(parsed) && parsed.every((x) => typeof x === 'string')) {
+          return parsed;
+        }
+      } catch {
+        /* cache miss */
+      }
+    }
+
+    const rows = await this.followingModel
+      .find({
+        requester: new Types.ObjectId(userId),
+        recipientType,
+        status: FollowingStatus.ACCEPTED,
+      })
+      .select('recipient')
+      .lean()
+      .exec();
+    const ids = rows.map((r) => r.recipient.toString());
+    await this.redis.setEx(
+      cacheKey,
+      FOLLOW_IDS_CACHE_TTL_SECONDS,
+      JSON.stringify(ids),
+    );
+    return ids;
   }
 
   async findById(id: string): Promise<FollowingDocument | null> {

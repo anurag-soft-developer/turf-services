@@ -8,11 +8,15 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, PipelineStage, Types } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { teamLeaderboardStatsFromTeam } from '../core/points/leaderboard-stats.helpers';
 import type { TeamLeaderboardRow } from '../core/points/ranking-points.types';
 import type { PaginatedResult } from '../core/interfaces/common';
 import { resolveId } from '../core/utils/mongo-ref.util';
+import {
+  applyExcludeIds,
+  paginateSortedByDistance,
+} from '../core/utils/geo-near-page.util';
 import {
   Team,
   TeamDocument,
@@ -130,9 +134,29 @@ export class TeamService {
     return team;
   }
 
+  /** Hydrate teams by id for explore feed session cache (order preserved). */
+  async findByIdsForExplore(ids: string[]): Promise<TeamDocument[]> {
+    if (!ids.length) return [];
+    const oids = ids
+      .filter((id) => Types.ObjectId.isValid(id))
+      .map((id) => new Types.ObjectId(id));
+    if (!oids.length) return [];
+    const docs = await this.teamModel
+      .find({ _id: { $in: oids } })
+      .populate(TeamService.populate)
+      .exec();
+    const order = new Map(ids.map((id, i) => [id, i]));
+    docs.sort(
+      (a, b) =>
+        (order.get(a._id.toString()) ?? 0) - (order.get(b._id.toString()) ?? 0),
+    );
+    return docs;
+  }
+
   async findMany(
     userId: string,
     filter: TeamFilterDto,
+    extra?: { excludeIds?: string[] },
   ): Promise<PaginatedResult<TeamDocument>> {
     const {
       visibility,
@@ -150,7 +174,6 @@ export class TeamService {
     } = filter;
     const nearbyLat = location?.nearbyLat;
     const nearbyLng = location?.nearbyLng;
-    const nearbyRadiusKm = location?.nearbyRadiusKm ?? 10;
 
     const uid = new Types.ObjectId(userId);
     const memberTeamIds =
@@ -205,60 +228,22 @@ export class TeamService {
       }
     }
 
+    applyExcludeIds(baseMatch, extra?.excludeIds);
+
     const skip = (page - 1) * limit;
 
-    if (nearbyLat !== undefined && nearbyLng !== undefined) {
-      const geoMatch = {
-        ...baseMatch,
-        'location.coordinates': { $exists: true, $ne: null },
-      };
-      const pipeline: PipelineStage[] = [
-        {
-          $geoNear: {
-            key: 'location.coordinates',
-            near: {
-              type: 'Point',
-              coordinates: [nearbyLng, nearbyLat],
-            },
-            distanceField: 'distance',
-            maxDistance: nearbyRadiusKm * 1000,
-            spherical: true,
-            query: geoMatch,
-          },
-        },
-        {
-          $facet: {
-            metadata: [{ $count: 'total' }],
-            data: [{ $skip: skip }, { $limit: limit }],
-          },
-        },
-      ];
-
-      const agg = await this.teamModel.aggregate(pipeline);
-      const metadata = agg[0]?.metadata[0] || { total: 0 };
-      const raw = agg[0]?.data || [];
-      const ids = raw.map((d: { _id: Types.ObjectId }) => d._id);
-      const docs = await this.teamModel
-        .find({ _id: { $in: ids } })
-        .populate(TeamService.populate)
-        .exec();
-      const order = new Map<string, number>(
-        ids.map((id: Types.ObjectId, i: number) => [id.toString(), i]),
-      );
-      docs.sort((a, b) => {
-        const ia: number = order.get(a._id.toString()) ?? 0;
-        const ib: number = order.get(b._id.toString()) ?? 0;
-        return ia - ib;
-      });
-
-      const total = metadata.total ?? 0;
-      return {
-        data: docs,
-        totalDocuments: total,
+    // Soft distance: prefer closer; nearbyRadiusKm ignored; no-location included last.
+    if (nearbyLat !== undefined && nearbyLng !== undefined && location) {
+      return paginateSortedByDistance({
+        model: this.teamModel,
+        geoKey: 'location.coordinates',
+        location,
+        match: baseMatch,
         page,
         limit,
-        totalPages: Math.ceil(total / limit) || 0,
-      };
+        populate: TeamService.populate,
+        fallbackSort: { createdAt: -1 },
+      });
     }
 
     const [data, totalDocuments] = await Promise.all([

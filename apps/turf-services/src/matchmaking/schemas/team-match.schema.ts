@@ -14,6 +14,10 @@ import {
   FootballState,
   FootballStateSchema,
 } from './team-match-scoring.embedded';
+import {
+  GeoLocation,
+  GeoLocationSchema,
+} from '../../core/schemas/geo-location.schema';
 
 export type TeamMatchDocument = TeamMatch & Document;
 
@@ -218,6 +222,10 @@ export class TeamMatch {
   @Prop({ type: MongooseSchema.Types.ObjectId })
   selectedTurfProposalId?: Types.ObjectId;
 
+  /** Copied from the selected turf when schedule is set. Server-only. */
+  @Prop({ type: GeoLocationSchema, required: false })
+  venueLocation?: GeoLocation;
+
   /** Set when status is `completed`; omit for `draw`. */
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: Team.name })
   winnerTeam?: Types.ObjectId;
@@ -267,6 +275,10 @@ const ACTIVE_PAIR_STATUSES = [
   TeamMatchStatus.NEGOTIATING,
 ];
 
+TeamMatchSchema.index(
+  { 'venueLocation.coordinates': '2dsphere' },
+  { sparse: true },
+);
 TeamMatchSchema.index({ fromTeam: 1, status: 1, createdAt: -1 });
 TeamMatchSchema.index({ toTeam: 1, status: 1, createdAt: -1 });
 TeamMatchSchema.index(

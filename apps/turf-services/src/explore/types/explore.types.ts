@@ -1,14 +1,10 @@
 import type { TeamMatchDocument } from '../../matchmaking/schemas/team-match.schema';
 import type { TeamDocument } from '../../team/schemas/team.schema';
 import type { PublicProfile } from '../../users/interfaces/user.interface';
+import type { ContentPostDocument } from '../../post/schemas/content-post.schema';
 import type { PaginatedResult } from '../../core/interfaces/common';
 
-export type ExploreItemType =
-  | 'match'
-  | 'team'
-  | 'player'
-  | 'team_row'
-  | 'player_row';
+export type ExploreItemType = 'match' | 'team' | 'player' | 'post';
 
 export type ExploreMatchItem = {
   type: 'match';
@@ -25,42 +21,17 @@ export type ExplorePlayerItem = {
   data: PublicProfile;
 };
 
-export type ExploreTeamRowItem = {
-  type: 'team_row';
-  data: {
-    title: string;
-    reason: string;
-    items: TeamDocument[];
-  };
+export type ExplorePostItem = {
+  type: 'post';
+  data: ContentPostDocument;
 };
-
-export type ExplorePlayerRowItem = {
-  type: 'player_row';
-  data: {
-    title: string;
-    reason: string;
-    items: PublicProfile[];
-  };
-};
-
-export type ExploreFlatItem =
-  | ExploreMatchItem
-  | ExploreTeamItem
-  | ExplorePlayerItem;
 
 export type ExploreItem =
-  | ExploreFlatItem
-  | ExploreTeamRowItem
-  | ExplorePlayerRowItem;
+  | ExploreMatchItem
+  | ExploreTeamItem
+  | ExplorePlayerItem
+  | ExplorePostItem;
 
-export type ExploreResponse = PaginatedResult<ExploreItem> & {
-  meta?: {
-    counts?: {
-      match: number;
-      team: number;
-      player: number;
-    };
-  };
-};
+export type ExploreResponse = PaginatedResult<ExploreItem>;
 
-export type ScoredExploreItem = ExploreFlatItem & { score: number };
+export type ScoredExploreItem = ExploreItem & { score: number };

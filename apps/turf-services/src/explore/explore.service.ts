@@ -2,11 +2,18 @@ import { Injectable } from '@nestjs/common';
 import { MatchmakingService } from '../matchmaking/matchmaking.service';
 import { TeamService } from '../team/team.service';
 import { UsersService } from '../users/users.service';
+import { PostService } from '../post/post.service';
+import { FollowingsService } from '../followings/followings.service';
+import { FollowTargetType } from '../followings/schemas/following.schema';
+import { EngagementService } from '../engagement/engagement.service';
+import { RedisService } from '../core/redis/redis.service';
 import { TeamStatus } from '../team/schemas/team.schema';
+import { PostStatus } from '../post/schemas/content-post.schema';
 import type { ExploreQueryDto } from './dto/explore.dto';
-import type { PaginatedResult } from '../core/interfaces/common';
+import type { PublicProfile } from '../users/interfaces/user.interface';
 import type {
   ExploreItem,
+  ExploreItemType,
   ExploreResponse,
   ScoredExploreItem,
 } from './types/explore.types';
@@ -14,13 +21,25 @@ import { resolveExploreMatchStatuses } from './util/explore-match-status.util';
 import {
   rankExploreItems,
   toScoredExploreItems,
+  type RankingContext,
 } from './util/explore-ranking.util';
+import {
+  exploreFiltersHash,
+  exploreGeoBucket,
+  parseExploreFeedSession,
+  type ExploreFeedSession,
+} from './util/explore-feed-session.util';
+import {
+  EXPLORE_FEED_SESSION_TTL_SECONDS,
+  USER_LOCATION_THROTTLE_TTL_SECONDS,
+  exploreFeedSessionKey,
+  userLocThrottleKey,
+  type EngagementEntityType,
+} from '../engagement/engagement.constants';
 
-const TEAM_ROW_EVERY = 3;
-const PLAYER_ROW_EVERY = 5;
-const TEAM_ROW_SIZE = 6;
-const PLAYER_ROW_SIZE = 8;
-const FEED_POOL_LIMIT = 12;
+const CANDIDATE_LIMIT = 80;
+/** Preview size per type on search `category=all` page 1. */
+const ALL_SEARCH_PREVIEW_LIMIT = 5;
 
 @Injectable()
 export class ExploreService {
@@ -28,205 +47,246 @@ export class ExploreService {
     private readonly matchmakingService: MatchmakingService,
     private readonly teamService: TeamService,
     private readonly usersService: UsersService,
+    private readonly postService: PostService,
+    private readonly followingsService: FollowingsService,
+    private readonly engagementService: EngagementService,
+    private readonly redis: RedisService,
   ) {}
 
   async explore(userId: string, query: ExploreQueryDto): Promise<ExploreResponse> {
-    const { category } = query;
+    await this.maybeUpsertViewerLocation(userId, query);
 
-    if (category === 'match') {
-      return this.exploreMatches(userId, query);
-    }
-    if (category === 'team') {
-      return this.exploreTeams(userId, query);
-    }
-    if (category === 'player') {
-      return this.explorePlayers(userId, query);
+    const isSearch = !!query.q?.trim();
+    if (isSearch && query.category === 'all') {
+      return this.exploreSearchAll(userId, query);
     }
 
-    // category=all: feed (rows) when no search query; flat merge when searching
-    if (!query.q?.trim()) {
-      return this.exploreFeed(userId, query);
-    }
-
-    return this.exploreAll(userId, query);
-  }
-
-  private async exploreMatches(
-    userId: string,
-    query: ExploreQueryDto,
-  ): Promise<ExploreResponse> {
-    const result = await this.fetchMatches(userId, query);
-    return this.wrapSingleCategory(result, 'match');
-  }
-
-  private async exploreTeams(
-    userId: string,
-    query: ExploreQueryDto,
-  ): Promise<ExploreResponse> {
-    const result = await this.fetchTeams(userId, query);
-    return this.wrapSingleCategory(result, 'team');
-  }
-
-  private async explorePlayers(
-    userId: string,
-    query: ExploreQueryDto,
-  ): Promise<ExploreResponse> {
-    const result = await this.fetchPlayers(query);
-    return this.wrapSingleCategory(result, 'player');
-  }
-
-  private wrapSingleCategory<T>(
-    result: PaginatedResult<T>,
-    type: 'match' | 'team' | 'player',
-  ): ExploreResponse {
-    const data: ExploreItem[] = result.data.map((item) => ({
-      type,
-      data: item as never,
-    }));
-
-    return {
-      data,
-      page: result.page,
-      limit: result.limit,
-      totalDocuments: result.totalDocuments,
-      totalPages: result.totalPages,
-    };
+    // Feed (and non-all search) always use a concrete type.
+    const type: ExploreItemType =
+      query.category === 'all' ? 'match' : query.category;
+    return this.exploreRankedCategory(userId, query, type);
   }
 
   /**
-   * Explore feed: vertical matches with occasional horizontal team/player rows.
-   * Pagination is driven by match totals; row inserts may make page length >
-   * `limit`.
+   * Search with category=all:
+   * - page 1: limited ranked slices of match → team → player → post
+   * - page 2+: posts only (mapped to posts page = query.page - 1)
    */
-  private async exploreFeed(
+  private async exploreSearchAll(
     userId: string,
     query: ExploreQueryDto,
   ): Promise<ExploreResponse> {
-    const { page, limit } = query;
-    const poolQuery = { ...query, page: 1, limit: FEED_POOL_LIMIT };
-
-    const [matches, teams, players] = await Promise.all([
-      this.fetchMatches(userId, query),
-      this.fetchTeams(userId, poolQuery),
-      this.fetchPlayers(poolQuery),
-    ]);
-
-    const matchesBefore = (page - 1) * limit;
-    let teamCursor = Math.floor(matchesBefore / TEAM_ROW_EVERY) * TEAM_ROW_SIZE;
-    let playerCursor =
-      Math.floor(matchesBefore / PLAYER_ROW_EVERY) * PLAYER_ROW_SIZE;
-
-    const teamPool = teams.data;
-    const playerPool = players.data;
-    const data: ExploreItem[] = [];
-
-    matches.data.forEach((match, index) => {
-      data.push({ type: 'match', data: match });
-
-      const globalMatchIndex = matchesBefore + index + 1;
-
-      if (globalMatchIndex % TEAM_ROW_EVERY === 0) {
-        const items = this.takeSlice(teamPool, teamCursor, TEAM_ROW_SIZE);
-        teamCursor += TEAM_ROW_SIZE;
-        if (items.length > 0) {
-          data.push({
-            type: 'team_row',
-            data: {
-              title: 'Teams to explore',
-              reason: 'open_for_match',
-              items,
-            },
-          });
-        }
-      }
-
-      if (globalMatchIndex % PLAYER_ROW_EVERY === 0) {
-        const items = this.takeSlice(playerPool, playerCursor, PLAYER_ROW_SIZE);
-        playerCursor += PLAYER_ROW_SIZE;
-        if (items.length > 0) {
-          data.push({
-            type: 'player_row',
-            data: {
-              title: 'Players to follow',
-              reason: 'rising',
-              items,
-            },
-          });
-        }
-      }
-    });
-
-    return {
-      data,
-      page: matches.page,
-      limit: matches.limit,
-      totalDocuments: matches.totalDocuments,
-      totalPages: matches.totalPages,
-      meta: {
-        counts: {
-          match: matches.totalDocuments,
-          team: teams.totalDocuments,
-          player: players.totalDocuments,
-        },
-      },
-    };
-  }
-
-  private takeSlice<T>(pool: T[], cursor: number, size: number): T[] {
-    if (cursor >= pool.length) {
-      return [];
+    if (query.page > 1) {
+      const postsPage = query.page - 1;
+      const result = await this.exploreRankedFresh(userId, {
+        ...query,
+        page: postsPage,
+        limit: query.limit,
+      }, 'post');
+      return {
+        ...result,
+        page: query.page,
+        totalPages: 1 + result.totalPages,
+      };
     }
-    return pool.slice(cursor, cursor + size);
-  }
 
-  private async exploreAll(
-    userId: string,
-    query: ExploreQueryDto,
-  ): Promise<ExploreResponse> {
-    const { page, limit } = query;
-    const fetchLimit = page * limit;
-    const fetchQuery = { ...query, page: 1, limit: fetchLimit };
-
-    const [matches, teams, players] = await Promise.all([
-      this.fetchMatches(userId, fetchQuery),
-      this.fetchTeams(userId, fetchQuery),
-      this.fetchPlayers(fetchQuery),
+    const preview = { page: 1, limit: ALL_SEARCH_PREVIEW_LIMIT };
+    const [matchRes, teamRes, playerRes, postRes] = await Promise.all([
+      this.fetchByType(userId, query, 'match', preview),
+      this.fetchByType(userId, query, 'team', preview),
+      this.fetchByType(userId, query, 'player', preview),
+      this.fetchByType(userId, query, 'post', preview),
     ]);
 
-    const items = [
-      ...toScoredExploreItems('match', matches.data),
-      ...toScoredExploreItems('team', teams.data),
-      ...toScoredExploreItems('player', players.data),
+    const matchItems = toScoredExploreItems('match', matchRes.data as never);
+    const teamItems = toScoredExploreItems('team', teamRes.data as never);
+    const playerItems = toScoredExploreItems('player', playerRes.data as never);
+    const postItems = toScoredExploreItems('post', postRes.data as never);
+
+    const allItems = [
+      ...matchItems,
+      ...teamItems,
+      ...playerItems,
+      ...postItems,
     ];
+    const ctx = await this.buildRankingContext(userId, query, allItems);
 
-    const ranked = rankExploreItems({
-      items,
-      mode: 'search',
-      query: query.q,
-      userId,
-    });
+    const rankedMatches = rankExploreItems(matchItems, ctx).slice(
+      0,
+      ALL_SEARCH_PREVIEW_LIMIT,
+    );
+    const rankedTeams = rankExploreItems(teamItems, ctx).slice(
+      0,
+      ALL_SEARCH_PREVIEW_LIMIT,
+    );
+    const rankedPlayers = rankExploreItems(playerItems, ctx).slice(
+      0,
+      ALL_SEARCH_PREVIEW_LIMIT,
+    );
+    const rankedPosts = rankExploreItems(postItems, ctx).slice(
+      0,
+      ALL_SEARCH_PREVIEW_LIMIT,
+    );
 
-    const start = (page - 1) * limit;
-    const slice = ranked.slice(start, start + limit);
-    const data = slice.map((item) => this.toExploreItem(item));
+    // Fixed section order: posts last for the All UI.
+    const ordered = [
+      ...rankedMatches,
+      ...rankedTeams,
+      ...rankedPlayers,
+      ...rankedPosts,
+    ];
+    const data: ExploreItem[] = ordered.map((item) => this.toExploreItem(item));
 
-    const totalDocuments =
-      matches.totalDocuments + teams.totalDocuments + players.totalDocuments;
+    const postsTotalPages =
+      Math.ceil(postRes.totalDocuments / query.limit) || 0;
+    const totalPages =
+      postRes.totalDocuments > ALL_SEARCH_PREVIEW_LIMIT
+        ? 1 + postsTotalPages
+        : data.length > 0
+          ? 1
+          : 0;
 
     return {
       data,
-      page,
-      limit,
-      totalDocuments,
-      totalPages: Math.ceil(totalDocuments / limit) || 0,
-      meta: {
-        counts: {
-          match: matches.totalDocuments,
-          team: teams.totalDocuments,
-          player: players.totalDocuments,
-        },
-      },
+      page: 1,
+      limit: query.limit,
+      totalDocuments: postRes.totalDocuments,
+      totalPages,
     };
+  }
+
+  private async exploreRankedCategory(
+    userId: string,
+    query: ExploreQueryDto,
+    type: ExploreItemType,
+  ): Promise<ExploreResponse> {
+    const isFeed = !query.q?.trim();
+    const redisOk = (await this.redis.getClient()) != null;
+
+    if (isFeed && redisOk) {
+      return this.exploreFeedWithSession(userId, query, type);
+    }
+
+    return this.exploreRankedFresh(userId, query, type);
+  }
+
+  private async exploreFeedWithSession(
+    userId: string,
+    query: ExploreQueryDto,
+    type: ExploreItemType,
+  ): Promise<ExploreResponse> {
+    const sessionKey = exploreFeedSessionKey(
+      userId,
+      type,
+      exploreFiltersHash(query),
+      exploreGeoBucket(query),
+    );
+
+    let session = parseExploreFeedSession(await this.redis.get(sessionKey));
+    if (!session) {
+      session = await this.buildAndStoreFeedSession(
+        userId,
+        query,
+        type,
+        sessionKey,
+      );
+    }
+
+    const skip = (query.page - 1) * query.limit;
+    const pageIds = session.ids.slice(skip, skip + query.limit);
+    return this.toPageResponse(type, pageIds, query, session.totalDocuments);
+  }
+
+  private async toPageResponse(
+    type: ExploreItemType,
+    pageIds: string[],
+    query: ExploreQueryDto,
+    totalDocuments: number,
+  ): Promise<ExploreResponse> {
+    const hydrated = await this.hydrateByIds(type, pageIds);
+    const items = toScoredExploreItems(type, hydrated as never);
+    const data: ExploreItem[] = items.map((item) => this.toExploreItem(item));
+    return {
+      data,
+      page: query.page,
+      limit: query.limit,
+      totalDocuments,
+      totalPages: Math.ceil(totalDocuments / query.limit) || 0,
+    };
+  }
+
+  private async buildAndStoreFeedSession(
+    userId: string,
+    query: ExploreQueryDto,
+    type: ExploreItemType,
+    sessionKey: string,
+  ): Promise<ExploreFeedSession> {
+    const paging = {
+      page: 1,
+      limit: Math.max(query.limit, CANDIDATE_LIMIT),
+    };
+    const result = await this.fetchByType(userId, query, type, paging);
+    const items = toScoredExploreItems(type, result.data as never);
+    const ctx = await this.buildRankingContext(userId, query, items);
+    const ranked = rankExploreItems(items, ctx);
+    const ids = ranked
+      .map((item) => String((item.data as { _id?: unknown })._id ?? ''))
+      .filter(Boolean);
+
+    const session: ExploreFeedSession = {
+      ids,
+      totalDocuments: result.totalDocuments,
+    };
+    await this.redis.setEx(
+      sessionKey,
+      EXPLORE_FEED_SESSION_TTL_SECONDS,
+      JSON.stringify(session),
+    );
+    return session;
+  }
+
+  private async exploreRankedFresh(
+    userId: string,
+    query: ExploreQueryDto,
+    type: ExploreItemType,
+  ): Promise<ExploreResponse> {
+    const result = await this.fetchByType(userId, query, type, {
+      page: query.page,
+      limit: query.limit,
+    });
+    const items = toScoredExploreItems(type, result.data as never);
+    const ctx = await this.buildRankingContext(userId, query, items);
+    const ranked = rankExploreItems(items, ctx);
+    const slice = ranked.slice(0, query.limit);
+
+    const data: ExploreItem[] = slice.map((item) => this.toExploreItem(item));
+    return {
+      data,
+      page: query.page,
+      limit: query.limit,
+      totalDocuments: result.totalDocuments,
+      totalPages: Math.ceil(result.totalDocuments / query.limit) || 0,
+    };
+  }
+
+  private async hydrateByIds(
+    type: ExploreItemType,
+    ids: string[],
+  ): Promise<unknown[]> {
+    switch (type) {
+      case 'match':
+        return this.matchmakingService.findByIdsForExplore(ids);
+      case 'team':
+        return this.teamService.findByIdsForExplore(ids);
+      case 'player':
+        return this.usersService.findPublicProfilesByIdsForExplore(ids, {
+          includeLastLocation: true,
+        });
+      case 'post':
+        return this.postService.findByIdsForExplore(ids);
+      default:
+        return [];
+    }
   }
 
   private toExploreItem(item: ScoredExploreItem): ExploreItem {
@@ -236,7 +296,31 @@ export class ExploreService {
       case 'team':
         return { type: 'team', data: item.data };
       case 'player':
-        return { type: 'player', data: item.data };
+        return {
+          type: 'player',
+          data: stripPlayerLocation(item.data as PublicProfile),
+        };
+      case 'post':
+        return { type: 'post', data: item.data };
+    }
+  }
+
+  private async fetchByType(
+    userId: string,
+    query: ExploreQueryDto,
+    type: ExploreItemType,
+    paging: { page: number; limit: number },
+  ) {
+    const q = { ...query, page: paging.page, limit: paging.limit };
+    switch (type) {
+      case 'match':
+        return this.fetchMatches(userId, q);
+      case 'team':
+        return this.fetchTeams(userId, q);
+      case 'player':
+        return this.fetchPlayers(q);
+      case 'post':
+        return this.fetchPosts(userId, q);
     }
   }
 
@@ -249,6 +333,7 @@ export class ExploreService {
       statuses,
       search,
       sportType: query.sportType,
+      location: query.location,
       sort: 'updatedAt:desc',
       page: query.page,
       limit: query.limit,
@@ -278,6 +363,93 @@ export class ExploreService {
       search,
       query.page,
       query.limit,
+      {
+        location: query.location,
+        includeLastLocation: true,
+      },
     );
   }
+
+  private async fetchPosts(userId: string, query: ExploreQueryDto) {
+    const search = query.q?.trim() || undefined;
+
+    return this.postService.findMany(userId, {
+      status: PostStatus.PUBLISHED,
+      search,
+      sportType: query.sportType,
+      location: query.location,
+      page: query.page,
+      limit: query.limit,
+    });
+  }
+
+  private async buildRankingContext(
+    userId: string,
+    query: ExploreQueryDto,
+    items: ScoredExploreItem[],
+  ): Promise<RankingContext> {
+    const [followedUsers, followedTeams, viewer] = await Promise.all([
+      this.followingsService.distinctAcceptedRecipientIds(
+        userId,
+        FollowTargetType.USER,
+      ),
+      this.followingsService.distinctAcceptedRecipientIds(
+        userId,
+        FollowTargetType.TEAM,
+      ),
+      this.usersService.findById(userId, 'playerSportStats'),
+    ]);
+
+    const refs = items.map((item) => ({
+      entityType: item.type as EngagementEntityType,
+      entityId: String((item.data as { _id?: unknown })._id ?? ''),
+    }));
+    const stats = await this.engagementService.getStatsMap(refs);
+
+    const viewerSports = new Set(
+      (viewer?.playerSportStats ?? []).map((s) => String(s.sportType)),
+    );
+
+    const origin =
+      query.location?.nearbyLat !== undefined &&
+      query.location?.nearbyLng !== undefined
+        ? { lat: query.location.nearbyLat, lng: query.location.nearbyLng }
+        : undefined;
+
+    return {
+      userId,
+      mode: query.q?.trim() ? 'search' : 'feed',
+      query: query.q,
+      origin,
+      followedUserIds: new Set(followedUsers),
+      followedTeamIds: new Set(followedTeams),
+      viewerSports,
+      querySport: query.sportType,
+      stats,
+    };
+  }
+
+  private async maybeUpsertViewerLocation(
+    userId: string,
+    query: ExploreQueryDto,
+  ): Promise<void> {
+    const lat = query.location?.nearbyLat;
+    const lng = query.location?.nearbyLng;
+    if (lat === undefined || lng === undefined) return;
+
+    const client = await this.redis.getClient();
+    if (client) {
+      const acquired = await this.redis.setNxEx(
+        userLocThrottleKey(userId),
+        USER_LOCATION_THROTTLE_TTL_SECONDS,
+      );
+      if (!acquired) return;
+    }
+    await this.usersService.upsertLastLocation(userId, lat, lng);
+  }
+}
+
+function stripPlayerLocation(player: PublicProfile): PublicProfile {
+  const { lastLocation: _ignored, ...rest } = player;
+  return rest;
 }

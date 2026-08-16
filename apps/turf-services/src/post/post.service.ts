@@ -1,8 +1,10 @@
 import {
   BadRequestException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -19,11 +21,31 @@ import {
   UpdatePostDto,
 } from './dto/post.dto';
 import { TeamService } from '../team/team.service';
+import { TeamMemberService } from '../team-member/team-member.service';
 import { PaginatedResult } from '../core/interfaces/common';
+import {
+  applyExcludeIds,
+  paginateSortedByDistance,
+} from '../core/utils/geo-near-page.util';
 import { userSelectFields } from '../users/schemas/user.schema';
+import { turfSelectFields, Turf, TurfDocument } from '../turf/schemas/turf.schema';
 import { GeoLocation } from '../core/schemas/geo-location.schema';
 import { StorageLifecycleService } from '../storage/storage-lifecycle.service';
 import { resolveId } from '../core/utils/mongo-ref.util';
+import {
+  TeamMatch,
+  TeamMatchDocument,
+} from '../matchmaking/schemas/team-match.schema';
+import { Team, TeamDocument } from '../team/schemas/team.schema';
+import {
+  ensureMatchHasTeam,
+  requireTeamMatch,
+} from '../matchmaking/util/matchmaking.helpers';
+import {
+  assertMatchAllowsPhotoPosts,
+  assertUserCanPostForMatch,
+  resolveSelectedTurfId,
+} from './util/post-match-context.util';
 
 @Injectable()
 export class PostService {
@@ -33,6 +55,8 @@ export class PostService {
       path: 'team',
       select: '_id name logo sportType visibility status',
     },
+    { path: 'match', select: '_id fromTeam toTeam status sportType' },
+    { path: 'turf', select: turfSelectFields },
     { path: 'media' },
   ];
 
@@ -41,7 +65,15 @@ export class PostService {
     private postModel: Model<ContentPostDocument>,
     @InjectModel(Media.name)
     private mediaModel: Model<MediaDocument>,
+    @InjectModel(TeamMatch.name)
+    private teamMatchModel: Model<TeamMatchDocument>,
+    @InjectModel(Team.name)
+    private teamModel: Model<TeamDocument>,
+    @InjectModel(Turf.name)
+    private turfModel: Model<TurfDocument>,
     private teamService: TeamService,
+    @Inject(forwardRef(() => TeamMemberService))
+    private teamMemberService: TeamMemberService,
     private readonly storageLifecycle: StorageLifecycleService,
   ) {}
 
@@ -70,16 +102,48 @@ export class PostService {
       teamId = team._id;
     }
 
+    let matchId: Types.ObjectId | undefined;
+    let turfId: Types.ObjectId | undefined;
+    if (dto.match) {
+      const match = await requireTeamMatch(this.teamMatchModel, dto.match);
+      assertMatchAllowsPhotoPosts(match);
+      await assertUserCanPostForMatch(
+        match,
+        userId,
+        this.teamService,
+        this.teamMemberService,
+      );
+      if (teamId) {
+        ensureMatchHasTeam(match, teamId);
+      }
+      matchId = match._id;
+      turfId = resolveSelectedTurfId(match);
+    }
+
+    let location = dto.location as GeoLocation | undefined;
+    if (!location && turfId) {
+      const turf = await this.turfModel
+        .findById(turfId)
+        .select('location')
+        .lean()
+        .exec();
+      if (turf?.location) {
+        location = turf.location as GeoLocation;
+      }
+    }
+
     const mediaIds = await this.createMediaFromInputs(userId, dto.media);
 
     const doc = new this.postModel({
       postedBy: uid,
       team: teamId,
+      match: matchId,
+      turf: turfId,
       status: (dto.status as PostStatus) ?? PostStatus.DRAFT,
       title: dto.title ?? '',
       content: dto.content ?? '',
       tags: dto.tags ?? [],
-      location: dto.location as GeoLocation | undefined,
+      location,
       media: mediaIds,
     });
 
@@ -111,14 +175,52 @@ export class PostService {
     return post;
   }
 
+  /** Hydrate posts by id for explore feed session cache (order preserved). */
+  async findByIdsForExplore(ids: string[]): Promise<ContentPostDocument[]> {
+    if (!ids.length) return [];
+    const oids = ids
+      .filter((id) => Types.ObjectId.isValid(id))
+      .map((id) => new Types.ObjectId(id));
+    if (!oids.length) return [];
+    const docs = await this.postModel
+      .find({ _id: { $in: oids } })
+      .populate(PostService.populate)
+      .exec();
+    const order = new Map(ids.map((id, i) => [id, i]));
+    docs.sort(
+      (a, b) =>
+        (order.get(a._id.toString()) ?? 0) - (order.get(b._id.toString()) ?? 0),
+    );
+    return docs;
+  }
+
   async findMany(
     userId: string,
     filter: PostFilterDto,
+    extra?: { excludeIds?: string[] },
   ): Promise<PaginatedResult<ContentPostDocument>> {
     const { page = 1, limit = 10 } = filter;
     const skip = (page - 1) * limit;
 
-    const q = this.buildListFilter(userId, filter);
+    const q = await this.buildListFilter(userId, filter);
+    applyExcludeIds(q, extra?.excludeIds);
+
+    const location = filter.location;
+    const nearbyLat = location?.nearbyLat;
+    const nearbyLng = location?.nearbyLng;
+    // Soft distance: prefer closer; nearbyRadiusKm ignored; no-location included last.
+    if (location && nearbyLat !== undefined && nearbyLng !== undefined) {
+      return paginateSortedByDistance({
+        model: this.postModel,
+        geoKey: 'location.coordinates',
+        location,
+        match: q,
+        page,
+        limit,
+        populate: PostService.populate,
+        fallbackSort: { createdAt: -1 },
+      });
+    }
 
     const [data, totalDocuments] = await Promise.all([
       this.postModel
@@ -162,6 +264,13 @@ export class PostService {
       } else {
         const team = await this.teamService.requireTeam(dto.team);
         this.teamService.assertOwner(team, userId);
+        if (post.match) {
+          const match = await requireTeamMatch(
+            this.teamMatchModel,
+            resolveId(post.match),
+          );
+          ensureMatchHasTeam(match, team._id);
+        }
         post.team = team._id;
       }
     }
@@ -230,14 +339,20 @@ export class PostService {
     }
   }
 
-  private buildListFilter(
+  private async buildListFilter(
     userId: string,
     filter: PostFilterDto,
-  ): Record<string, unknown> {
+  ): Promise<Record<string, unknown>> {
     const q: Record<string, unknown> = {};
 
     if (filter.team) {
       q.team = new Types.ObjectId(filter.team);
+    }
+    if (filter.match) {
+      q.match = new Types.ObjectId(filter.match);
+    }
+    if (filter.turf) {
+      q.turf = new Types.ObjectId(filter.turf);
     }
 
     const viewingOwn = filter.mine === true;
@@ -247,10 +362,7 @@ export class PostService {
       if (filter.status) {
         q.status = filter.status;
       }
-      return q;
-    }
-
-    if (filter.postedBy !== undefined) {
+    } else if (filter.postedBy !== undefined) {
       if (filter.postedBy !== userId && filter.status === PostStatus.DRAFT) {
         throw new ForbiddenException('Cannot list drafts for other users');
       }
@@ -263,19 +375,42 @@ export class PostService {
       } else if (filter.status) {
         q.status = filter.status;
       }
-      return q;
-    }
-
-    if (filter.status === PostStatus.DRAFT) {
+    } else if (filter.status === PostStatus.DRAFT) {
       q.postedBy = new Types.ObjectId(userId);
       q.status = PostStatus.DRAFT;
-      return q;
-    }
-
-    if (filter.status) {
+    } else if (filter.status) {
       q.status = filter.status;
     } else {
       q.status = { $in: [PostStatus.PUBLISHED, PostStatus.ARCHIVED] };
+    }
+
+    const search = filter.search?.trim();
+    if (search) {
+      const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const searchRegex = new RegExp(escaped, 'i');
+      q.$or = [
+        { title: searchRegex },
+        { content: searchRegex },
+        { tags: searchRegex },
+      ];
+    }
+
+    if (filter.sportType) {
+      const [teamIds, matchIds] = await Promise.all([
+        this.teamModel.distinct('_id', { sportType: filter.sportType }),
+        this.teamMatchModel.distinct('_id', { sportType: filter.sportType }),
+      ]);
+      const sportOr = [
+        { team: { $in: teamIds } },
+        { match: { $in: matchIds } },
+      ];
+      const existingOr = q.$or;
+      if (existingOr) {
+        q.$and = [{ $or: existingOr }, { $or: sportOr }];
+        delete q.$or;
+      } else {
+        q.$or = sportOr;
+      }
     }
 
     return q;

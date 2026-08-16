@@ -41,6 +41,7 @@ export interface Profile {
   badges?: EarnedBadge[];
   followingCount?: number;
   followerCount?: number;
+  lastLocation?: { type: 'Point'; coordinates: [number, number] };
   isPasswordExists?: boolean;
   phone?: string;
   lastLogin?: string;
@@ -60,6 +61,7 @@ export interface PublicProfile extends Pick<
   | 'badges'
   | 'followingCount'
   | 'followerCount'
+  | 'lastLocation'
 > {}
 
 export interface IUser extends Profile {

@@ -260,3 +260,86 @@ export async function getActorTeamIds(
   }
   return [...all.values()];
 }
+
+/** `null` means the list is empty (no actor teams or search matched nothing). */
+export async function buildListRequestsQuery(
+  userId: string,
+  filter: {
+    scope?: 'mine' | 'all';
+    statuses?: string[];
+    status?: string;
+    sportType?: string;
+    type?: 'incoming' | 'outgoing' | 'all';
+    search?: string;
+    teamId?: string;
+    teamIds?: string[];
+  },
+  teamModel: Model<TeamDocument>,
+  teamMemberService: TeamMemberService,
+): Promise<Record<string, unknown> | null> {
+  const scope = filter.scope ?? 'mine';
+  const uniqueScoped = parseScopedTeamIds(filter);
+  const hasExplicitTeamFilter = uniqueScoped.length > 0;
+
+  let actorTeamIds: Types.ObjectId[] = [];
+  if (scope === 'mine' && !hasExplicitTeamFilter) {
+    actorTeamIds = await getActorTeamIds(userId, teamModel, teamMemberService);
+    if (actorTeamIds.length === 0) {
+      return null;
+    }
+  }
+
+  const andClauses: Record<string, unknown>[] = [];
+
+  const statusStrings: string[] = [];
+  if (filter.statuses?.length) {
+    statusStrings.push(...filter.statuses);
+  } else if (filter.status) {
+    statusStrings.push(filter.status);
+  }
+  const uniqueStatuses = [...new Set(statusStrings)];
+  if (uniqueStatuses.length > 0) {
+    andClauses.push({ status: uniqueStatuses });
+  }
+
+  if (filter.sportType) {
+    andClauses.push({ sportType: filter.sportType });
+  }
+
+  const scopedTeamIds = hasExplicitTeamFilter ? uniqueScoped : actorTeamIds;
+  if (scope === 'mine' || hasExplicitTeamFilter) {
+    if (filter.type === 'incoming') {
+      andClauses.push({ toTeam: scopedTeamIds });
+    } else if (filter.type === 'outgoing') {
+      andClauses.push({ fromTeam: scopedTeamIds });
+    } else {
+      andClauses.push({
+        $or: [{ fromTeam: scopedTeamIds }, { toTeam: scopedTeamIds }],
+      });
+    }
+  }
+
+  const search = filter.search?.trim();
+  if (search) {
+    const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const searchRegex = new RegExp(escaped, 'i');
+    const matchedTeams = await teamModel
+      .find({
+        $or: [{ name: searchRegex }, { shortName: searchRegex }],
+      })
+      .select('_id')
+      .lean()
+      .exec();
+    const searchTeamIds = matchedTeams.map((t) => t._id);
+    if (searchTeamIds.length === 0) {
+      return null;
+    }
+    andClauses.push({
+      $or: [{ fromTeam: searchTeamIds }, { toTeam: searchTeamIds }],
+    });
+  }
+
+  if (andClauses.length === 0) return {};
+  if (andClauses.length === 1) return andClauses[0];
+  return { $and: andClauses };
+}

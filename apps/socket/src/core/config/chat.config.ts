@@ -1,5 +1,4 @@
 import { config } from './env.config';
-import { getRedisUrl } from './redis.config';
 
 export interface ChatRuntimeConfig {
   port: number;
@@ -14,7 +13,7 @@ export interface ChatRuntimeConfig {
 export function getChatRuntimeConfig(): ChatRuntimeConfig {
   return {
     port: Number(config.PORT),
-    redisUrl: getRedisUrl(),
+    redisUrl: config.REDIS_URL,
     chatHistorySize: Number(config.CHAT_HISTORY_SIZE),
     flushBatchSize: Number(config.CHAT_FLUSH_BATCH_SIZE),
     flushIntervalMs: Number(config.CHAT_FLUSH_INTERVAL_MS),

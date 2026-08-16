@@ -30,12 +30,15 @@ import { EventsModule } from './events/events.module';
 import { EventBookingModule } from './event-booking/event-booking.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { ExploreModule } from './explore/explore.module';
+import { EngagementModule } from './engagement/engagement.module';
+import { RedisModule } from './core/redis/redis.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ScheduleModule.forRoot(),
     MongooseModule.forRoot(config.MONGODB_URI),
+    RedisModule,
     AuthModule,
     UsersModule,
     TurfModule,
@@ -57,6 +60,7 @@ import { ExploreModule } from './explore/explore.module';
     WalletModule,
     WithdrawalsModule,
     DashboardModule,
+    EngagementModule,
     ExploreModule,
   ],
   controllers: [AppController],

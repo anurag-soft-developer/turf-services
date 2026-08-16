@@ -6,7 +6,9 @@ import { sportTypeSchema } from '../../core/sports/sport-types';
 const ExploreQuerySchema = z.object({
   /** Absent = feed mode; present = search mode. */
   q: z.string().trim().min(1).max(80).optional(),
-  category: z.enum(['all', 'match', 'team', 'player']).default('all'),
+  category: z
+    .enum(['all', 'match', 'team', 'player', 'post'])
+    .default('all'),
   page: z.coerce.number().min(1).default(1),
   limit: z.coerce.number().min(1).max(50).default(20),
   sportType: sportTypeSchema.optional(),
