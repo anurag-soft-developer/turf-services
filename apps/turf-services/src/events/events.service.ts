@@ -348,7 +348,6 @@ export class EventsService {
         query,
         nearbyLat,
         nearbyLng,
-        nearbyRadiusKm: location?.nearbyRadiusKm ?? 100,
         sortBy,
         sortOrder,
         page,
@@ -450,7 +449,6 @@ export class EventsService {
     query,
     nearbyLat,
     nearbyLng,
-    nearbyRadiusKm,
     sortBy,
     sortOrder = 'asc',
     page,
@@ -460,13 +458,14 @@ export class EventsService {
     query: Record<string, unknown>;
     nearbyLat: number;
     nearbyLng: number;
-    nearbyRadiusKm: number;
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
     page: number;
     limit: number;
     skip: number;
   }) {
+    // Soft nearby: prefer closer; nearbyRadiusKm ignored; distance still set.
+    // Docs without coordinates are excluded by $geoNear.
     const geoMatch = {
       ...query,
       'location.coordinates': { $exists: true, $ne: null },
@@ -481,7 +480,6 @@ export class EventsService {
             coordinates: [nearbyLng, nearbyLat],
           },
           distanceField: 'distance',
-          maxDistance: nearbyRadiusKm * 1000,
           spherical: true,
           query: geoMatch,
         },

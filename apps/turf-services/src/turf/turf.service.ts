@@ -299,7 +299,8 @@ export class TurfService {
       }
     }
 
-    // Location-based search (using geospatial query)
+    // Soft nearby: prefer closer; nearbyRadiusKm ignored; distance still set.
+    // Docs without coordinates are excluded by $geoNear.
     let geoNearStage: PipelineStage | null = null;
     if (
       location?.nearbyLat !== undefined &&
@@ -312,7 +313,6 @@ export class TurfService {
             coordinates: [location.nearbyLng, location.nearbyLat],
           },
           distanceField: 'distance',
-          maxDistance: (location.nearbyRadiusKm ?? 100) * 1000,
           spherical: true,
           query: query, // Apply other filters here
         },
