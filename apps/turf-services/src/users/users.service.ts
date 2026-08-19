@@ -28,6 +28,7 @@ import type { UpdateNotificationSettingsDto } from './dto/users.dto';
 import type { FcmTokenEntryPayload } from './dto/fcm-devices.dto';
 import { UserRole } from '../auth/decorators/roles.decorator';
 import { StorageLifecycleService } from '../storage/storage-lifecycle.service';
+import { toIsoDateString } from '../core/utils/date.util';
 
 @Injectable()
 export class UsersService {
@@ -380,7 +381,7 @@ export class UsersService {
   }
 
   async updateLastLogin(id: string): Promise<void> {
-    await this.updateById(id, { lastLogin: new Date().toString() });
+    await this.updateById(id, { lastLogin: new Date().toISOString() });
   }
 
   async deactivateUser(id: string): Promise<UserDocument> {
@@ -418,9 +419,13 @@ export class UsersService {
 
   static sanitizeProfile(user: IUser | UserDocument): Profile {
     const createdAt =
-      'createdAt' in user ? user.createdAt.toString() : new Date().toString();
+      'createdAt' in user
+        ? toIsoDateString(user.createdAt)
+        : new Date().toISOString();
     const updatedAt =
-      'updatedAt' in user ? user.updatedAt.toString() : new Date().toString();
+      'updatedAt' in user
+        ? toIsoDateString(user.updatedAt)
+        : new Date().toISOString();
     const isPasswordExists = 'password' in user && !!user.password?.length;
     return {
       _id: user._id.toString(),
@@ -440,7 +445,8 @@ export class UsersService {
       notificationModules: user.notificationModules,
       fcmTokens: user.fcmTokens || [],
       phone: user.phone,
-      lastLogin: user.lastLogin?.toString(),
+      lastLogin:
+        user.lastLogin != null ? toIsoDateString(user.lastLogin) : undefined,
       isPasswordExists,
       playerSportStats: user.playerSportStats || [],
       sportRankingPoints: user.sportRankingPoints || [],
