@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Event } from '../events/schemas/event.schema';
-import { Media } from '../post/schemas/media.schema';
+import { ContentPost } from '../post/schemas/content-post.schema';
 import { TeamMatch } from '../matchmaking/schemas/team-match.schema';
 import { Team } from '../team/schemas/team.schema';
 import { TurfReview } from '../turf-review/schemas/turf-review.schema';
@@ -20,7 +20,8 @@ export class StorageReferenceCollectorService {
     @InjectModel(TurfReview.name)
     private readonly turfReviewModel: Model<TurfReview>,
     @InjectModel(User.name) private readonly userModel: Model<User>,
-    @InjectModel(Media.name) private readonly mediaModel: Model<Media>,
+    @InjectModel(ContentPost.name)
+    private readonly postModel: Model<ContentPost>,
     @InjectModel(Withdrawal.name)
     private readonly withdrawalModel: Model<Withdrawal>,
     @InjectModel(TeamMatch.name)
@@ -48,7 +49,7 @@ export class StorageReferenceCollectorService {
       teams,
       reviews,
       users,
-      mediaDocs,
+      posts,
       withdrawals,
       matches,
     ] = await Promise.all([
@@ -57,7 +58,7 @@ export class StorageReferenceCollectorService {
       this.teamModel.find().select('logo coverImages').lean(),
       this.turfReviewModel.find().select('images').lean(),
       this.userModel.find().select('avatar').lean(),
-      this.mediaModel.find().select('url').lean(),
+      this.postModel.find().select('media.url').lean(),
       this.withdrawalModel.find().select('attachments').lean(),
       this.teamMatchModel.find().select('announcedPlayers').lean(),
     ]);
@@ -78,8 +79,10 @@ export class StorageReferenceCollectorService {
     for (const user of users) {
       addUrl(user.avatar);
     }
-    for (const media of mediaDocs) {
-      addUrl(media.url);
+    for (const post of posts) {
+      for (const media of post.media ?? []) {
+        addUrl(media.url);
+      }
     }
     for (const withdrawal of withdrawals) {
       addUrls(withdrawal.attachments);

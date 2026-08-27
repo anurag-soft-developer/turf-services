@@ -4,7 +4,6 @@ import { User } from '../../users/schemas/user.schema';
 import { Team } from '../../team/schemas/team.schema';
 import { TeamMatch } from '../../matchmaking/schemas/team-match.schema';
 import { Turf } from '../../turf/schemas/turf.schema';
-import { Media } from './media.schema';
 import {
   GeoLocation,
   GeoLocationSchema,
@@ -17,6 +16,26 @@ export enum PostStatus {
   PUBLISHED = 'published',
   ARCHIVED = 'archived',
 }
+
+export enum MediaKind {
+  IMAGE = 'image',
+  VIDEO = 'video',
+}
+
+@Schema({ _id: false })
+export class PostMedia {
+  @Prop({ type: String, required: true, trim: true, maxlength: 2048 })
+  url!: string;
+
+  @Prop({
+    type: String,
+    enum: Object.values(MediaKind),
+    required: true,
+  })
+  kind!: MediaKind;
+}
+
+export const PostMediaSchema = SchemaFactory.createForClass(PostMedia);
 
 @Schema({
   timestamps: true,
@@ -72,11 +91,8 @@ export class ContentPost {
   @Prop({ type: GeoLocationSchema, required: false })
   location?: GeoLocation;
 
-  @Prop({
-    type: [{ type: MongooseSchema.Types.ObjectId, ref: Media.name }],
-    default: [],
-  })
-  media!: Types.ObjectId[];
+  @Prop({ type: [PostMediaSchema], default: [] })
+  media!: PostMedia[];
 
   createdAt!: Date;
   updatedAt!: Date;

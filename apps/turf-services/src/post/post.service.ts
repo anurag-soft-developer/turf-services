@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   ForbiddenException,
   Inject,
   Injectable,
@@ -11,15 +10,11 @@ import { Model, Types } from 'mongoose';
 import {
   ContentPost,
   ContentPostDocument,
+  MediaKind,
+  PostMedia,
   PostStatus,
 } from './schemas/content-post.schema';
-import { Media, MediaDocument, MediaKind } from './schemas/media.schema';
-import {
-  CreateMediaDto,
-  CreatePostDto,
-  PostFilterDto,
-  UpdatePostDto,
-} from './dto/post.dto';
+import { CreatePostDto, PostFilterDto, UpdatePostDto } from './dto/post.dto';
 import { TeamService } from '../team/team.service';
 import { TeamMemberService } from '../team-member/team-member.service';
 import { PaginatedResult } from '../core/interfaces/common';
@@ -57,14 +52,11 @@ export class PostService {
     },
     { path: 'match', select: '_id fromTeam toTeam status sportType' },
     { path: 'turf', select: turfSelectFields },
-    { path: 'media' },
   ];
 
   constructor(
     @InjectModel(ContentPost.name)
     private postModel: Model<ContentPostDocument>,
-    @InjectModel(Media.name)
-    private mediaModel: Model<MediaDocument>,
     @InjectModel(TeamMatch.name)
     private teamMatchModel: Model<TeamMatchDocument>,
     @InjectModel(Team.name)
@@ -76,19 +68,6 @@ export class PostService {
     private teamMemberService: TeamMemberService,
     private readonly storageLifecycle: StorageLifecycleService,
   ) {}
-
-  async registerMedia(
-    userId: string,
-    dto: CreateMediaDto,
-  ): Promise<MediaDocument> {
-    const doc = new this.mediaModel({
-      url: dto.url,
-      kind: dto.kind as MediaKind,
-      caption: dto.caption,
-      uploadedBy: new Types.ObjectId(userId),
-    });
-    return doc.save();
-  }
 
   async create(
     userId: string,
@@ -132,7 +111,7 @@ export class PostService {
       }
     }
 
-    const mediaIds = await this.createMediaFromInputs(userId, dto.media);
+    const media = this.embedMedia(dto.media);
 
     const doc = new this.postModel({
       postedBy: uid,
@@ -144,7 +123,7 @@ export class PostService {
       content: dto.content ?? '',
       tags: dto.tags ?? [],
       location,
-      media: mediaIds,
+      media,
     });
 
     const saved = await doc.save();
@@ -284,17 +263,8 @@ export class PostService {
     }
 
     if (dto.media !== undefined) {
-      const oldIds = post.media.map((m) => m.toString());
-      let previousUrls: string[] = [];
-      if (oldIds.length) {
-        const oldMedia = await this.mediaModel
-          .find({ _id: { $in: oldIds } })
-          .select('url')
-          .lean();
-        previousUrls = oldMedia.map((m) => m.url);
-        await this.mediaModel.deleteMany({ _id: { $in: oldIds } });
-      }
-      post.media = await this.createMediaFromInputs(userId, dto.media);
+      const previousUrls = this.mediaUrls(post.media);
+      post.media = this.embedMedia(dto.media);
 
       await post.save();
       await this.storageLifecycle.syncUrlArrayOnEntitySave({
@@ -306,9 +276,6 @@ export class PostService {
       });
 
       return (await post.populate(PostService.populate)) as ContentPostDocument;
-    } else if (dto.mediaIds !== undefined) {
-      await this.assertMediaOwnedByUser(dto.mediaIds, userId);
-      post.media = dto.mediaIds.map((id) => new Types.ObjectId(id));
     }
 
     await post.save();
@@ -321,19 +288,9 @@ export class PostService {
       throw new NotFoundException('Post not found');
     }
     await this.assertCanEditPost(post, userId);
-    const mediaIds = post.media.map((m) => m.toString());
-    const mediaDocs = mediaIds.length
-      ? await this.mediaModel
-          .find({ _id: { $in: mediaIds } })
-          .select('url')
-          .lean()
-      : [];
-    const mediaUrls = mediaDocs.map((m) => m.url);
+    const mediaUrls = this.mediaUrls(post.media);
 
     await this.postModel.findByIdAndDelete(id);
-    if (mediaIds.length) {
-      await this.mediaModel.deleteMany({ _id: { $in: mediaIds } });
-    }
     if (mediaUrls.length > 0) {
       await this.storageLifecycle.deleteUrlsForUser(userId, mediaUrls);
     }
@@ -416,43 +373,18 @@ export class PostService {
     return q;
   }
 
-  private async createMediaFromInputs(
-    userId: string,
-    items: CreatePostDto['media'],
-  ): Promise<Types.ObjectId[]> {
+  private embedMedia(items: CreatePostDto['media']): PostMedia[] {
     if (!items?.length) {
       return [];
     }
-    const uid = new Types.ObjectId(userId);
-    const docs = await this.mediaModel.insertMany(
-      items.map((m) => ({
-        url: m.url,
-        kind: m.kind as MediaKind,
-        caption: m.caption,
-        uploadedBy: uid,
-      })),
-    );
-    return docs.map((d) => d._id);
+    return items.map((m) => ({
+      url: m.url,
+      kind: m.kind as MediaKind,
+    }));
   }
 
-  private async assertMediaOwnedByUser(
-    ids: string[],
-    userId: string,
-  ): Promise<void> {
-    if (!ids.length) {
-      return;
-    }
-    const uid = new Types.ObjectId(userId);
-    const objectIds = ids.map((id) => new Types.ObjectId(id));
-    const count = await this.mediaModel.countDocuments({
-      _id: { $in: objectIds },
-      uploadedBy: uid,
-    });
-    if (count !== ids.length) {
-      throw new BadRequestException(
-        'All media must exist and belong to the current user',
-      );
-    }
+  private mediaUrls(media: PostMedia[] | undefined): string[] {
+    return (media ?? []).map((m) => m.url).filter((url) => !!url);
   }
 
   private async assertCanViewPost(

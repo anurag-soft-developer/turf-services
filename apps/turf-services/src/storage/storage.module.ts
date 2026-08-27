@@ -1,7 +1,10 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { Event, EventSchema } from '../events/schemas/event.schema';
-import { Media, MediaSchema } from '../post/schemas/media.schema';
+import {
+  ContentPost,
+  ContentPostSchema,
+} from '../post/schemas/content-post.schema';
 import {
   TeamMatch,
   TeamMatchSchema,
@@ -36,7 +39,7 @@ import { UnusedUploadRegistryCleanupService } from './unused-upload-registry-cle
       { name: Team.name, schema: TeamSchema },
       { name: TurfReview.name, schema: TurfReviewSchema },
       { name: User.name, schema: UserSchema },
-      { name: Media.name, schema: MediaSchema },
+      { name: ContentPost.name, schema: ContentPostSchema },
       { name: Withdrawal.name, schema: WithdrawalSchema },
       { name: TeamMatch.name, schema: TeamMatchSchema },
     ]),

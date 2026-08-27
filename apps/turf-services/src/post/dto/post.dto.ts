@@ -1,4 +1,4 @@
-import { createZodDto, type ZodDto } from 'nestjs-zod';
+import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 import { geoLocationSchema, nearbyLocationQuerySchema } from '../../core/dto';
 import { sportTypeSchema } from '../../core/sports/sport-types';
@@ -9,7 +9,6 @@ const mediaKindSchema = z.enum(['image', 'video']);
 const mediaInputSchema = z.object({
   url: z.string().trim().min(1).max(2048),
   kind: mediaKindSchema,
-  caption: z.string().trim().max(500).optional(),
 });
 
 const CreatePostSchema = z
@@ -42,7 +41,6 @@ const UpdatePostSchema = z
     team: z.string().trim().min(1).nullable().optional(),
     location: geoLocationSchema.nullable().optional(),
     media: z.array(mediaInputSchema).max(30).optional(),
-    mediaIds: z.array(z.string().trim().min(1)).max(30).optional(),
   })
   .refine(
     (d) =>
@@ -52,14 +50,9 @@ const UpdatePostSchema = z
       d.status !== undefined ||
       d.team !== undefined ||
       d.location !== undefined ||
-      d.media !== undefined ||
-      d.mediaIds !== undefined,
+      d.media !== undefined,
     { message: 'Provide at least one field to update' },
-  )
-  .refine((d) => !(d.media !== undefined && d.mediaIds !== undefined), {
-    message: 'Provide either media or mediaIds, not both',
-    path: ['mediaIds'],
-  });
+  );
 
 const PostFilterSchema = z.object({
   team: z.string().trim().min(1).optional(),
@@ -75,13 +68,6 @@ const PostFilterSchema = z.object({
   limit: z.coerce.number().min(1).max(50).default(10),
 });
 
-const CreateMediaSchema = z.object({
-  url: z.string().trim().min(1).max(2048),
-  kind: mediaKindSchema,
-  caption: z.string().trim().max(500).optional(),
-});
-
 export class CreatePostDto extends createZodDto(CreatePostSchema) {}
 export class UpdatePostDto extends createZodDto(UpdatePostSchema) {}
 export class PostFilterDto extends createZodDto(PostFilterSchema) {}
-export class CreateMediaDto extends createZodDto(CreateMediaSchema) {}
