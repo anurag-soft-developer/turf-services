@@ -29,7 +29,6 @@ export interface ITurfBooking {
   platformFeeAmount?: number;
   ownerPayoutAmount?: number;
   razorpayTransferId?: string;
-  bookingId?: string;
   paidAt?: string | Date;
   escrowCreditedAt?: string | Date;
   escrowReleasedAt?: string | Date;

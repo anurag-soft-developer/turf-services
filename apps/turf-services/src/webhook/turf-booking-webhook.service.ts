@@ -92,8 +92,6 @@ export class TurfBookingWebhookService {
     booking.paidAt = new Date();
     booking.slotHoldStatus = SlotHoldStatus.RELEASED;
     booking.paymentExpiresAt = undefined;
-    booking.bookingId =
-      booking.bookingId || this.generateBookingId(booking._id.toString());
     await booking.save();
 
     const turf = await this.turfModel
@@ -204,14 +202,5 @@ export class TurfBookingWebhookService {
     }
 
     await booking.save();
-  }
-
-  private generateBookingId(bookingId: string): string {
-    const now = new Date();
-    const datePrefix = `${now.getFullYear()}${`${now.getMonth() + 1}`.padStart(
-      2,
-      '0',
-    )}${`${now.getDate()}`.padStart(2, '0')}`;
-    return `INV-${datePrefix}-${bookingId.slice(-6).toUpperCase()}`;
   }
 }

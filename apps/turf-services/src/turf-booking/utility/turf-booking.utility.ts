@@ -16,15 +16,6 @@ export class TurfBookingUtility {
     return now;
   }
 
-  static generateBookingId(bookingId: string): string {
-    const now = new Date();
-    const datePrefix = `${now.getFullYear()}${`${now.getMonth() + 1}`.padStart(
-      2,
-      '0',
-    )}${`${now.getDate()}`.padStart(2, '0')}`;
-    return `INV-${datePrefix}-${bookingId.slice(-6).toUpperCase()}`;
-  }
-
   static buildActiveBookingFilter(): QueryFilter<TurfBookingDocument> {
     const now = new Date();
 

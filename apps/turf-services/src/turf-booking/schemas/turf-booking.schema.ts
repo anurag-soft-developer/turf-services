@@ -121,11 +121,6 @@ export class TurfBooking extends Document implements TurfBookingDocument {
   razorpayTransferId?: string;
 
   @Prop({
-    type: String,
-  })
-  bookingId?: string;
-
-  @Prop({
     type: Date,
   })
   paidAt?: Date;

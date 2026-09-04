@@ -279,9 +279,6 @@ export class TurfBookingService {
     booking.paymentExpiresAt = undefined;
     booking.confirmedAt = new Date();
     booking.paidAt = new Date();
-    booking.bookingId = TurfBookingUtility.generateBookingId(
-      booking._id.toString(),
-    );
 
     await booking.save();
     if (booking.ownerPayoutAmount && booking.ownerPayoutAmount > 0) {
