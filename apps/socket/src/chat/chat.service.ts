@@ -11,13 +11,17 @@ import {
   ChatAccessResponse,
   ChatInboxUpdatedEvent,
   ChatMessage,
+  ChatMessageDeletedEvent,
   ChatReadEvent,
   ChatRef,
   SendMessageEvent,
   batchPersistRequestSchema,
   chatAccessResponseSchema,
+  chatMessageDeletedEventSchema,
   chatMessageSchema,
+  chatMessageToInboxUpdated,
   chatReadEventSchema,
+  deleteChatMessageSchema,
   getChatRoomKey,
   sendMessageEventSchema,
 } from '../../../../libs';
@@ -125,15 +129,86 @@ export class ChatService implements OnModuleInit, OnModuleDestroy {
       room,
       message,
       participantUserIds: access.participantUserIds,
-      inboxUpdated: {
-        scope: message.scope,
-        scopeId: message.scopeId,
-        lastMessageId: message.messageId,
-        lastMessageBody: message.body,
-        lastSenderUserId: message.senderUserId,
-        lastMessageAt: message.createdAt,
-      },
+      inboxUpdated: chatMessageToInboxUpdated(message),
     };
+  }
+
+  async deleteMessage(
+    userId: string,
+    payload: unknown,
+  ): Promise<{
+    room: string;
+    deleted: ChatMessageDeletedEvent;
+    participantUserIds: string[];
+  }> {
+    const parsed = deleteChatMessageSchema.parse(payload);
+    const access = await this.assertAccess(userId, parsed);
+    const room = getChatRoomKey(parsed);
+    const historyKey = this.getHistoryKey(room);
+    const client = await this.redisService.getClient();
+    const rawHistory = await client.lRange(historyKey, 0, -1);
+
+    let cached: ChatMessage | null = null;
+    let cachedRaw: string | null = null;
+    for (const item of rawHistory) {
+      const message = this.parseCachedMessage(item);
+      if (!message || message.messageId !== parsed.messageId) {
+        continue;
+      }
+      cached = message;
+      cachedRaw = item;
+      break;
+    }
+
+    if (cached && cached.senderUserId !== userId) {
+      throw new WsException('You can only delete your own messages');
+    }
+
+    try {
+      const { data } = await internalHttp.post(
+        '/chat/messages/delete/internal',
+        {
+          userId,
+          messageId: parsed.messageId,
+          scope: parsed.scope,
+          scopeId: parsed.scopeId,
+          ...(cached ? { body: cached.body, createdAt: cached.createdAt } : {}),
+        },
+      );
+      const result = chatMessageDeletedEventSchema.parse(data);
+      await client.set(this.getDeletedKey(parsed.messageId), '1', {
+        EX: 3600,
+      });
+      if (cachedRaw) {
+        await client.lRem(historyKey, 1, cachedRaw);
+      }
+
+      const remainingRaw = await client.lRange(historyKey, 0, 0);
+      const remaining = remainingRaw[0]
+        ? this.parseCachedMessage(remainingRaw[0])
+        : null;
+      const inboxUpdated = remaining
+        ? chatMessageToInboxUpdated(remaining)
+        : result.inboxUpdated;
+
+      return {
+        room,
+        deleted: { ...result, inboxUpdated },
+        participantUserIds: access.participantUserIds,
+      };
+    } catch (error) {
+      if (error instanceof WsException) {
+        throw error;
+      }
+      const status = isAxiosError(error) ? error.response?.status : undefined;
+      if (status === 403) {
+        throw new WsException('You can only delete your own messages');
+      }
+      if (status === 404) {
+        throw new WsException('Message not found');
+      }
+      throw new WsException('Failed to delete message');
+    }
   }
 
   async markRead(userId: string, ref: ChatRef): Promise<ChatReadEvent> {
@@ -164,17 +239,14 @@ export class ChatService implements OnModuleInit, OnModuleDestroy {
     const client = await this.redisService.getClient();
     const raw = await client.lRange(historyKey, 0, Math.max(limit - 1, 0));
     const cached = raw
-      .map((item) => {
-        try {
-          return chatMessageSchema.parse(JSON.parse(item));
-        } catch {
-          return null;
-        }
-      })
+      .map((item) => this.parseCachedMessage(item))
       .filter((item): item is ChatMessage => !!item);
+    const liveCached = cached.length
+      ? await this.excludeDeletedMessages(client, cached)
+      : [];
 
-    if (cached.length > 0) {
-      return cached;
+    if (liveCached.length > 0) {
+      return liveCached;
     }
 
     try {
@@ -229,8 +301,17 @@ export class ChatService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
+    const toPersist = await this.excludeDeletedMessages(
+      client,
+      parsed.data.messages,
+    );
+    if (!toPersist.length) {
+      await client.lTrim(queueKey, chunk.length, -1);
+      return;
+    }
+
     try {
-      await internalHttp.post('/chat/messages/batch', parsed.data);
+      await internalHttp.post('/chat/messages/batch', { messages: toPersist });
     } catch (error) {
       const status = isAxiosError(error) ? error.response?.status : undefined;
       this.logger.warn(
@@ -244,8 +325,35 @@ export class ChatService implements OnModuleInit, OnModuleDestroy {
     await client.lTrim(queueKey, chunk.length, -1);
   }
 
+  private parseCachedMessage(item: string): ChatMessage | null {
+    try {
+      return chatMessageSchema.parse(JSON.parse(item));
+    } catch {
+      return null;
+    }
+  }
+
+  private async excludeDeletedMessages<T extends { messageId: string }>(
+    client: Awaited<ReturnType<RedisService['getClient']>>,
+    messages: T[],
+  ): Promise<T[]> {
+    if (!messages.length) {
+      return messages;
+    }
+    const flags = await Promise.all(
+      messages.map((message) =>
+        client.exists(this.getDeletedKey(message.messageId)),
+      ),
+    );
+    return messages.filter((_, index) => !flags[index]);
+  }
+
   private getHistoryKey(room: string): string {
     return `chat:history:${room}`;
+  }
+
+  private getDeletedKey(messageId: string): string {
+    return `chat:deleted:${messageId}`;
   }
 
   private getQueueKey(): string {

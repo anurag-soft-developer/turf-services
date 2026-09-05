@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Headers,
+  HttpCode,
   Post,
   Query,
   UnauthorizedException,
@@ -12,6 +13,7 @@ import type { IUser } from '../users/interfaces/user.interface';
 import { Public } from '../auth/decorators/public.decorator';
 import {
   BatchPersistMessagesDto,
+  InternalDeleteChatMessageDto,
   InternalListChatMessagesQueryDto,
   ListChatMessagesQueryDto,
 } from './dto/chat.dto';
@@ -42,6 +44,21 @@ export class ChatController {
     @Query() query: ListChatMessagesQueryDto,
   ) {
     return this.chatService.listMessages(String(user._id), query);
+  }
+
+  @Public()
+  @Post('delete/internal')
+  @HttpCode(200)
+  async deleteMessageInternal(
+    @Headers('x-internal-token') internalToken: string | undefined,
+    @Body() dto: InternalDeleteChatMessageDto,
+  ) {
+    const expectedToken = config.INTERNAL_TOKEN;
+    if (!expectedToken || internalToken !== expectedToken) {
+      throw new UnauthorizedException('Invalid internal token');
+    }
+
+    return this.chatService.deleteMessage(dto.userId, dto);
   }
 
   @Public()

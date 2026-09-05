@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { AnyBulkWriteOperation, Model, PipelineStage } from 'mongoose';
 import {
@@ -7,11 +12,14 @@ import {
   ChatHideResult,
   ChatHistoryQuery,
   ChatInboxQuery,
+  ChatInboxUpdatedEvent,
   ChatMessage as SharedChatMessage,
+  ChatMessageDeletedEvent,
   ChatReadCursor as SharedChatReadCursor,
   ChatReadEvent,
   ChatRef,
   ChatScope,
+  type DeleteChatMessageInternal,
   uniqueChatRefs,
 } from '../../../../libs';
 import {
@@ -157,6 +165,123 @@ export class ChatService {
     }));
   }
 
+  async deleteMessage(
+    userId: string,
+    input: Omit<DeleteChatMessageInternal, 'userId'>,
+  ): Promise<ChatMessageDeletedEvent> {
+    await assertScopeAccess(
+      userId,
+      input.scope,
+      input.scopeId,
+      this.teamMemberService,
+      this.teamMatchModel,
+    );
+
+    const existing = await this.chatMessageModel
+      .findOne({ messageId: input.messageId })
+      .lean();
+
+    if (existing) {
+      if (existing.senderUserId !== userId) {
+        throw new ForbiddenException('You can only delete your own messages');
+      }
+      if (
+        existing.scope !== input.scope ||
+        existing.scopeId !== input.scopeId
+      ) {
+        throw new BadRequestException('Message does not belong to this thread');
+      }
+      if (!existing.deletedAt) {
+        await this.chatMessageModel.updateOne(
+          { messageId: input.messageId },
+          { $set: { deletedAt: new Date() } },
+        );
+      }
+    } else {
+      await this.insertDeletedTombstone(userId, input);
+    }
+
+    const deletedAt =
+      existing?.deletedAt?.toISOString() ?? new Date().toISOString();
+    return {
+      messageId: input.messageId,
+      scope: input.scope,
+      scopeId: input.scopeId,
+      deletedAt,
+      inboxUpdated: await this.latestInboxUpdated(input.scope, input.scopeId),
+    };
+  }
+
+  private async insertDeletedTombstone(
+    userId: string,
+    input: Omit<DeleteChatMessageInternal, 'userId'>,
+  ): Promise<void> {
+    if (!input.body || !input.createdAt) {
+      throw new NotFoundException('Message not found');
+    }
+
+    try {
+      await this.chatMessageModel.create({
+        scope: input.scope,
+        scopeId: input.scopeId,
+        senderUserId: userId,
+        body: input.body,
+        messageId: input.messageId,
+        idempotencyKey: `${input.messageId}:${userId}`,
+        messageCreatedAt: new Date(input.createdAt),
+        deletedAt: new Date(),
+      });
+    } catch (error: unknown) {
+      const code = (error as { code?: number }).code;
+      if (code !== 11000) {
+        throw error;
+      }
+      const raced = await this.chatMessageModel
+        .findOne({ messageId: input.messageId })
+        .lean();
+      if (!raced) {
+        throw error;
+      }
+      if (raced.senderUserId !== userId) {
+        throw new ForbiddenException('You can only delete your own messages');
+      }
+      if (raced.scope !== input.scope || raced.scopeId !== input.scopeId) {
+        throw new BadRequestException('Message does not belong to this thread');
+      }
+      if (!raced.deletedAt) {
+        await this.chatMessageModel.updateOne(
+          { messageId: input.messageId },
+          { $set: { deletedAt: new Date() } },
+        );
+      }
+    }
+  }
+
+  private async latestInboxUpdated(
+    scope: ChatScope,
+    scopeId: string,
+  ): Promise<ChatInboxUpdatedEvent | null> {
+    const last = await this.chatMessageModel
+      .findOne({
+        scope,
+        scopeId,
+        deletedAt: { $exists: false },
+      })
+      .sort({ messageCreatedAt: -1 })
+      .lean();
+    if (!last) {
+      return null;
+    }
+    return {
+      scope: last.scope,
+      scopeId: last.scopeId,
+      lastMessageId: last.messageId,
+      lastMessageBody: last.body,
+      lastSenderUserId: last.senderUserId,
+      lastMessageAt: last.messageCreatedAt.toISOString(),
+    };
+  }
+
   async listInbox(viewerUserId: string, query: ChatInboxQuery) {
     const viewerId = String(viewerUserId);
     const matchStage = await buildInboxMatchStage(
@@ -235,10 +360,7 @@ export class ChatService {
     };
   }
 
-  async hideThreads(
-    userId: string,
-    refs: ChatRef[],
-  ): Promise<ChatHideResult> {
+  async hideThreads(userId: string, refs: ChatRef[]): Promise<ChatHideResult> {
     const uniqueRefs = uniqueChatRefs(refs);
     if (!uniqueRefs.length) {
       throw new BadRequestException('Provide at least one thread to hide');

@@ -10,7 +10,11 @@ import {
 } from '@nestjs/websockets';
 import { Logger } from '@nestjs/common';
 import { Socket, Server } from 'socket.io';
-import { chatRefSchema, getChatRoomKey, getChatUserRoomKey } from '../../../../libs';
+import {
+  chatRefSchema,
+  getChatRoomKey,
+  getChatUserRoomKey,
+} from '../../../../libs';
 import { socketJwtAuthMiddleware } from '../core/websocket/socket-jwt';
 import { ChatService } from './chat.service';
 
@@ -88,6 +92,22 @@ export class ChatGateway
         .emit('chat.inbox.updated', result.inboxUpdated);
     }
     return result.message;
+  }
+
+  @SubscribeMessage('chat.delete')
+  async onDelete(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: unknown,
+  ) {
+    const userId = client.data.userId as string;
+    const result = await this.chatService.deleteMessage(userId, payload);
+    this.server.to(result.room).emit('chat.message.deleted', result.deleted);
+    for (const participantUserId of result.participantUserIds) {
+      this.server
+        .to(getChatUserRoomKey(participantUserId))
+        .emit('chat.message.deleted', result.deleted);
+    }
+    return result.deleted;
   }
 
   @SubscribeMessage('chat.read')

@@ -155,3 +155,39 @@ export const chatHideResultSchema = z.object({
   items: z.array(chatHideEventSchema).min(1),
 });
 export type ChatHideResult = z.infer<typeof chatHideResultSchema>;
+
+export const deleteChatMessageSchema = chatRefSchema.extend({
+  messageId: z.string().trim().min(1),
+});
+export type DeleteChatMessage = z.infer<typeof deleteChatMessageSchema>;
+
+export const deleteChatMessageInternalSchema = deleteChatMessageSchema.extend({
+  userId: z.string().trim().min(1),
+  body: chatBodySchema.optional(),
+  createdAt: z.string().datetime().optional(),
+});
+export type DeleteChatMessageInternal = z.infer<
+  typeof deleteChatMessageInternalSchema
+>;
+
+export const chatMessageDeletedEventSchema = chatRefSchema.extend({
+  messageId: z.string().trim().min(1),
+  deletedAt: z.string().datetime(),
+  inboxUpdated: chatInboxUpdatedEventSchema.nullable(),
+});
+export type ChatMessageDeletedEvent = z.infer<
+  typeof chatMessageDeletedEventSchema
+>;
+
+export function chatMessageToInboxUpdated(
+  message: ChatMessage,
+): ChatInboxUpdatedEvent {
+  return {
+    scope: message.scope,
+    scopeId: message.scopeId,
+    lastMessageId: message.messageId,
+    lastMessageBody: message.body,
+    lastSenderUserId: message.senderUserId,
+    lastMessageAt: message.createdAt,
+  };
+}
