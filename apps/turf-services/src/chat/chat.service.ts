@@ -1,9 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { AnyBulkWriteOperation, Model } from 'mongoose';
+import { AnyBulkWriteOperation, Model, PipelineStage } from 'mongoose';
 import {
   BatchPersistChatMessage,
   ChatAccessResponse,
+  ChatHideResult,
   ChatHistoryQuery,
   ChatInboxQuery,
   ChatMessage as SharedChatMessage,
@@ -11,6 +12,7 @@ import {
   ChatReadEvent,
   ChatRef,
   ChatScope,
+  uniqueChatRefs,
 } from '../../../../libs';
 import {
   ChatMessage,
@@ -40,6 +42,7 @@ import {
   buildInboxMatchStage,
   GroupedInboxRow,
   hydrateInboxItems,
+  inboxHideFilterStages,
 } from './utility/chat.utility';
 
 export interface BatchPersistResult {
@@ -162,27 +165,30 @@ export class ChatService {
       this.teamMatchModel,
     );
     const skip = (query.page - 1) * query.limit;
+    const groupedStages: PipelineStage[] = [
+      { $match: matchStage },
+      { $sort: { messageCreatedAt: -1 } },
+      {
+        $group: {
+          _id: { scope: '$scope', scopeId: '$scopeId' },
+          lastMessageId: { $first: '$messageId' },
+          lastMessageBody: { $first: '$body' },
+          lastSenderUserId: { $first: '$senderUserId' },
+          lastMessageAt: { $first: '$messageCreatedAt' },
+        },
+      },
+      ...inboxHideFilterStages(viewerId),
+    ];
 
     const [grouped, countResult] = await Promise.all([
       this.chatMessageModel.aggregate<GroupedInboxRow>([
-        { $match: matchStage },
-        { $sort: { messageCreatedAt: -1 } },
-        {
-          $group: {
-            _id: { scope: '$scope', scopeId: '$scopeId' },
-            lastMessageId: { $first: '$messageId' },
-            lastMessageBody: { $first: '$body' },
-            lastSenderUserId: { $first: '$senderUserId' },
-            lastMessageAt: { $first: '$messageCreatedAt' },
-          },
-        },
+        ...groupedStages,
         { $sort: { lastMessageAt: -1 } },
         { $skip: skip },
         { $limit: query.limit },
       ]),
       this.chatMessageModel.aggregate<{ total: number }>([
-        { $match: matchStage },
-        { $group: { _id: { scope: '$scope', scopeId: '$scopeId' } } },
+        ...groupedStages,
         { $count: 'total' },
       ]),
     ]);
@@ -218,7 +224,7 @@ export class ChatService {
     const lastReadAt = new Date();
     await this.chatReadCursorModel.updateOne(
       { userId, scope: ref.scope, scopeId: ref.scopeId },
-      { $set: { lastReadAt } },
+      { $set: { lastReadAt }, $unset: { hiddenAt: 1 } },
       { upsert: true },
     );
     return {
@@ -226,6 +232,33 @@ export class ChatService {
       scopeId: ref.scopeId,
       userId,
       lastReadAt: lastReadAt.toISOString(),
+    };
+  }
+
+  async hideThreads(
+    userId: string,
+    refs: ChatRef[],
+  ): Promise<ChatHideResult> {
+    const uniqueRefs = uniqueChatRefs(refs);
+    if (!uniqueRefs.length) {
+      throw new BadRequestException('Provide at least one thread to hide');
+    }
+    const hiddenAt = new Date();
+    const operations: AnyBulkWriteOperation<ChatReadCursorDocument>[] =
+      uniqueRefs.map((ref) => ({
+        updateOne: {
+          filter: { userId, scope: ref.scope, scopeId: ref.scopeId },
+          update: { $set: { lastReadAt: hiddenAt, hiddenAt } },
+          upsert: true,
+        },
+      }));
+    await this.chatReadCursorModel.bulkWrite(operations, { ordered: false });
+    return {
+      items: uniqueRefs.map((ref) => ({
+        scope: ref.scope,
+        scopeId: ref.scopeId,
+        hiddenAt: hiddenAt.toISOString(),
+      })),
     };
   }
 

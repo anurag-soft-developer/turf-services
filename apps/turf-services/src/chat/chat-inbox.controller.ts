@@ -13,6 +13,7 @@ import type { IUser } from '../users/interfaces/user.interface';
 import { Public } from '../auth/decorators/public.decorator';
 import {
   ChatReadBodyDto,
+  ChatHideBodyDto,
   InternalChatAccessQueryDto,
   InternalMarkChatReadDto,
   ListChatInboxQueryDto,
@@ -37,6 +38,12 @@ export class ChatInboxController {
   @HttpCode(200)
   async markRead(@CurrentUser() user: IUser, @Body() dto: ChatReadBodyDto) {
     return this.chatService.markRead(String(user._id), dto);
+  }
+
+  @Post('hide')
+  @HttpCode(200)
+  async hideThreads(@CurrentUser() user: IUser, @Body() dto: ChatHideBodyDto) {
+    return this.chatService.hideThreads(String(user._id), dto.items);
   }
 
   @Get('read-cursors')

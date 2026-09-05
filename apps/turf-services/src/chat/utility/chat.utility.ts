@@ -1,4 +1,4 @@
-import { Model, Types } from 'mongoose';
+import { Model, PipelineStage, Types } from 'mongoose';
 import {
   ChatInboxItem,
   ChatScope,
@@ -57,6 +57,61 @@ export async function buildInboxMatchStage(
     deletedAt: { $exists: false },
     $or: orFilters,
   };
+}
+
+const CHAT_READ_CURSORS_COLLECTION = 'chat-read-cursors';
+
+/** Drop rooms the viewer hid, unless a newer message arrived after `hiddenAt`. */
+export function inboxHideFilterStages(viewerId: string): PipelineStage[] {
+  return [
+    {
+      $lookup: {
+        from: CHAT_READ_CURSORS_COLLECTION,
+        let: { scope: '$_id.scope', scopeId: '$_id.scopeId' },
+        pipeline: [
+          {
+            $match: {
+              $expr: {
+                $and: [
+                  { $eq: ['$userId', viewerId] },
+                  { $eq: ['$scope', '$$scope'] },
+                  { $eq: ['$scopeId', '$$scopeId'] },
+                ],
+              },
+            },
+          },
+          { $project: { hiddenAt: 1 } },
+        ],
+        as: '_viewerCursor',
+      },
+    },
+    {
+      $match: {
+        $expr: {
+          $or: [
+            {
+              $eq: [
+                {
+                  $ifNull: [
+                    { $arrayElemAt: ['$_viewerCursor.hiddenAt', 0] },
+                    null,
+                  ],
+                },
+                null,
+              ],
+            },
+            {
+              $gt: [
+                '$lastMessageAt',
+                { $arrayElemAt: ['$_viewerCursor.hiddenAt', 0] },
+              ],
+            },
+          ],
+        },
+      },
+    },
+    { $unset: '_viewerCursor' },
+  ];
 }
 
 export async function hydrateInboxItems(

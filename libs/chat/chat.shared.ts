@@ -54,6 +54,18 @@ export function getChatRoomKey(ref: ChatRef): string {
   return `chat:${ref.scope}:${ref.scopeId}`;
 }
 
+export function uniqueChatRefs(refs: ChatRef[]): ChatRef[] {
+  const seen = new Set<string>();
+  const unique: ChatRef[] = [];
+  for (const ref of refs) {
+    const key = getChatRoomKey(ref);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(ref);
+  }
+  return unique;
+}
+
 export function getChatUserRoomKey(userId: string): string {
   return `user:${userId.trim()}`;
 }
@@ -128,3 +140,18 @@ export const markChatReadInternalSchema = chatRefSchema.extend({
   userId: z.string().trim().min(1),
 });
 export type MarkChatReadInternal = z.infer<typeof markChatReadInternalSchema>;
+
+export const chatHideEventSchema = chatRefSchema.extend({
+  hiddenAt: z.string().datetime(),
+});
+export type ChatHideEvent = z.infer<typeof chatHideEventSchema>;
+
+export const hideChatThreadsSchema = z.object({
+  items: z.array(chatRefSchema).min(1).max(100),
+});
+export type HideChatThreadsBody = z.infer<typeof hideChatThreadsSchema>;
+
+export const chatHideResultSchema = z.object({
+  items: z.array(chatHideEventSchema).min(1),
+});
+export type ChatHideResult = z.infer<typeof chatHideResultSchema>;

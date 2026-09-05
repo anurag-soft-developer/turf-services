@@ -26,6 +26,10 @@ export class ChatReadCursor {
   @Prop({ type: Date, required: true })
   lastReadAt!: Date;
 
+  /** When set, inbox hides this room until a newer message arrives. */
+  @Prop({ type: Date })
+  hiddenAt?: Date;
+
   createdAt!: Date;
   updatedAt!: Date;
 }

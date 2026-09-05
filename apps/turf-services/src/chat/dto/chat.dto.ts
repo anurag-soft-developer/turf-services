@@ -6,6 +6,7 @@ import {
   chatHistoryQuerySchema,
   chatInboxQuerySchema,
   chatRefSchema,
+  hideChatThreadsSchema,
   markChatReadInternalSchema,
 } from '../../../../../libs';
 
@@ -31,6 +32,8 @@ export class InternalListChatMessagesQueryDto extends createZodDto(
 export class ListChatInboxQueryDto extends createZodDto(chatInboxQuerySchema) {}
 
 export class ChatReadBodyDto extends createZodDto(chatRefSchema) {}
+
+export class ChatHideBodyDto extends createZodDto(hideChatThreadsSchema) {}
 
 export class ListChatReadCursorsQueryDto extends createZodDto(chatRefSchema) {}
 
