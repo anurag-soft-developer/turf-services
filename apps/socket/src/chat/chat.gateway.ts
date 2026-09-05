@@ -10,7 +10,7 @@ import {
 } from '@nestjs/websockets';
 import { Logger } from '@nestjs/common';
 import { Socket, Server } from 'socket.io';
-import { chatRefSchema } from '../../../../libs';
+import { chatRefSchema, getChatRoomKey, getChatUserRoomKey } from '../../../../libs';
 import { socketJwtAuthMiddleware } from '../core/websocket/socket-jwt';
 import { ChatService } from './chat.service';
 
@@ -36,10 +36,15 @@ export class ChatGateway
 
   handleConnection(client: Socket): void {
     this.logger.log(`Client connected: chat socketId=${client.id}`);
-    if (!client.data.userId) {
-      this.logger.warn(`Client disconnected (unauthorized): chat socketId=${client.id}`);
+    const userId = client.data.userId as string | undefined;
+    if (!userId) {
+      this.logger.warn(
+        `Client disconnected (unauthorized): chat socketId=${client.id}`,
+      );
       client.disconnect(true);
+      return;
     }
+    void client.join(getChatUserRoomKey(userId));
   }
 
   handleDisconnect(client: Socket): void {
@@ -52,7 +57,8 @@ export class ChatGateway
     @MessageBody() payload: unknown,
   ): Promise<{ room: string }> {
     const ref = chatRefSchema.parse(payload);
-    const room = await this.chatService.joinRoom(ref);
+    const userId = client.data.userId as string;
+    const { room } = await this.chatService.joinRoom(userId, ref);
     await client.join(room);
     return { room };
   }
@@ -63,7 +69,7 @@ export class ChatGateway
     @MessageBody() payload: unknown,
   ): Promise<{ room: string }> {
     const ref = chatRefSchema.parse(payload);
-    const room = await this.chatService.joinRoom(ref);
+    const room = getChatRoomKey(ref);
     await client.leave(room);
     return { room };
   }
@@ -76,7 +82,24 @@ export class ChatGateway
     const senderUserId = client.data.userId as string;
     const result = await this.chatService.sendMessage(senderUserId, payload);
     this.server.to(result.room).emit('chat.message', result.message);
+    for (const userId of result.participantUserIds) {
+      this.server
+        .to(getChatUserRoomKey(userId))
+        .emit('chat.inbox.updated', result.inboxUpdated);
+    }
     return result.message;
+  }
+
+  @SubscribeMessage('chat.read')
+  async onRead(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: unknown,
+  ) {
+    const ref = chatRefSchema.parse(payload);
+    const userId = client.data.userId as string;
+    const event = await this.chatService.markRead(userId, ref);
+    this.server.to(getChatRoomKey(ref)).emit('chat.read', event);
+    return event;
   }
 
   @SubscribeMessage('chat.history')

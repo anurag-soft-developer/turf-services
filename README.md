@@ -57,9 +57,7 @@ Align secrets across both `.env` files:
 | Variable | API (`PORT=3000`) | Socket (`PORT=3001`) |
 |---|---|---|
 | `JWT_SECRET` | required | same value |
-| `NOTIFICATION_INTERNAL_TOKEN` | required | same value |
-| `SCORING_INTERNAL_TOKEN` | required | same value |
-| `CHAT_BATCH_INTERNAL_TOKEN` | required | same value |
+| `INTERNAL_TOKEN` | required | same value |
 | `REALTIME_TURF_BASE_URL` | `http://localhost:3001` | — |
 | `TURF_SERVICES_BASE_URL` | — | `http://localhost:3000` |
 | `REDIS_URL` | — | `redis://localhost:6379` |

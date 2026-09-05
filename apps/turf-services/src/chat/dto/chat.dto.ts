@@ -1,8 +1,12 @@
 import z from 'zod';
-import { createZodDto, type ZodDto } from 'nestjs-zod';
+import { createZodDto } from 'nestjs-zod';
 import {
   batchPersistRequestSchema,
+  chatAccessQuerySchema,
   chatHistoryQuerySchema,
+  chatInboxQuerySchema,
+  chatRefSchema,
+  markChatReadInternalSchema,
 } from '../../../../../libs';
 
 const batchPersistMessagesSchema = batchPersistRequestSchema;
@@ -22,4 +26,18 @@ const internalListChatMessagesQuerySchema = listChatMessagesQuerySchema.extend({
 });
 export class InternalListChatMessagesQueryDto extends createZodDto(
   internalListChatMessagesQuerySchema,
+) {}
+
+export class ListChatInboxQueryDto extends createZodDto(chatInboxQuerySchema) {}
+
+export class ChatReadBodyDto extends createZodDto(chatRefSchema) {}
+
+export class ListChatReadCursorsQueryDto extends createZodDto(chatRefSchema) {}
+
+export class InternalChatAccessQueryDto extends createZodDto(
+  chatAccessQuerySchema,
+) {}
+
+export class InternalMarkChatReadDto extends createZodDto(
+  markChatReadInternalSchema,
 ) {}

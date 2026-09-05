@@ -5,8 +5,10 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
+import { isAxiosError } from 'axios';
 import { Model, Types } from 'mongoose';
 import { config } from '../core/config/env.config';
+import { internalHttp } from '../core/http/http.client';
 import { UsersService } from '../users/users.service';
 import { FcmService } from './fcm.service';
 import type {
@@ -204,11 +206,9 @@ export class NotificationService {
   private async dispatchToRealtime(
     payload: NotificationDocument,
   ): Promise<boolean> {
-    const base = config.REALTIME_TURF_BASE_URL?.replace(/\/$/, '');
-    const token = config.NOTIFICATION_INTERNAL_TOKEN;
-    if (!base || !token) {
+    if (!config.REALTIME_TURF_BASE_URL) {
       this.logger.warn(
-        'Realtime dispatch skipped: REALTIME_TURF_BASE_URL or NOTIFICATION_INTERNAL_TOKEN not set',
+        'Realtime dispatch skipped: REALTIME_TURF_BASE_URL not set',
       );
       return false;
     }
@@ -222,22 +222,17 @@ export class NotificationService {
         data: buildPushDataStrings(payload),
         createdAt: payload.createdAt.toISOString(),
       });
-      const res = await fetch(`${base}/internal/notifications/dispatch`, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-internal-token': token,
-        },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
-        this.logger.warn(
-          `Realtime notification dispatch failed: HTTP ${res.status}`,
-        );
-      }
-      return res.ok;
-    } catch (e) {
-      this.logger.warn('Realtime notification dispatch error', e as Error);
+      await internalHttp.post('/internal/notifications/dispatch', body);
+      return true;
+    } catch (error) {
+      const status = isAxiosError(error) ? error.response?.status : undefined;
+      this.logger.warn(
+        status
+          ? `Realtime notification dispatch failed: HTTP ${status}`
+          : `Realtime notification dispatch error: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+      );
       return false;
     }
   }

@@ -1,28 +1,46 @@
-import {
-  BadRequestException,
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { AnyBulkWriteOperation, Model } from 'mongoose';
 import {
   BatchPersistChatMessage,
+  ChatAccessResponse,
   ChatHistoryQuery,
+  ChatInboxQuery,
   ChatMessage as SharedChatMessage,
+  ChatReadCursor as SharedChatReadCursor,
+  ChatReadEvent,
+  ChatRef,
   ChatScope,
-  normalizePlayerScopeId,
 } from '../../../../libs';
 import {
   ChatMessage,
   ChatMessageDocument,
 } from './schemas/chat-message.schema';
+import {
+  ChatReadCursor,
+  ChatReadCursorDocument,
+} from './schemas/chat-read-cursor.schema';
 import { TeamMemberService } from '../team-member/team-member.service';
+import {
+  TeamMember,
+  TeamMemberDocument,
+} from '../team-member/schemas/team-member.schema';
 import {
   TeamMatch,
   TeamMatchDocument,
 } from '../matchmaking/schemas/team-match.schema';
-import { resolveId } from '../core/utils/mongo-ref.util';
+import { Team, TeamDocument } from '../team/schemas/team.schema';
+import { User, UserDocument } from '../users/schemas/user.schema';
+import {
+  assertScopeAccess,
+  listChatParticipantUserIds,
+  resolvePersistableMessages,
+} from './utility/chat-access.utility';
+import {
+  buildInboxMatchStage,
+  GroupedInboxRow,
+  hydrateInboxItems,
+} from './utility/chat.utility';
 
 export interface BatchPersistResult {
   insertedCount: number;
@@ -35,46 +53,46 @@ export class ChatService {
   constructor(
     @InjectModel(ChatMessage.name)
     private readonly chatMessageModel: Model<ChatMessageDocument>,
+    @InjectModel(ChatReadCursor.name)
+    private readonly chatReadCursorModel: Model<ChatReadCursorDocument>,
     @InjectModel(TeamMatch.name)
     private readonly teamMatchModel: Model<TeamMatchDocument>,
+    @InjectModel(TeamMember.name)
+    private readonly teamMemberModel: Model<TeamMemberDocument>,
+    @InjectModel(Team.name)
+    private readonly teamModel: Model<TeamDocument>,
+    @InjectModel(User.name)
+    private readonly userModel: Model<UserDocument>,
     private readonly teamMemberService: TeamMemberService,
   ) {}
 
   async batchPersistMessages(
     messages: BatchPersistChatMessage[],
   ): Promise<BatchPersistResult> {
-    const failedMessageIds: string[] = [];
-    const operations: AnyBulkWriteOperation<ChatMessageDocument>[] = [];
-
-    for (const message of messages) {
-      try {
-        await this.assertScopeAccess(
-          message.senderUserId,
-          message.scope,
-          message.scopeId,
-        );
-
-        operations.push({
-          updateOne: {
-            filter: { idempotencyKey: message.idempotencyKey },
-            update: {
-              $setOnInsert: {
-                scope: message.scope,
-                scopeId: message.scopeId,
-                senderUserId: message.senderUserId,
-                body: message.body,
-                messageId: message.messageId,
-                idempotencyKey: message.idempotencyKey,
-                messageCreatedAt: new Date(message.createdAt),
-              },
+    const { allowedMessages, failedMessageIds } =
+      await resolvePersistableMessages(
+        messages,
+        this.teamMemberModel,
+        this.teamMatchModel,
+      );
+    const operations: AnyBulkWriteOperation<ChatMessageDocument>[] =
+      allowedMessages.map((message) => ({
+        updateOne: {
+          filter: { idempotencyKey: message.idempotencyKey },
+          update: {
+            $setOnInsert: {
+              scope: message.scope,
+              scopeId: message.scopeId,
+              senderUserId: message.senderUserId,
+              body: message.body,
+              messageId: message.messageId,
+              idempotencyKey: message.idempotencyKey,
+              messageCreatedAt: new Date(message.createdAt),
             },
-            upsert: true,
           },
-        });
-      } catch {
-        failedMessageIds.push(message.messageId);
-      }
-    }
+          upsert: true,
+        },
+      }));
 
     if (!operations.length) {
       return {
@@ -102,7 +120,13 @@ export class ChatService {
     viewerUserId: string,
     query: ChatHistoryQuery,
   ): Promise<SharedChatMessage[]> {
-    await this.assertScopeAccess(viewerUserId, query.scope, query.scopeId);
+    await assertScopeAccess(
+      viewerUserId,
+      query.scope,
+      query.scopeId,
+      this.teamMemberService,
+      this.teamMatchModel,
+    );
 
     const filter: Record<string, unknown> = {
       scope: query.scope,
@@ -130,57 +154,139 @@ export class ChatService {
     }));
   }
 
-  private async assertScopeAccess(
+  async listInbox(viewerUserId: string, query: ChatInboxQuery) {
+    const viewerId = String(viewerUserId);
+    const matchStage = await buildInboxMatchStage(
+      viewerId,
+      this.teamMemberService,
+      this.teamMatchModel,
+    );
+    const skip = (query.page - 1) * query.limit;
+
+    const [grouped, countResult] = await Promise.all([
+      this.chatMessageModel.aggregate<GroupedInboxRow>([
+        { $match: matchStage },
+        { $sort: { messageCreatedAt: -1 } },
+        {
+          $group: {
+            _id: { scope: '$scope', scopeId: '$scopeId' },
+            lastMessageId: { $first: '$messageId' },
+            lastMessageBody: { $first: '$body' },
+            lastSenderUserId: { $first: '$senderUserId' },
+            lastMessageAt: { $first: '$messageCreatedAt' },
+          },
+        },
+        { $sort: { lastMessageAt: -1 } },
+        { $skip: skip },
+        { $limit: query.limit },
+      ]),
+      this.chatMessageModel.aggregate<{ total: number }>([
+        { $match: matchStage },
+        { $group: { _id: { scope: '$scope', scopeId: '$scopeId' } } },
+        { $count: 'total' },
+      ]),
+    ]);
+
+    const totalDocuments = countResult[0]?.total ?? 0;
+    const data = await hydrateInboxItems(
+      viewerId,
+      grouped,
+      this.chatReadCursorModel,
+      this.chatMessageModel,
+      this.teamMatchModel,
+      this.teamModel,
+      this.userModel,
+    );
+
+    return {
+      data,
+      totalDocuments,
+      page: query.page,
+      limit: query.limit,
+      totalPages: Math.ceil(totalDocuments / query.limit) || 0,
+    };
+  }
+
+  async markRead(userId: string, ref: ChatRef): Promise<ChatReadEvent> {
+    await assertScopeAccess(
+      userId,
+      ref.scope,
+      ref.scopeId,
+      this.teamMemberService,
+      this.teamMatchModel,
+    );
+    const lastReadAt = new Date();
+    await this.chatReadCursorModel.updateOne(
+      { userId, scope: ref.scope, scopeId: ref.scopeId },
+      { $set: { lastReadAt } },
+      { upsert: true },
+    );
+    return {
+      scope: ref.scope,
+      scopeId: ref.scopeId,
+      userId,
+      lastReadAt: lastReadAt.toISOString(),
+    };
+  }
+
+  async listReadCursors(
+    viewerUserId: string,
+    ref: ChatRef,
+  ): Promise<SharedChatReadCursor[]> {
+    await assertScopeAccess(
+      viewerUserId,
+      ref.scope,
+      ref.scopeId,
+      this.teamMemberService,
+      this.teamMatchModel,
+    );
+    const participantUserIds = await this.listParticipantUserIds(
+      ref.scope,
+      ref.scopeId,
+    );
+    if (!participantUserIds.length) {
+      return [];
+    }
+    const docs = await this.chatReadCursorModel
+      .find({
+        scope: ref.scope,
+        scopeId: ref.scopeId,
+        userId: { $in: participantUserIds },
+      })
+      .lean();
+    return docs.map((doc) => ({
+      userId: doc.userId,
+      lastReadAt: doc.lastReadAt.toISOString(),
+    }));
+  }
+
+  async assertAccess(
     userId: string,
+    ref: ChatRef,
+  ): Promise<ChatAccessResponse> {
+    await assertScopeAccess(
+      userId,
+      ref.scope,
+      ref.scopeId,
+      this.teamMemberService,
+      this.teamMatchModel,
+    );
+    const participantUserIds = await this.listParticipantUserIds(
+      ref.scope,
+      ref.scopeId,
+    );
+    return { ok: true, participantUserIds };
+  }
+
+  async listParticipantUserIds(
     scope: ChatScope,
     scopeId: string,
-  ): Promise<void> {
-    if (scope === 'team') {
-      const isMember = await this.teamMemberService.hasActiveMembership(
-        scopeId,
-        userId,
-      );
-      if (!isMember) {
-        throw new ForbiddenException(
-          'User is not an active member of this team',
-        );
-      }
-      return;
-    }
-
-    if (scope === 'match') {
-      const match = await this.teamMatchModel.findById(scopeId).lean();
-      if (!match) {
-        throw new NotFoundException('Match not found');
-      }
-
-      const activeTeamIds =
-        await this.teamMemberService.distinctActiveTeamIds(userId);
-      const activeSet = new Set(activeTeamIds.map((id) => resolveId(id)));
-      const isRelated =
-        activeSet.has(resolveId(match.fromTeam)) ||
-        activeSet.has(resolveId(match.toTeam));
-
-      if (!isRelated) {
-        throw new ForbiddenException('User is not part of this match');
-      }
-      return;
-    }
-
-    const participants = scopeId.split(':').filter(Boolean);
-    if (participants.length !== 2) {
-      throw new BadRequestException('Invalid player scopeId format');
-    }
-
-    if (!participants.includes(userId)) {
-      throw new ForbiddenException(
-        'User is not a participant in this player chat',
-      );
-    }
-
-    const normalized = normalizePlayerScopeId(participants[0], participants[1]);
-    if (normalized !== scopeId) {
-      throw new BadRequestException('Player scopeId is not normalized');
-    }
+  ): Promise<string[]> {
+    return listChatParticipantUserIds(
+      scope,
+      scopeId,
+      this.teamMemberService,
+      this.teamMatchModel,
+    );
   }
 }

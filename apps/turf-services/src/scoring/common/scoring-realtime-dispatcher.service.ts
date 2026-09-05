@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { isAxiosError } from 'axios';
 import { randomUUID } from 'crypto';
 import { config } from '../../core/config/env.config';
+import { internalHttp } from '../../core/http/http.client';
 import {
   scoringUpdatePayloadSchema,
   type ScoringAction,
@@ -46,32 +48,23 @@ export class ScoringRealtimeDispatcher {
       return null;
     }
 
-    const base = config.REALTIME_TURF_BASE_URL?.replace(/\/$/, '');
-    const token = config.SCORING_INTERNAL_TOKEN;
-    if (!base || !token) {
+    if (!config.REALTIME_TURF_BASE_URL) {
       this.logger.warn(
-        'Realtime scoring dispatch skipped: REALTIME_TURF_BASE_URL or SCORING_INTERNAL_TOKEN not set',
+        'Realtime scoring dispatch skipped: REALTIME_TURF_BASE_URL not set',
       );
       return payload;
     }
 
     try {
-      const res = await fetch(`${base}/internal/scoring/dispatch`, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-internal-token': token,
-        },
-        body: JSON.stringify(parsed.data),
-      });
-      if (!res.ok) {
-        this.logger.warn(
-          `Realtime scoring dispatch failed: HTTP ${res.status}`,
-        );
-      }
+      await internalHttp.post('/internal/scoring/dispatch', parsed.data);
     } catch (error) {
+      const status = isAxiosError(error) ? error.response?.status : undefined;
       this.logger.warn(
-        `Realtime scoring dispatch error: ${(error as Error).message}`,
+        status
+          ? `Realtime scoring dispatch failed: HTTP ${status}`
+          : `Realtime scoring dispatch error: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
       );
     }
 

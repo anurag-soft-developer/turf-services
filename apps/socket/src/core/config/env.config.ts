@@ -40,14 +40,10 @@ export function validateConfig() {
 
       // Primary API integration
       TURF_SERVICES_BASE_URL: process.env.TURF_SERVICES_BASE_URL!,
-      CHAT_BATCH_INTERNAL_TOKEN: process.env.CHAT_BATCH_INTERNAL_TOKEN!,
+      INTERNAL_TOKEN: process.env.INTERNAL_TOKEN!,
 
       // JWT validation for websocket handshake
       JWT_SECRET: process.env.JWT_SECRET!,
-
-      // In-app notification HTTP dispatch (turf-services → socket)
-      NOTIFICATION_INTERNAL_TOKEN: process.env.NOTIFICATION_INTERNAL_TOKEN!,
-      SCORING_INTERNAL_TOKEN: process.env.SCORING_INTERNAL_TOKEN!,
     };
 
     const missingKeys = Object.entries(config)

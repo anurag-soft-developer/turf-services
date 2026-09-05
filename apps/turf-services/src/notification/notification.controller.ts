@@ -54,7 +54,7 @@ export class NotificationController {
   //   @Headers('x-internal-token') internalToken: string | undefined,
   //   @Body() body: CreateNotificationDto,
   // ) {
-  //   const expected = config.NOTIFICATION_INTERNAL_TOKEN;
+  //   const expected = config.INTERNAL_TOKEN;
   //   if (!expected || internalToken !== expected) {
   //     throw new UnauthorizedException('Invalid internal token');
   //   }

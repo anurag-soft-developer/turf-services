@@ -28,7 +28,7 @@ export class ChatController {
     @Headers('x-internal-token') internalToken: string | undefined,
     @Body() dto: BatchPersistMessagesDto,
   ) {
-    const expectedToken = config.CHAT_BATCH_INTERNAL_TOKEN;
+    const expectedToken = config.INTERNAL_TOKEN;
     if (!expectedToken || internalToken !== expectedToken) {
       throw new UnauthorizedException('Invalid internal token');
     }
@@ -41,7 +41,7 @@ export class ChatController {
     @CurrentUser() user: IUser,
     @Query() query: ListChatMessagesQueryDto,
   ) {
-    return this.chatService.listMessages(user._id, query);
+    return this.chatService.listMessages(String(user._id), query);
   }
 
   @Public()
@@ -50,7 +50,7 @@ export class ChatController {
     @Headers('x-internal-token') internalToken: string | undefined,
     @Query() query: InternalListChatMessagesQueryDto,
   ) {
-    const expectedToken = config.CHAT_BATCH_INTERNAL_TOKEN;
+    const expectedToken = config.INTERNAL_TOKEN;
     if (!expectedToken || internalToken !== expectedToken) {
       throw new UnauthorizedException('Invalid internal token');
     }

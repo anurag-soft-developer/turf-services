@@ -81,6 +81,31 @@ export class TeamMemberService {
     });
   }
 
+  async distinctActiveUserIds(
+    teamIds: Array<string | Types.ObjectId>,
+  ): Promise<string[]> {
+    const objectIds: Types.ObjectId[] = [];
+    for (const id of teamIds) {
+      if (id instanceof Types.ObjectId) {
+        objectIds.push(id);
+        continue;
+      }
+      const raw = String(id);
+      if (!Types.ObjectId.isValid(raw)) {
+        continue;
+      }
+      objectIds.push(new Types.ObjectId(raw));
+    }
+    if (!objectIds.length) {
+      return [];
+    }
+    const ids = await this.teamMemberModel.distinct('user', {
+      team: { $in: objectIds },
+      status: TeamMemberStatus.ACTIVE,
+    });
+    return ids.map((id) => id.toString());
+  }
+
   async countActiveMembers(teamId: string): Promise<number> {
     return this.teamMemberModel.countDocuments({
       team: new Types.ObjectId(teamId),
