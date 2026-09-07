@@ -55,6 +55,11 @@ export class MatchmakingController {
     return this.matchmakingService.listInbox(userId.toString(), dto);
   }
 
+  @Get('active-opponent-ids')
+  async listActiveOpponentIds(@CurrentUser('_id') userId: Types.ObjectId) {
+    return this.matchmakingService.listActiveOpponentIds(userId.toString());
+  }
+
   @Get('requests/:id')
   async getRequestById(@Param('id') id: string) {
     return this.matchmakingService.getTeamMatchById(id);

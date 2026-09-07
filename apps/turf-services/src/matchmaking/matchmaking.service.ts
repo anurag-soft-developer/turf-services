@@ -308,6 +308,73 @@ export class MatchmakingService {
     };
   }
 
+  /** Distinct opponent team ids with an active challenge, keyed by our team. */
+  async listActiveOpponentIds(userId: string): Promise<{
+    sentByTeamId: Record<string, string[]>;
+    receivedByTeamId: Record<string, string[]>;
+  }> {
+    const actorTeamIds = await getActorTeamIds(
+      userId,
+      this.teamModel,
+      this.teamMemberService,
+    );
+    if (actorTeamIds.length === 0) {
+      return { sentByTeamId: {}, receivedByTeamId: {} };
+    }
+
+    const statusClause = buildPreMatchInboxStatusClause();
+    const [sentRows, receivedRows] = await Promise.all([
+      this.teamMatchModel.aggregate<{
+        _id: Types.ObjectId;
+        opponentIds: Types.ObjectId[];
+      }>([
+        {
+          $match: {
+            fromTeam: { $in: actorTeamIds },
+            ...statusClause,
+          },
+        },
+        {
+          $group: {
+            _id: '$fromTeam',
+            opponentIds: { $addToSet: '$toTeam' },
+          },
+        },
+      ]),
+      this.teamMatchModel.aggregate<{
+        _id: Types.ObjectId;
+        opponentIds: Types.ObjectId[];
+      }>([
+        {
+          $match: {
+            toTeam: { $in: actorTeamIds },
+            ...statusClause,
+          },
+        },
+        {
+          $group: {
+            _id: '$toTeam',
+            opponentIds: { $addToSet: '$fromTeam' },
+          },
+        },
+      ]),
+    ]);
+
+    const sentByTeamId: Record<string, string[]> = {};
+    for (const row of sentRows) {
+      sentByTeamId[String(row._id)] = (row.opponentIds ?? []).map((id) =>
+        String(id),
+      );
+    }
+    const receivedByTeamId: Record<string, string[]> = {};
+    for (const row of receivedRows) {
+      receivedByTeamId[String(row._id)] = (row.opponentIds ?? []).map((id) =>
+        String(id),
+      );
+    }
+    return { sentByTeamId, receivedByTeamId };
+  }
+
   /** Populated team match by id (read is not restricted to participants). */
   async getTeamMatchById(matchId: string): Promise<TeamMatchDocument> {
     const match = await requireTeamMatch(this.teamMatchModel, matchId);

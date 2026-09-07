@@ -3,6 +3,7 @@ import {
   ChatInboxItem,
   ChatScope,
   getOtherPlayerId,
+  normalizePlayerScopeId,
 } from '../../../../../libs';
 import { TeamMemberService } from '../../team-member/team-member.service';
 import { TeamMatchDocument } from '../../matchmaking/schemas/team-match.schema';
@@ -57,6 +58,45 @@ export async function buildInboxMatchStage(
     deletedAt: { $exists: false },
     $or: orFilters,
   };
+}
+
+/** Match grouped rooms whose player or team title matches `search`. Skips match chats. */
+export async function buildInboxTitleSearchMatch(
+  viewerId: string,
+  search: string,
+  teamModel: Model<TeamDocument>,
+  userModel: Model<UserDocument>,
+): Promise<Record<string, unknown> | null> {
+  const regex = new RegExp(escapeRegex(search.trim()), 'i');
+  const [users, teams] = await Promise.all([
+    userModel.find({ fullName: regex }).select('_id').lean(),
+    teamModel.find({ name: regex }).select('_id').lean(),
+  ]);
+
+  const orFilters: Record<string, unknown>[] = [];
+  const playerScopeIds = users
+    .map((user) => String(user._id))
+    .filter((id) => id !== viewerId)
+    .map((id) => normalizePlayerScopeId(viewerId, id));
+  if (playerScopeIds.length) {
+    orFilters.push({
+      '_id.scope': 'player',
+      '_id.scopeId': { $in: playerScopeIds },
+    });
+  }
+
+  const teamIdStrings = teams.map((team) => String(team._id));
+  if (teamIdStrings.length) {
+    orFilters.push({
+      '_id.scope': 'team',
+      '_id.scopeId': { $in: teamIdStrings },
+    });
+  }
+
+  if (!orFilters.length) {
+    return null;
+  }
+  return orFilters.length === 1 ? orFilters[0] : { $or: orFilters };
 }
 
 const CHAT_READ_CURSORS_COLLECTION = 'chat-read-cursors';

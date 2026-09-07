@@ -48,6 +48,7 @@ import {
 } from './utility/chat-access.utility';
 import {
   buildInboxMatchStage,
+  buildInboxTitleSearchMatch,
   GroupedInboxRow,
   hydrateInboxItems,
   inboxHideFilterStages,
@@ -304,6 +305,26 @@ export class ChatService {
       },
       ...inboxHideFilterStages(viewerId),
     ];
+
+    const search = query.search?.trim();
+    if (search) {
+      const titleMatch = await buildInboxTitleSearchMatch(
+        viewerId,
+        search,
+        this.teamModel,
+        this.userModel,
+      );
+      if (!titleMatch) {
+        return {
+          data: [],
+          totalDocuments: 0,
+          page: query.page,
+          limit: query.limit,
+          totalPages: 0,
+        };
+      }
+      groupedStages.push({ $match: titleMatch });
+    }
 
     const [grouped, countResult] = await Promise.all([
       this.chatMessageModel.aggregate<GroupedInboxRow>([

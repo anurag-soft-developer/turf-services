@@ -91,6 +91,8 @@ export function getOtherPlayerId(
 export const chatInboxQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
+  /** Case-insensitive match on player full name or team name. Match chats are excluded. */
+  search: z.string().trim().min(1).max(80).optional(),
 });
 export type ChatInboxQuery = z.infer<typeof chatInboxQuerySchema>;
 
