@@ -28,7 +28,6 @@ import { StorageReferenceCollectorService } from './storage-reference-collector.
 import { StorageLifecycleService } from './storage-lifecycle.service';
 import { StorageService } from './storage.service';
 import { StorageController } from './storage.controller';
-import { UnusedUploadRegistryCleanupService } from './unused-upload-registry-cleanup.service';
 
 @Module({
   imports: [
@@ -49,7 +48,6 @@ import { UnusedUploadRegistryCleanupService } from './unused-upload-registry-cle
     StorageService,
     StorageLifecycleService,
     StorageReferenceCollectorService,
-    UnusedUploadRegistryCleanupService,
   ],
   exports: [StorageService, StorageLifecycleService],
 })

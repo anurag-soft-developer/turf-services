@@ -4,7 +4,6 @@ import { ContentStats, ContentStatsSchema } from './schemas/content-stats.schema
 import { Like, LikeSchema } from './schemas/like.schema';
 import { EngagementService } from './engagement.service';
 import { EngagementController } from './engagement.controller';
-import { EngagementFlushService } from './engagement-flush.service';
 
 @Module({
   imports: [
@@ -14,7 +13,7 @@ import { EngagementFlushService } from './engagement-flush.service';
     ]),
   ],
   controllers: [EngagementController],
-  providers: [EngagementService, EngagementFlushService],
+  providers: [EngagementService],
   exports: [EngagementService],
 })
 export class EngagementModule {}

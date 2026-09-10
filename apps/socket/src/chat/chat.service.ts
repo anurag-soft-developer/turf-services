@@ -1,9 +1,4 @@
-import {
-  Injectable,
-  Logger,
-  OnModuleDestroy,
-  OnModuleInit,
-} from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { WsException } from '@nestjs/websockets';
 import { isAxiosError } from 'axios';
 import { randomUUID } from 'crypto';
@@ -30,23 +25,10 @@ import { internalHttp } from '../core/http/http.client';
 import { RedisService } from '../core/redis/redis.service';
 
 @Injectable()
-export class ChatService implements OnModuleInit, OnModuleDestroy {
+export class ChatService {
   private readonly logger = new Logger(ChatService.name);
-  private flushTimer: NodeJS.Timeout | null = null;
 
   constructor(private readonly redisService: RedisService) {}
-
-  onModuleInit(): void {
-    this.flushTimer = setInterval(() => {
-      void this.flushPendingMessages();
-    }, Number(config.CHAT_FLUSH_INTERVAL_MS));
-  }
-
-  onModuleDestroy(): void {
-    if (this.flushTimer) {
-      clearInterval(this.flushTimer);
-    }
-  }
 
   async assertAccess(
     userId: string,
@@ -272,7 +254,7 @@ export class ChatService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async flushPendingMessages(): Promise<void> {
+  async flushPendingMessages(): Promise<void> {
     const client = await this.redisService.getClient();
     const queueKey = this.getQueueKey();
     const chunk = await client.lRange(
@@ -319,7 +301,7 @@ export class ChatService implements OnModuleInit, OnModuleDestroy {
           ? `Batch flush failed with status ${status}`
           : `Batch flush failed: ${error instanceof Error ? error.message : String(error)}`,
       );
-      return;
+      throw error;
     }
 
     await client.lTrim(queueKey, chunk.length, -1);

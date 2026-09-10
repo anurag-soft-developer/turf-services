@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { ScheduleModule } from '@nestjs/schedule';
 import { MongooseModule } from '@nestjs/mongoose';
 import { APP_GUARD, APP_PIPE } from '@nestjs/core';
 import { ZodValidationPipe } from 'nestjs-zod';
@@ -32,11 +31,11 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { ExploreModule } from './explore/explore.module';
 import { EngagementModule } from './engagement/engagement.module';
 import { RedisModule } from './core/redis/redis.module';
+import { InternalJobsModule } from './jobs/internal-jobs.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    ScheduleModule.forRoot(),
     MongooseModule.forRoot(config.MONGODB_URI),
     RedisModule,
     AuthModule,
@@ -62,6 +61,7 @@ import { RedisModule } from './core/redis/redis.module';
     DashboardModule,
     EngagementModule,
     ExploreModule,
+    InternalJobsModule,
   ],
   controllers: [AppController],
   providers: [

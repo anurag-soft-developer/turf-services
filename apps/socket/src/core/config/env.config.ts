@@ -23,6 +23,14 @@ class ConfigValidationError extends Error {
 
 export function validateConfig() {
   try {
+    const chatFlushSeconds = (() => {
+      const parsed = Number(process.env.CHAT_FLUSH_INTERVAL_MS || '5000');
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        return 5;
+      }
+      return Math.max(1, Math.round(parsed / 1000));
+    })();
+
     const config = {
       // Application
       PORT: process.env.PORT || '3001',
@@ -37,6 +45,21 @@ export function validateConfig() {
       CHAT_HISTORY_SIZE: process.env.CHAT_HISTORY_SIZE || '100',
       CHAT_FLUSH_BATCH_SIZE: process.env.CHAT_FLUSH_BATCH_SIZE || '200',
       CHAT_FLUSH_INTERVAL_MS: process.env.CHAT_FLUSH_INTERVAL_MS || '5000',
+      CHAT_FLUSH_CRON:
+        process.env.CHAT_FLUSH_CRON || `*/${chatFlushSeconds} * * * * *`,
+      CHAT_FLUSH_LOCK_TTL_SECONDS: Math.max(15, chatFlushSeconds + 10),
+
+      // Scheduled jobs (socket ticks; turf-services runs the work)
+      PAYMENT_HOLD_RELEASE_CRON:
+        process.env.PAYMENT_HOLD_RELEASE_CRON || '*/2 * * * *',
+      TEAM_INVITE_EXPIRY_CRON:
+        process.env.TEAM_INVITE_EXPIRY_CRON || '0 * * * *',
+      TEAM_MATCH_EXPIRY_CRON:
+        process.env.TEAM_MATCH_EXPIRY_CRON || '*/5 * * * *',
+      ENGAGEMENT_STATS_FLUSH_CRON:
+        process.env.ENGAGEMENT_STATS_FLUSH_CRON || '*/2 * * * *',
+      UNUSED_UPLOAD_REGISTRY_PURGE_CRON:
+        process.env.UNUSED_UPLOAD_REGISTRY_PURGE_CRON || '0 * * * *',
 
       // Primary API integration
       TURF_SERVICES_BASE_URL: process.env.TURF_SERVICES_BASE_URL!,

@@ -99,6 +99,8 @@ npm run start:prod:socket
 
 Do **not** deploy `apps/socket` to Vercel (WebSockets + Redis need a long-lived process).
 
+The socket app is the scheduler: it ticks `@Cron` jobs and calls turf-services `POST /internal/jobs/*` (`x-internal-token`). Redis keys `cron:lock:*` / `cron:status:*` prevent duplicate runs and record last success/failure. Chat flush also uses `@Cron` (from `CHAT_FLUSH_INTERVAL_MS`).
+
 On Vercel set `REALTIME_TURF_BASE_URL` to the public socket URL. On the socket host set `TURF_SERVICES_BASE_URL` to the Vercel API URL.
 
 ## Shared contracts
