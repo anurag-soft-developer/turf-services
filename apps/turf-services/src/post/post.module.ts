@@ -4,7 +4,6 @@ import { ContentPost, ContentPostSchema } from './schemas/content-post.schema';
 import { PostService } from './post.service';
 import { PostController } from './post.controller';
 import { TeamModule } from '../team/team.module';
-import { TeamMemberModule } from '../team-member/team-member.module';
 import { StorageModule } from '../storage/storage.module';
 import { Team, TeamSchema } from '../team/schemas/team.schema';
 import { Turf, TurfSchema } from '../turf/schemas/turf.schema';
@@ -22,7 +21,6 @@ import {
       { name: Turf.name, schema: TurfSchema },
     ]),
     forwardRef(() => TeamModule),
-    forwardRef(() => TeamMemberModule),
     StorageModule,
   ],
   controllers: [PostController],

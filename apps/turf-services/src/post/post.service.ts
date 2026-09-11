@@ -1,9 +1,8 @@
 import {
+  BadRequestException,
   ForbiddenException,
-  Inject,
   Injectable,
   NotFoundException,
-  forwardRef,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -16,7 +15,6 @@ import {
 } from './schemas/content-post.schema';
 import { CreatePostDto, PostFilterDto, UpdatePostDto } from './dto/post.dto';
 import { TeamService } from '../team/team.service';
-import { TeamMemberService } from '../team-member/team-member.service';
 import { PaginatedResult } from '../core/interfaces/common';
 import {
   applyExcludeIds,
@@ -32,15 +30,8 @@ import {
   TeamMatchDocument,
 } from '../matchmaking/schemas/team-match.schema';
 import { Team, TeamDocument } from '../team/schemas/team.schema';
-import {
-  ensureMatchHasTeam,
-  requireTeamMatch,
-} from '../matchmaking/util/matchmaking.helpers';
-import {
-  assertMatchAllowsPhotoPosts,
-  assertUserCanPostForMatch,
-  resolveSelectedTurfId,
-} from './util/post-match-context.util';
+import { requireTeamMatch } from '../matchmaking/util/matchmaking.helpers';
+import { tryResolveSelectedTurfId } from './util/post-match-context.util';
 
 @Injectable()
 export class PostService {
@@ -64,8 +55,6 @@ export class PostService {
     @InjectModel(Turf.name)
     private turfModel: Model<TurfDocument>,
     private teamService: TeamService,
-    @Inject(forwardRef(() => TeamMemberService))
-    private teamMemberService: TeamMemberService,
     private readonly storageLifecycle: StorageLifecycleService,
   ) {}
 
@@ -77,27 +66,17 @@ export class PostService {
     let teamId: Types.ObjectId | undefined;
     if (dto.team) {
       const team = await this.teamService.requireTeam(dto.team);
-      this.teamService.assertOwner(team, userId);
       teamId = team._id;
     }
 
     let matchId: Types.ObjectId | undefined;
-    let turfId: Types.ObjectId | undefined;
+    let match: TeamMatchDocument | undefined;
     if (dto.match) {
-      const match = await requireTeamMatch(this.teamMatchModel, dto.match);
-      assertMatchAllowsPhotoPosts(match);
-      await assertUserCanPostForMatch(
-        match,
-        userId,
-        this.teamService,
-        this.teamMemberService,
-      );
-      if (teamId) {
-        ensureMatchHasTeam(match, teamId);
-      }
+      match = await requireTeamMatch(this.teamMatchModel, dto.match);
       matchId = match._id;
-      turfId = resolveSelectedTurfId(match);
     }
+
+    const turfId = await this.resolveMentionTurfId(dto.turf, match);
 
     let location = dto.location as GeoLocation | undefined;
     if (!location && turfId) {
@@ -242,14 +221,6 @@ export class PostService {
         post.team = undefined;
       } else {
         const team = await this.teamService.requireTeam(dto.team);
-        this.teamService.assertOwner(team, userId);
-        if (post.match) {
-          const match = await requireTeamMatch(
-            this.teamMatchModel,
-            resolveId(post.match),
-          );
-          ensureMatchHasTeam(match, team._id);
-        }
         post.team = team._id;
       }
     }
@@ -397,12 +368,6 @@ export class PostService {
     if (resolveId(post.postedBy) === resolveId(userId)) {
       return;
     }
-    if (post.team) {
-      const team = await this.teamService.requireTeam(post.team.toString());
-      if (this.teamService.isOwner(team, userId)) {
-        return;
-      }
-    }
     throw new ForbiddenException('You cannot view this draft post');
   }
 
@@ -413,12 +378,27 @@ export class PostService {
     if (resolveId(post.postedBy) === resolveId(userId)) {
       return;
     }
-    if (post.team) {
-      const team = await this.teamService.requireTeam(post.team.toString());
-      if (this.teamService.isOwner(team, userId)) {
-        return;
-      }
-    }
     throw new ForbiddenException('You cannot modify this post');
+  }
+
+  private async resolveMentionTurfId(
+    turfId: string | undefined,
+    match?: TeamMatchDocument,
+  ): Promise<Types.ObjectId | undefined> {
+    if (turfId) {
+      if (!Types.ObjectId.isValid(turfId)) {
+        throw new BadRequestException('Invalid turf id');
+      }
+      const turf = await this.turfModel
+        .findById(turfId)
+        .select('_id')
+        .lean()
+        .exec();
+      if (!turf) {
+        throw new NotFoundException('Turf not found');
+      }
+      return turf._id as Types.ObjectId;
+    }
+    return match ? tryResolveSelectedTurfId(match) : undefined;
   }
 }

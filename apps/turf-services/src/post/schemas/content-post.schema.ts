@@ -50,7 +50,7 @@ export class ContentPost {
   })
   postedBy!: Types.ObjectId;
 
-  /** When set, the post is published on behalf of this team (owners only). */
+  /** Optional mentioned team. Anyone may tag any existing team. */
   @Prop({
     type: MongooseSchema.Types.ObjectId,
     ref: Team.name,
@@ -58,14 +58,14 @@ export class ContentPost {
   })
   team?: Types.ObjectId;
 
-  /** Optional fixture this post is attached to (match photos). */
+  /** Optional mentioned match. Anyone may tag any existing match. */
   @Prop({
     type: MongooseSchema.Types.ObjectId,
     ref: TeamMatch.name,
   })
   match?: Types.ObjectId;
 
-  /** Copied from the match’s selected turf at create time; never trusted from the client. */
+  /** Optional mentioned turf. Copied from the match when omitted. */
   @Prop({
     type: MongooseSchema.Types.ObjectId,
     ref: Turf.name,

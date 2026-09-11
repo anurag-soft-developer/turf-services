@@ -19,6 +19,7 @@ const CreatePostSchema = z
     status: postStatusSchema.optional(),
     team: z.string().trim().min(1).optional(),
     match: z.string().trim().min(1).optional(),
+    turf: z.string().trim().min(1).optional(),
     location: geoLocationSchema.optional(),
     media: z.array(mediaInputSchema).max(30).optional(),
   })
