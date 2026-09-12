@@ -35,6 +35,15 @@ export class ChatMessage {
   @Prop({ type: Date, required: true, index: true })
   messageCreatedAt!: Date;
 
+  @Prop({ type: String })
+  replyToMessageId?: string;
+
+  @Prop({ type: String, trim: true, maxlength: 4000 })
+  replyToBody?: string;
+
+  @Prop({ type: String })
+  replyToSenderUserId?: string;
+
   @Prop({ type: Date })
   deletedAt?: Date;
 

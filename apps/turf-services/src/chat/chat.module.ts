@@ -10,6 +10,10 @@ import { ChatInboxController } from './chat-inbox.controller';
 import { ChatService } from './chat.service';
 import { ChatMessage, ChatMessageSchema } from './schemas/chat-message.schema';
 import {
+  ChatMessageReaction,
+  ChatMessageReactionSchema,
+} from './schemas/chat-message-reaction.schema';
+import {
   ChatReadCursor,
   ChatReadCursorSchema,
 } from './schemas/chat-read-cursor.schema';
@@ -24,6 +28,7 @@ import {
   imports: [
     MongooseModule.forFeature([
       { name: ChatMessage.name, schema: ChatMessageSchema },
+      { name: ChatMessageReaction.name, schema: ChatMessageReactionSchema },
       { name: ChatReadCursor.name, schema: ChatReadCursorSchema },
       { name: TeamMatch.name, schema: TeamMatchSchema },
       { name: TeamMember.name, schema: TeamMemberSchema },

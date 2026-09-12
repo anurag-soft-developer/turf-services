@@ -19,13 +19,19 @@ import {
   ChatReadEvent,
   ChatRef,
   ChatScope,
+  type ChatReactionUpdatedEvent,
   type DeleteChatMessageInternal,
+  type ToggleChatReactionInternal,
   uniqueChatRefs,
 } from '../../../../libs';
 import {
   ChatMessage,
   ChatMessageDocument,
 } from './schemas/chat-message.schema';
+import {
+  ChatMessageReaction,
+  ChatMessageReactionDocument,
+} from './schemas/chat-message-reaction.schema';
 import {
   ChatReadCursor,
   ChatReadCursorDocument,
@@ -65,6 +71,8 @@ export class ChatService {
   constructor(
     @InjectModel(ChatMessage.name)
     private readonly chatMessageModel: Model<ChatMessageDocument>,
+    @InjectModel(ChatMessageReaction.name)
+    private readonly chatReactionModel: Model<ChatMessageReactionDocument>,
     @InjectModel(ChatReadCursor.name)
     private readonly chatReadCursorModel: Model<ChatReadCursorDocument>,
     @InjectModel(TeamMatch.name)
@@ -100,6 +108,13 @@ export class ChatService {
               messageId: message.messageId,
               idempotencyKey: message.idempotencyKey,
               messageCreatedAt: new Date(message.createdAt),
+              ...(message.replyToMessageId
+                ? {
+                    replyToMessageId: message.replyToMessageId,
+                    replyToBody: message.replyToBody,
+                    replyToSenderUserId: message.replyToSenderUserId,
+                  }
+                : {}),
             },
           },
           upsert: true,
@@ -156,6 +171,10 @@ export class ChatService {
       .limit(query.limit)
       .lean();
 
+    const messageIds = docs.map((doc) => doc.messageId);
+    const reactionsByMessage =
+      await this.getReactionsByMessageIds(messageIds);
+
     return docs.map((doc) => ({
       messageId: doc.messageId,
       scope: doc.scope,
@@ -163,7 +182,92 @@ export class ChatService {
       senderUserId: doc.senderUserId,
       body: doc.body,
       createdAt: doc.messageCreatedAt.toISOString(),
+      ...(doc.replyToMessageId
+        ? {
+            replyToMessageId: doc.replyToMessageId,
+            replyToBody: doc.replyToBody,
+            replyToSenderUserId: doc.replyToSenderUserId,
+          }
+        : {}),
+      reactions: reactionsByMessage.get(doc.messageId) ?? {},
     }));
+  }
+
+  async toggleReaction(
+    input: ToggleChatReactionInternal,
+  ): Promise<ChatReactionUpdatedEvent> {
+    await assertScopeAccess(
+      input.userId,
+      input.scope,
+      input.scopeId,
+      this.teamMemberService,
+      this.teamMatchModel,
+    );
+
+    const message = await this.chatMessageModel
+      .findOne({
+        messageId: input.messageId,
+        scope: input.scope,
+        scopeId: input.scopeId,
+        deletedAt: { $exists: false },
+      })
+      .select({ messageId: 1 })
+      .lean();
+    if (!message) {
+      throw new NotFoundException('Message not found');
+    }
+
+    const existing = await this.chatReactionModel.findOneAndDelete({
+      messageId: input.messageId,
+      userId: input.userId,
+      emoji: input.emoji,
+    });
+
+    if (!existing) {
+      await this.chatReactionModel.create({
+        scope: input.scope,
+        scopeId: input.scopeId,
+        messageId: input.messageId,
+        userId: input.userId,
+        emoji: input.emoji,
+      });
+    }
+
+    const reactions = await this.getReactionsMap(input.messageId);
+    return {
+      scope: input.scope,
+      scopeId: input.scopeId,
+      messageId: input.messageId,
+      reactions,
+    };
+  }
+
+  private async getReactionsMap(
+    messageId: string,
+  ): Promise<Record<string, string[]>> {
+    const map = await this.getReactionsByMessageIds([messageId]);
+    return map.get(messageId) ?? {};
+  }
+
+  private async getReactionsByMessageIds(
+    messageIds: string[],
+  ): Promise<Map<string, Record<string, string[]>>> {
+    const result = new Map<string, Record<string, string[]>>();
+    if (!messageIds.length) return result;
+
+    const docs = await this.chatReactionModel
+      .find({ messageId: { $in: messageIds } })
+      .select({ messageId: 1, userId: 1, emoji: 1 })
+      .lean();
+
+    for (const doc of docs) {
+      const current = result.get(doc.messageId) ?? {};
+      const users = current[doc.emoji] ?? [];
+      users.push(doc.userId);
+      current[doc.emoji] = users;
+      result.set(doc.messageId, current);
+    }
+    return result;
   }
 
   async deleteMessage(

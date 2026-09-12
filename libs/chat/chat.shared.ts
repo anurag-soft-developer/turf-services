@@ -11,9 +11,15 @@ export type ChatRef = z.infer<typeof chatRefSchema>;
 
 export const chatBodySchema = z.string().trim().min(1).max(4000);
 
+
+/** Quick-react presets. Any short emoji string is accepted as a reaction. */
+export const chatReactionEmojiSchema = z.string().trim().min(1).max(64);
+export type ChatReactionEmoji = z.infer<typeof chatReactionEmojiSchema>;
+
 export const sendMessageEventSchema = chatRefSchema.extend({
   body: chatBodySchema,
   clientMessageId: z.string().trim().min(1).max(120).optional(),
+  replyToMessageId: z.string().trim().min(1).max(120).optional(),
 });
 export type SendMessageEvent = z.infer<typeof sendMessageEventSchema>;
 
@@ -22,12 +28,19 @@ export const chatMessageSchema = chatRefSchema.extend({
   senderUserId: z.string().trim().min(1),
   body: chatBodySchema,
   createdAt: z.string().datetime(),
+  replyToMessageId: z.string().trim().min(1).optional(),
+  replyToBody: z.string().trim().max(4000).optional(),
+  replyToSenderUserId: z.string().trim().min(1).optional(),
+  /** emoji → userIds */
+  reactions: z.record(z.string(), z.array(z.string())).optional(),
 });
 export type ChatMessage = z.infer<typeof chatMessageSchema>;
 
-export const batchPersistChatMessageSchema = chatMessageSchema.extend({
-  idempotencyKey: z.string().trim().min(1).max(120),
-});
+export const batchPersistChatMessageSchema = chatMessageSchema
+  .omit({ reactions: true })
+  .extend({
+    idempotencyKey: z.string().trim().min(1).max(120),
+  });
 export type BatchPersistChatMessage = z.infer<
   typeof batchPersistChatMessageSchema
 >;
@@ -36,6 +49,29 @@ export const batchPersistRequestSchema = z.object({
   messages: z.array(batchPersistChatMessageSchema).min(1).max(500),
 });
 export type BatchPersistRequest = z.infer<typeof batchPersistRequestSchema>;
+
+export const reactToMessageEventSchema = chatRefSchema.extend({
+  messageId: z.string().trim().min(1),
+  emoji: chatReactionEmojiSchema,
+});
+export type ReactToMessageEvent = z.infer<typeof reactToMessageEventSchema>;
+
+export const chatReactionUpdatedEventSchema = chatRefSchema.extend({
+  messageId: z.string().trim().min(1),
+  reactions: z.record(z.string(), z.array(z.string())),
+});
+export type ChatReactionUpdatedEvent = z.infer<
+  typeof chatReactionUpdatedEventSchema
+>;
+
+export const toggleChatReactionInternalSchema = reactToMessageEventSchema.extend(
+  {
+    userId: z.string().trim().min(1),
+  },
+);
+export type ToggleChatReactionInternal = z.infer<
+  typeof toggleChatReactionInternalSchema
+>;
 
 export const chatHistoryQuerySchema = chatRefSchema.extend({
   limit: z.coerce.number().int().min(1).max(100).default(30),

@@ -9,6 +9,7 @@ import {
   deleteChatMessageInternalSchema,
   hideChatThreadsSchema,
   markChatReadInternalSchema,
+  toggleChatReactionInternalSchema,
 } from '../../../../../libs';
 
 const batchPersistMessagesSchema = batchPersistRequestSchema;
@@ -48,4 +49,8 @@ export class InternalMarkChatReadDto extends createZodDto(
 
 export class InternalDeleteChatMessageDto extends createZodDto(
   deleteChatMessageInternalSchema,
+) {}
+
+export class InternalToggleChatReactionDto extends createZodDto(
+  toggleChatReactionInternalSchema,
 ) {}

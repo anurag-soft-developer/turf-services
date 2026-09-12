@@ -7,6 +7,7 @@ import {
   ChatInboxUpdatedEvent,
   ChatMessage,
   ChatMessageDeletedEvent,
+  ChatReactionUpdatedEvent,
   ChatReadEvent,
   ChatRef,
   SendMessageEvent,
@@ -15,9 +16,11 @@ import {
   chatMessageDeletedEventSchema,
   chatMessageSchema,
   chatMessageToInboxUpdated,
+  chatReactionUpdatedEventSchema,
   chatReadEventSchema,
   deleteChatMessageSchema,
   getChatRoomKey,
+  reactToMessageEventSchema,
   sendMessageEventSchema,
 } from '../../../../libs';
 import { config } from '../core/config/env.config';
@@ -75,6 +78,29 @@ export class ChatService {
     const parsed = sendMessageEventSchema.parse(payload) as SendMessageEvent;
     const access = await this.assertAccess(senderUserId, parsed);
     const room = getChatRoomKey(parsed);
+
+    let replyFields: {
+      replyToMessageId?: string;
+      replyToBody?: string;
+      replyToSenderUserId?: string;
+    } = {};
+    if (parsed.replyToMessageId) {
+      const parent = await this.findMessageInHistory(
+        room,
+        parsed.replyToMessageId,
+      );
+      if (parent) {
+        replyFields = {
+          replyToMessageId: parent.messageId,
+          replyToBody: parent.body,
+          replyToSenderUserId: parent.senderUserId,
+        };
+      } else {
+        // Parent may have aged out of Redis; keep id so clients can still show a stub.
+        replyFields = { replyToMessageId: parsed.replyToMessageId };
+      }
+    }
+
     const message: ChatMessage = chatMessageSchema.parse({
       messageId: randomUUID(),
       scope: parsed.scope,
@@ -82,6 +108,8 @@ export class ChatService {
       senderUserId,
       body: parsed.body,
       createdAt: new Date().toISOString(),
+      reactions: {},
+      ...replyFields,
     });
 
     const client = await this.redisService.getClient();
@@ -305,6 +333,57 @@ export class ChatService {
     }
 
     await client.lTrim(queueKey, chunk.length, -1);
+  }
+
+  async reactToMessage(
+    userId: string,
+    payload: unknown,
+  ): Promise<{
+    room: string;
+    event: ChatReactionUpdatedEvent;
+    participantUserIds: string[];
+  }> {
+    const parsed = reactToMessageEventSchema.parse(payload);
+    const access = await this.assertAccess(userId, parsed);
+    try {
+      const { data } = await internalHttp.post('/chat/messages/react/internal', {
+        userId,
+        scope: parsed.scope,
+        scopeId: parsed.scopeId,
+        messageId: parsed.messageId,
+        emoji: parsed.emoji,
+      });
+      const event = chatReactionUpdatedEventSchema.parse(data);
+      return {
+        room: getChatRoomKey(parsed),
+        event,
+        participantUserIds: access.participantUserIds,
+      };
+    } catch (error) {
+      const status = isAxiosError(error) ? error.response?.status : undefined;
+      if (status === 404) {
+        throw new WsException('Message not found');
+      }
+      if (status === 403) {
+        throw new WsException('Forbidden');
+      }
+      throw new WsException('Failed to react to message');
+    }
+  }
+
+  private async findMessageInHistory(
+    room: string,
+    messageId: string,
+  ): Promise<ChatMessage | null> {
+    const client = await this.redisService.getClient();
+    const rawHistory = await client.lRange(this.getHistoryKey(room), 0, -1);
+    for (const item of rawHistory) {
+      const message = this.parseCachedMessage(item);
+      if (message?.messageId === messageId) {
+        return message;
+      }
+    }
+    return null;
   }
 
   private parseCachedMessage(item: string): ChatMessage | null {

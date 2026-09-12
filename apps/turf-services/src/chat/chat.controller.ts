@@ -15,6 +15,7 @@ import {
   BatchPersistMessagesDto,
   InternalDeleteChatMessageDto,
   InternalListChatMessagesQueryDto,
+  InternalToggleChatReactionDto,
   ListChatMessagesQueryDto,
 } from './dto/chat.dto';
 import { ChatService } from './chat.service';
@@ -59,6 +60,21 @@ export class ChatController {
     }
 
     return this.chatService.deleteMessage(dto.userId, dto);
+  }
+
+  @Public()
+  @Post('react/internal')
+  @HttpCode(200)
+  async reactInternal(
+    @Headers('x-internal-token') internalToken: string | undefined,
+    @Body() dto: InternalToggleChatReactionDto,
+  ) {
+    const expectedToken = config.INTERNAL_TOKEN;
+    if (!expectedToken || internalToken !== expectedToken) {
+      throw new UnauthorizedException('Invalid internal token');
+    }
+
+    return this.chatService.toggleReaction(dto);
   }
 
   @Public()

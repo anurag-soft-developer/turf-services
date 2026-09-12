@@ -110,6 +110,17 @@ export class ChatGateway
     return result.deleted;
   }
 
+  @SubscribeMessage('chat.react')
+  async onReact(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() payload: unknown,
+  ) {
+    const userId = client.data.userId as string;
+    const result = await this.chatService.reactToMessage(userId, payload);
+    this.server.to(result.room).emit('chat.reaction.updated', result.event);
+    return result.event;
+  }
+
   @SubscribeMessage('chat.read')
   async onRead(
     @ConnectedSocket() client: Socket,
