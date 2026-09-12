@@ -17,18 +17,19 @@ import type {
   ExploreResponse,
   ScoredExploreItem,
 } from './types/explore.types';
-import { resolveExploreMatchStatuses } from './util/explore-match-status.util';
+import {
+  exploreFiltersHash,
+  exploreGeoBucket,
+  parseExploreFeedSession,
+  resolveExploreMatchStatuses,
+  toPlainExploreData,
+  type ExploreFeedSession,
+} from './util/explore-feed.util';
 import {
   rankExploreItems,
   toScoredExploreItems,
   type RankingContext,
 } from './util/explore-ranking.util';
-import {
-  exploreFiltersHash,
-  exploreGeoBucket,
-  parseExploreFeedSession,
-  type ExploreFeedSession,
-} from './util/explore-feed-session.util';
 import {
   EXPLORE_FEED_SESSION_TTL_SECONDS,
   USER_LOCATION_THROTTLE_TTL_SECONDS,
@@ -135,7 +136,10 @@ export class ExploreService {
       ...rankedPlayers,
       ...rankedPosts,
     ];
-    const data: ExploreItem[] = ordered.map((item) => this.toExploreItem(item));
+    const data = await this.attachEngagement(
+      userId,
+      ordered.map((item) => this.toExploreItem(item)),
+    );
 
     const postsTotalPages =
       Math.ceil(postRes.totalDocuments / query.limit) || 0;
@@ -194,10 +198,17 @@ export class ExploreService {
 
     const skip = (query.page - 1) * query.limit;
     const pageIds = session.ids.slice(skip, skip + query.limit);
-    return this.toPageResponse(type, pageIds, query, session.totalDocuments);
+    return this.toPageResponse(
+      userId,
+      type,
+      pageIds,
+      query,
+      session.totalDocuments,
+    );
   }
 
   private async toPageResponse(
+    userId: string,
     type: ExploreItemType,
     pageIds: string[],
     query: ExploreQueryDto,
@@ -205,7 +216,10 @@ export class ExploreService {
   ): Promise<ExploreResponse> {
     const hydrated = await this.hydrateByIds(type, pageIds);
     const items = toScoredExploreItems(type, hydrated as never);
-    const data: ExploreItem[] = items.map((item) => this.toExploreItem(item));
+    const data = await this.attachEngagement(
+      userId,
+      items.map((item) => this.toExploreItem(item)),
+    );
     return {
       data,
       page: query.page,
@@ -259,7 +273,10 @@ export class ExploreService {
     const ranked = rankExploreItems(items, ctx);
     const slice = ranked.slice(0, query.limit);
 
-    const data: ExploreItem[] = slice.map((item) => this.toExploreItem(item));
+    const data = await this.attachEngagement(
+      userId,
+      slice.map((item) => this.toExploreItem(item)),
+    );
     return {
       data,
       page: query.page,
@@ -303,6 +320,43 @@ export class ExploreService {
       case 'post':
         return { type: 'post', data: item.data };
     }
+  }
+
+  /** Attach likeCount + likedByMe onto each item's `data` for the client. */
+  private async attachEngagement(
+    userId: string,
+    items: ExploreItem[],
+  ): Promise<ExploreItem[]> {
+    if (!items.length) return items;
+
+    const refs = items
+      .map((item) => ({
+        entityType: item.type as EngagementEntityType,
+        entityId: String((item.data as { _id?: unknown })._id ?? ''),
+      }))
+      .filter((ref) => ref.entityId);
+
+    if (!refs.length) return items;
+
+    const [stats, liked] = await Promise.all([
+      this.engagementService.getStatsMap(refs),
+      this.engagementService.getLikedSet(userId, refs),
+    ]);
+
+    return items.map((item) => {
+      const entityId = String((item.data as { _id?: unknown })._id ?? '');
+      const key = `${item.type}:${entityId}`;
+      const likeCount = stats.get(key)?.likeCount ?? 0;
+      const likedByMe = liked.has(key);
+      return {
+        ...item,
+        data: {
+          ...toPlainExploreData(item.data),
+          likeCount,
+          likedByMe,
+        },
+      } as unknown as ExploreItem;
+    });
   }
 
   private async fetchByType(

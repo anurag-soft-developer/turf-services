@@ -67,12 +67,28 @@ export class TeamInviteService {
     const team = await this.teamService.requireTeam(teamId);
     this.teamService.assertOwner(team, ownerUserId);
 
-    const email = dto.email?.trim().toLowerCase();
-    const phone = dto.phone;
+    let email = dto.email?.trim().toLowerCase();
+    let phone = dto.phone;
+    let invitee =
+      email != null
+        ? await this.usersService.findByEmail(email)
+        : phone != null
+          ? await this.usersService.findByPhone(phone)
+          : null;
 
-    const invitee = email
-      ? await this.usersService.findByEmail(email)
-      : await this.usersService.findByPhone(phone!);
+    if (dto.inviteeUserId) {
+      invitee = await this.usersService.findById(dto.inviteeUserId);
+      if (!invitee || !invitee.isActive) {
+        throw new BadRequestException('User not found');
+      }
+      email = invitee.email?.trim().toLowerCase() || undefined;
+      phone = invitee.phone || undefined;
+      if (!email && !phone) {
+        throw new BadRequestException(
+          'This user has no email or phone on file to invite',
+        );
+      }
+    }
 
     if (invitee) {
       const inviteeId = invitee._id.toString();

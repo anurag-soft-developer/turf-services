@@ -14,6 +14,11 @@ import {
   statsRedisKey,
   type EngagementEntityType,
 } from './engagement.constants';
+import {
+  buildEntityOrClauses,
+  parseStatsKey,
+  toInt,
+} from './util/engagement.util';
 
 export type EntityStats = {
   impressions: number;
@@ -104,18 +109,7 @@ export class EngagementService {
     const map = new Map<string, EntityStats>();
     if (!refs.length) return map;
 
-    const byType = new Map<EngagementEntityType, Types.ObjectId[]>();
-    for (const ref of refs) {
-      if (!Types.ObjectId.isValid(ref.entityId)) continue;
-      const list = byType.get(ref.entityType) ?? [];
-      list.push(new Types.ObjectId(ref.entityId));
-      byType.set(ref.entityType, list);
-    }
-
-    const orClauses = [...byType.entries()].map(([entityType, ids]) => ({
-      entityType,
-      entityId: { $in: ids },
-    }));
+    const orClauses = buildEntityOrClauses(refs);
 
     const docs =
       orClauses.length === 0
@@ -148,6 +142,32 @@ export class EngagementService {
     });
 
     return map;
+  }
+
+  /** Keys are `entityType:entityId` for likes the user currently has. */
+  async getLikedSet(
+    userId: string,
+    refs: { entityType: EngagementEntityType; entityId: string }[],
+  ): Promise<Set<string>> {
+    const liked = new Set<string>();
+    if (!refs.length || !Types.ObjectId.isValid(userId)) return liked;
+
+    const orClauses = buildEntityOrClauses(refs);
+    if (orClauses.length === 0) return liked;
+
+    const docs = await this.likeModel
+      .find({
+        userId: new Types.ObjectId(userId),
+        $or: orClauses,
+      })
+      .select({ entityType: 1, entityId: 1 })
+      .lean()
+      .exec();
+
+    for (const doc of docs) {
+      liked.add(`${doc.entityType}:${doc.entityId.toString()}`);
+    }
+    return liked;
   }
 
   async flushRedisStatsToMongo(): Promise<number> {
@@ -218,20 +238,4 @@ export class EngagementService {
       );
     }
   }
-}
-
-function toInt(value: string | undefined): number {
-  const n = Number(value);
-  return Number.isFinite(n) ? Math.trunc(n) : 0;
-}
-
-function parseStatsKey(
-  key: string,
-): { entityType: EngagementEntityType; entityId: Types.ObjectId } | null {
-  const parts = key.split(':');
-  if (parts.length < 3 || parts[0] !== 'stats') return null;
-  const entityType = parts[1] as EngagementEntityType;
-  const entityId = parts.slice(2).join(':');
-  if (!Types.ObjectId.isValid(entityId)) return null;
-  return { entityType, entityId: new Types.ObjectId(entityId) };
 }

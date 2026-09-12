@@ -562,6 +562,7 @@ export class UsersService {
       filter.$or = [
         { fullName: { $regex: query, $options: 'i' } },
         { email: { $regex: query, $options: 'i' } },
+        { phone: { $regex: query, $options: 'i' } },
       ];
     }
 

@@ -26,11 +26,16 @@ const CreateTeamInviteSchema = z
   .object({
     email: optionalEmail,
     phone: optionalPhone,
+    inviteeUserId: z.string().trim().min(1).optional(),
   })
-  .refine((data) => Boolean(data.email) !== Boolean(data.phone), {
-    message: 'Provide exactly one of email or phone',
-    path: ['email'],
-  });
+  .refine(
+    (data) =>
+      [data.email, data.phone, data.inviteeUserId].filter(Boolean).length === 1,
+    {
+      message: 'Provide exactly one of email, phone, or inviteeUserId',
+      path: ['email'],
+    },
+  );
 
 const TeamInviteFilterSchema = z.object({
   status: teamInviteStatusSchema.optional(),
