@@ -1,5 +1,6 @@
 import { createZodDto, type ZodDto } from 'nestjs-zod';
 import { z } from 'zod';
+import { parseBooleanQuery } from '../../core/dto';
 
 const teamMemberStatusSchema = z.enum([
   'pending',
@@ -39,6 +40,11 @@ const TeamMemberFilterSchema = z.object({
 
 const MyMembershipsFilterSchema = z.object({
   status: teamMemberStatusSchema.optional(),
+  /**
+   * When false (default): one newest membership per team.
+   * When true: full history (optionally filtered by [status]).
+   */
+  history: parseBooleanQuery(),
   /** Case-insensitive match on team name / shortName. */
   search: z.string().trim().min(1).max(80).optional(),
   page: z.coerce.number().min(1).default(1),

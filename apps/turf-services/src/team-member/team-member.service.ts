@@ -223,6 +223,7 @@ export class TeamMemberService {
     page: number,
     limit: number,
     search?: string,
+    history = false,
   ): Promise<PaginatedResult<TeamMemberDocument>> {
     const emptyPage = (): PaginatedResult<TeamMemberDocument> => ({
       data: [],
@@ -249,17 +250,29 @@ export class TeamMemberService {
       filter.team = { $in: teamIds };
     }
 
+    // Single fetch; newest-per-team (when history=false) is applied in memory for now.
+    const all = await this.teamMemberModel
+      .find(filter)
+      .populate(TeamMemberService.populate)
+      .sort({ createdAt: -1 })
+      .exec();
+
+    let rows: TeamMemberDocument[] = all;
+    if (!history) {
+      const seenTeams = new Set<string>();
+      rows = [];
+      for (const doc of all) {
+        const teamKey = resolveId(doc.team);
+        if (!teamKey || seenTeams.has(teamKey)) continue;
+        seenTeams.add(teamKey);
+        rows.push(doc);
+      }
+    }
+
+    const totalDocuments = rows.length;
     const skip = (page - 1) * limit;
-    const [data, totalDocuments] = await Promise.all([
-      this.teamMemberModel
-        .find(filter)
-        .populate(TeamMemberService.populate)
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .exec(),
-      this.teamMemberModel.countDocuments(filter),
-    ]);
+    const data = rows.slice(skip, skip + limit);
+
     return {
       data,
       totalDocuments,
@@ -416,11 +429,13 @@ export class TeamMemberService {
     const m = await this.teamMemberModel.findOne({
       team: new Types.ObjectId(teamId),
       user: new Types.ObjectId(userId),
-      status: TeamMemberStatus.ACTIVE,
+      status: {
+        $in: [TeamMemberStatus.ACTIVE, TeamMemberStatus.SUSPENDED],
+      },
     });
     if (!m) {
       throw new BadRequestException(
-        'You are not an active member of this team',
+        'You are not an active or suspended member of this team',
       );
     }
 
@@ -443,6 +458,7 @@ export class TeamMemberService {
     m.status = TeamMemberStatus.RESIGNED;
     m.leftAt = new Date();
     m.leadershipRole = undefined;
+    m.suspendedUntil = undefined;
     await m.save();
   }
 

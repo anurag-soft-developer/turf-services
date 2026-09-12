@@ -40,4 +40,3 @@ ChatMessageReactionSchema.index(
   { messageId: 1, userId: 1, emoji: 1 },
   { unique: true },
 );
-ChatMessageReactionSchema.index({ messageId: 1 });

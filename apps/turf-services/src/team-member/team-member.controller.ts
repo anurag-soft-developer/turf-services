@@ -105,7 +105,6 @@ export class TeamMemberController {
   }
 
   @Post('leave')
-  @HttpCode(HttpStatus.NO_CONTENT)
   async leave(
     @Param('teamId') teamId: string,
     @CurrentUser('_id') userId: Types.ObjectId,
@@ -173,6 +172,7 @@ export class TeamMembershipSelfController {
       filter.page,
       filter.limit,
       filter.search,
+      filter.history ?? false,
     );
   }
 }
