@@ -135,6 +135,8 @@ export type ChatInboxQuery = z.infer<typeof chatInboxQuerySchema>;
 export const chatInboxItemSchema = chatRefSchema.extend({
   title: z.string(),
   imageUrl: z.string().optional(),
+  /** Second team logo for match chats (from/to pair). */
+  secondaryImageUrl: z.string().optional(),
   lastMessageId: z.string(),
   lastMessageBody: z.string(),
   lastSenderUserId: z.string(),

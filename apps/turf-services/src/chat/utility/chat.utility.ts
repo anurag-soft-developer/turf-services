@@ -210,6 +210,7 @@ export async function hydrateInboxItems(
       scopeId: row._id.scopeId,
       title: title?.title ?? fallbackTitle(row._id.scope),
       imageUrl: title?.imageUrl,
+      secondaryImageUrl: title?.secondaryImageUrl,
       lastMessageId: row.lastMessageId,
       lastMessageBody: row.lastMessageBody,
       lastSenderUserId: row.lastSenderUserId,
@@ -225,8 +226,13 @@ async function resolveInboxTitles(
   teamMatchModel: Model<TeamMatchDocument>,
   teamModel: Model<TeamDocument>,
   userModel: Model<UserDocument>,
-): Promise<Map<string, { title: string; imageUrl?: string }>> {
-  const result = new Map<string, { title: string; imageUrl?: string }>();
+): Promise<
+  Map<string, { title: string; imageUrl?: string; secondaryImageUrl?: string }>
+> {
+  const result = new Map<
+    string,
+    { title: string; imageUrl?: string; secondaryImageUrl?: string }
+  >();
   const playerIds = new Set<string>();
   const teamIds = new Set<string>();
   const matchIds: string[] = [];
@@ -284,7 +290,11 @@ async function resolveInboxTitles(
       : [],
   ]);
 
-  type InboxTitle = { title: string; imageUrl?: string };
+  type InboxTitle = {
+    title: string;
+    imageUrl?: string;
+    secondaryImageUrl?: string;
+  };
 
   const teamById = new Map<string, InboxTitle>(
     teams.map((team): [string, InboxTitle] => [
@@ -312,7 +322,8 @@ async function resolveInboxTitles(
         match._id.toString(),
         {
           title: `${from?.title ?? 'Team'} vs ${to?.title ?? 'Team'}`,
-          imageUrl: from?.imageUrl ?? to?.imageUrl,
+          imageUrl: from?.imageUrl,
+          secondaryImageUrl: to?.imageUrl,
         },
       ];
     }),

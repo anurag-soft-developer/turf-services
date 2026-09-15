@@ -9,6 +9,8 @@ const mediaKindSchema = z.enum(['image', 'video']);
 const mediaInputSchema = z.object({
   url: z.string().trim().min(1).max(2048),
   kind: mediaKindSchema,
+  width: z.number().int().positive().optional(),
+  height: z.number().int().positive().optional(),
 });
 
 const CreatePostSchema = z

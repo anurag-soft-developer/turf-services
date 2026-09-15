@@ -351,6 +351,8 @@ export class PostService {
     return items.map((m) => ({
       url: m.url,
       kind: m.kind as MediaKind,
+      ...(m.width != null ? { width: m.width } : {}),
+      ...(m.height != null ? { height: m.height } : {}),
     }));
   }
 

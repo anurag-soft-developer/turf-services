@@ -33,6 +33,14 @@ export class PostMedia {
     required: true,
   })
   kind!: MediaKind;
+
+  /** Pixel width when known (optional; legacy posts omit). */
+  @Prop({ type: Number, min: 1 })
+  width?: number;
+
+  /** Pixel height when known (optional; legacy posts omit). */
+  @Prop({ type: Number, min: 1 })
+  height?: number;
 }
 
 export const PostMediaSchema = SchemaFactory.createForClass(PostMedia);

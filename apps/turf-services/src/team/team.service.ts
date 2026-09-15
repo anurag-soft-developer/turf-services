@@ -277,9 +277,13 @@ export class TeamService {
     const previousLogo = team.logo;
     const previousCoverImages = team.coverImages ?? [];
 
-    const { location, status, ...scalarPatch } = dto;
+    const { location, status, coverImages, ...scalarPatch } = dto;
 
     Object.assign(team, omitEmpty(scalarPatch));
+
+    if (coverImages !== undefined) {
+      team.coverImages = coverImages ?? [];
+    }
 
     if (status !== undefined) {
       team.status = status as TeamStatus;
