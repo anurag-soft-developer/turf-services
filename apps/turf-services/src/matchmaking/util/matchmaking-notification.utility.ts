@@ -230,9 +230,11 @@ export async function notifyMatchCancelled(
   match: TeamMatchDocument,
   actorTeamId: string,
   actorUserId: string,
+  options?: { abandoned?: boolean },
 ): Promise<void> {
   const matchId = match._id.toString();
   const actorName = await teamDisplayName(teamService, actorTeamId);
+  const abandoned = options?.abandoned === true;
   await notifyTeamsStaff(
     notificationService,
     teamMemberModel,
@@ -241,9 +243,14 @@ export async function notifyMatchCancelled(
     actorUserId,
     {
       ...matchBase(matchId),
-      title: 'Match cancelled',
-      body: `${actorName} cancelled the match negotiation.`,
-      data: { matchId, kind: 'match_cancelled' },
+      title: abandoned ? 'Match abandoned' : 'Match cancelled',
+      body: abandoned
+        ? `${actorName} abandoned the live match.`
+        : `${actorName} cancelled the match.`,
+      data: {
+        matchId,
+        kind: abandoned ? 'match_abandoned' : 'match_cancelled',
+      },
     },
   );
 }

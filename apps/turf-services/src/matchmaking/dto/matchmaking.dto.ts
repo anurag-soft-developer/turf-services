@@ -19,6 +19,11 @@ const SendMatchRequestSchema = z.object({
   expiresInMinutes: z.coerce.number().int().min(1).optional(),
 });
 
+const CreateCasualMatchSchema = z.object({
+  fromTeamId: z.string().min(1),
+  toTeamId: z.string().min(1),
+});
+
 /**
  * Nest/Express query: `key=a,b` and/or repeated `key=` → trimmed non-empty
  * strings (used for `teamIds`, `statuses`, etc.).
@@ -165,6 +170,9 @@ const UpdateTeamMatchSchema = z
   );
 
 export class SendMatchRequestDto extends createZodDto(SendMatchRequestSchema) {}
+export class CreateCasualMatchDto extends createZodDto(
+  CreateCasualMatchSchema,
+) {}
 export class ListNegotiationsFilterDto extends createZodDto(
   ListNegotiationsFilterSchema,
 ) {}

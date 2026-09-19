@@ -6,6 +6,10 @@ import {
   SportType,
 } from '../../core/sports/sport-types';
 import { resolveId } from '../../core/utils/mongo-ref.util';
+import {
+  announcedGuestId,
+  announcedUserId,
+} from '../../matchmaking/announcedPlayers/announced-player.identity';
 
 const SPORT_SCORING_LABEL: Record<RankingSportType, string> = {
   [SportType.CRICKET]: 'cricket',
@@ -59,10 +63,21 @@ export function assertAnnouncedSquadsForSport(
     );
   }
 
-  const allIds = players.map((p) => p.userId.toString());
-  if (new Set(allIds).size !== allIds.length) {
+  const userIds = players
+    .map((p) => announcedUserId(p))
+    .filter((id): id is string => !!id);
+  if (new Set(userIds).size !== userIds.length) {
     throw new BadRequestException(
       'Duplicate userId in announced players (includes the same player on both teams)',
+    );
+  }
+
+  const guestIds = players
+    .map((p) => announcedGuestId(p))
+    .filter((id): id is string => !!id);
+  if (new Set(guestIds).size !== guestIds.length) {
+    throw new BadRequestException(
+      'Duplicate guestId in announced players (includes the same walk-in on both teams)',
     );
   }
 }

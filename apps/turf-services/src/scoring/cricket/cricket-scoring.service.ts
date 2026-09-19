@@ -6,6 +6,7 @@ import {
   CricketState,
   TeamMatch,
   TeamMatchDocument,
+  TeamMatchSource,
   TeamMatchStatus,
 } from '../../matchmaking/schemas/team-match.schema';
 import { TeamService } from '../../team/team.service';
@@ -40,10 +41,9 @@ import { CricketMatchStatsService } from './cricket-match-stats.service';
 import { CricketRankingPointsService } from './cricket-ranking-points.service';
 import {
   assertAnnouncedPlayingLineup,
-  assertBattingBowlingRoster,
+  assertAnnouncedPlayingParticipant,
   assertLeadershipOnMatchTeams,
-  assertUserOnTeam,
-  assertUsersInTeams,
+  assertUsersInAnnouncedLineup,
 } from './util/cricket-scoring.asserts';
 import {
   CRICKET_INNINGS_PER_MATCH,
@@ -109,7 +109,7 @@ export class CricketScoringService {
 
     assertAnnouncedSquadsForSport(match, SportType.CRICKET);
 
-    await assertUsersInTeams(this.teamMemberService, dto, bat, bowl);
+    assertUsersInAnnouncedLineup(match, dto, bat, bowl);
 
     const summaries = Array.from(
       { length: CRICKET_INNINGS_PER_MATCH },
@@ -208,9 +208,10 @@ export class CricketScoringService {
       );
     }
 
-    await assertBattingBowlingRoster(
-      this.teamMemberService,
+    assertAnnouncedPlayingLineup(
       match,
+      cs.battingTeamId,
+      cs.bowlingTeamId,
       striker,
       nonStriker,
       bowler,
@@ -246,10 +247,11 @@ export class CricketScoringService {
     const dismissed = mapped.dismissedUserId;
     if (mapped.isWicket && !willCompleteAllOut && dto.incomingBatsmanUserId) {
       const incoming = new Types.ObjectId(dto.incomingBatsmanUserId);
-      await assertUserOnTeam(
-        this.teamMemberService,
-        incoming,
+      assertAnnouncedPlayingParticipant(
+        match,
         cs.battingTeamId,
+        incoming,
+        'Incoming batsman',
       );
       if (!dismissed) {
         throw new BadRequestException('Dismissed batsman not set for wicket');
@@ -488,18 +490,20 @@ export class CricketScoringService {
     const overs = await this.overEventModel
       .find({ teamMatchId: match._id })
       .exec();
-    await this.cricketMatchStatsService.applyMatchStats(
-      match,
-      overs,
-      winner?.toString() ?? null,
-      winner === null,
-    );
-    await this.cricketRankingPointsService.applyMatchRankingPoints(
-      match,
-      overs,
-      winner?.toString() ?? null,
-      winner === null,
-    );
+    if (match.source !== TeamMatchSource.CASUAL) {
+      await this.cricketMatchStatsService.applyMatchStats(
+        match,
+        overs,
+        winner?.toString() ?? null,
+        winner === null,
+      );
+      await this.cricketRankingPointsService.applyMatchRankingPoints(
+        match,
+        overs,
+        winner?.toString() ?? null,
+        winner === null,
+      );
+    }
 
     await match.save();
     const populated = await match.populate(TEAM_MATCH_POPULATE);
@@ -707,13 +711,6 @@ export class CricketScoringService {
       );
     }
 
-    await assertBattingBowlingRoster(
-      this.teamMemberService,
-      match,
-      nextStriker,
-      nextNonStriker,
-      nextBowler,
-    );
     assertAnnouncedPlayingLineup(
       match,
       cs.battingTeamId,

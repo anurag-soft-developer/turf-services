@@ -66,14 +66,42 @@ export class UsersService {
     return await user.save();
   }
 
-  async findById(id: string, projection?: string): Promise<UserDocument | null> {
+  async findById(
+    id: string,
+    projection?: string,
+  ): Promise<UserDocument | null>;
+  async findById(
+    ids: string[],
+    projection?: string,
+  ): Promise<UserDocument[]>;
+  async findById(
+    idOrIds: string | string[],
+    projection?: string,
+  ): Promise<UserDocument | null | UserDocument[]> {
+    if (Array.isArray(idOrIds)) {
+      if (!idOrIds.length) {
+        return [];
+      }
+      const objectIds = idOrIds
+        .filter((id) => Types.ObjectId.isValid(id))
+        .map((id) => new Types.ObjectId(id));
+      if (!objectIds.length) {
+        return [];
+      }
+      const query = this.userModel.find({ _id: { $in: objectIds } });
+      if (projection) {
+        query.select(projection);
+      }
+      return query.exec();
+    }
+
     try {
-      const query = this.userModel.findById(id);
+      const query = this.userModel.findById(idOrIds);
       if (projection) {
         query.select(projection);
       }
       return await query.exec();
-    } catch (error) {
+    } catch {
       return null;
     }
   }
@@ -92,8 +120,21 @@ export class UsersService {
     return ids.map((id) => id.toString());
   }
 
-  async findByEmail(email: string): Promise<UserDocument | null> {
-    return await this.userModel.findOne({ email: email.toLowerCase() }).exec();
+  async findByEmail(email: string): Promise<UserDocument | null>;
+  async findByEmail(emails: string[]): Promise<UserDocument[]>;
+  async findByEmail(
+    emailOrEmails: string | string[],
+  ): Promise<UserDocument | null | UserDocument[]> {
+    if (Array.isArray(emailOrEmails)) {
+      if (!emailOrEmails.length) {
+        return [];
+      }
+      const normalized = emailOrEmails.map((e) => e.toLowerCase());
+      return this.userModel.find({ email: { $in: normalized } }).exec();
+    }
+    return this.userModel
+      .findOne({ email: emailOrEmails.toLowerCase() })
+      .exec();
   }
 
   async findByEmailWithPassword(email: string): Promise<UserDocument | null> {

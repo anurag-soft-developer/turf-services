@@ -45,6 +45,7 @@ function teamFromAnnounced(
   userId: string,
 ): string | undefined {
   for (const p of match.announcedPlayers ?? []) {
+    if (!p.userId) continue;
     if (resolveId(p.userId) === resolveId(userId)) {
       return resolveId(p.teamId);
     }

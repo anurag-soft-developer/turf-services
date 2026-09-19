@@ -1,17 +1,20 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { TeamService } from '../../team/team.service';
 import { TeamMemberService } from '../../team-member/team-member.service';
+import type { TeamDocument } from '../../team/schemas/team.schema';
 import {
   AnnouncedPlayer,
   AnnouncedPlayerRole,
   TeamMatch,
   TeamMatchDocument,
+  TeamMatchSource,
 } from '../schemas/team-match.schema';
 import {
   assertCanActForTeam,
@@ -30,6 +33,11 @@ import { StorageLifecycleService } from '../../storage/storage-lifecycle.service
 import { resolveId } from '../../core/utils/mongo-ref.util';
 import { ScoringRealtimeDispatcher } from '../../scoring/common/scoring-realtime-dispatcher.service';
 import { SportType } from '../../team/schemas/team.schema';
+import { UsersService } from '../../users/users.service';
+import {
+  announcedGuestId,
+  announcedUserId,
+} from './announced-player.identity';
 
 @Injectable()
 export class AnnouncedPlayersService {
@@ -41,8 +49,40 @@ export class AnnouncedPlayersService {
     private readonly notificationService: NotificationService,
     private readonly storageLifecycle: StorageLifecycleService,
     private readonly realtimeDispatcher: ScoringRealtimeDispatcher,
+    private readonly usersService: UsersService,
   ) {}
 
+  /**
+   * Leadership (or owner) can always announce.
+   * On casual matches, any active member of the actor team can announce
+   * (supports users who belong to both sides).
+   */
+  private async assertCanAnnounceForTeam(
+    match: TeamMatchDocument,
+    actorTeam: TeamDocument,
+    userId: string,
+  ): Promise<void> {
+    try {
+      await assertCanActForTeam(
+        actorTeam,
+        userId,
+        this.teamService,
+        this.teamMemberService,
+      );
+      return;
+    } catch (err) {
+      if (match.source !== TeamMatchSource.CASUAL) throw err;
+    }
+    const isMember = await this.teamMemberService.hasActiveMembership(
+      actorTeam._id.toString(),
+      userId,
+    );
+    if (!isMember && !this.teamService.isOwner(actorTeam, userId)) {
+      throw new ForbiddenException(
+        'Only team members can announce players for this casual match',
+      );
+    }
+  }
   private async dispatchAnnouncedPlayersUpdated(
     match: TeamMatchDocument,
     userId: string,
@@ -68,34 +108,52 @@ export class AnnouncedPlayersService {
     assertMatchAllowsAnnouncedPlayerEdits(match);
 
     const actorTeam = await this.teamService.requireTeam(dto.actorTeamId);
-    await assertCanActForTeam(
-      actorTeam,
-      userId,
-      this.teamService,
-      this.teamMemberService,
-    );
+    await this.assertCanAnnounceForTeam(match, actorTeam, userId);
     const actorOid = actorTeam._id;
     ensureMatchHasTeam(match, actorOid);
 
     const existing = [...(match.announcedPlayers ?? [])];
     const actorStr = resolveId(actorOid);
 
-    const incomingIds = dto.players.map((p) => p.userId);
-    if (new Set(incomingIds).size !== incomingIds.length) {
+    const incomingUserIds = dto.players
+      .map((p) => p.userId)
+      .filter((id): id is string => !!id);
+    if (new Set(incomingUserIds).size !== incomingUserIds.length) {
       throw new BadRequestException('Duplicate userId in players payload');
     }
 
-    await this.assertUsersAreActiveMembers(
-      actorOid,
-      incomingIds.map((id) => new Types.ObjectId(id)),
-    );
+    const isCasual = match.source === TeamMatchSource.CASUAL;
+    for (const p of dto.players) {
+      if (p.isGuest && !isCasual) {
+        throw new BadRequestException(
+          'Guests can only be announced on casual matches',
+        );
+      }
+    }
 
-    for (const uid of incomingIds) {
+    const rosterUserIds = dto.players
+      .filter((p) => !p.isGuest && p.userId)
+      .map((p) => new Types.ObjectId(p.userId));
+    await this.assertUsersAreActiveMembers(actorOid, rosterUserIds);
+
+    const registeredGuestUserIds = dto.players
+      .filter((p) => p.isGuest && p.userId)
+      .map((p) => p.userId as string);
+    if (registeredGuestUserIds.length) {
+      const users = await this.usersService.findById(registeredGuestUserIds);
+      const found = new Set(users.map((u) => u._id.toString()));
+      for (const uid of registeredGuestUserIds) {
+        if (!found.has(uid)) {
+          throw new BadRequestException(`User ${uid} was not found`);
+        }
+      }
+    }
+
+    for (const uid of incomingUserIds) {
       if (
         existing.some(
           (p) =>
-            resolveId(p.teamId) === actorStr &&
-            resolveId(p.userId) === resolveId(uid),
+            resolveId(p.teamId) === actorStr && announcedUserId(p) === uid,
         )
       ) {
         throw new ConflictException(
@@ -105,8 +163,7 @@ export class AnnouncedPlayersService {
       if (
         existing.some(
           (p) =>
-            resolveId(p.teamId) !== actorStr &&
-            resolveId(p.userId) === resolveId(uid),
+            resolveId(p.teamId) !== actorStr && announcedUserId(p) === uid,
         )
       ) {
         throw new ConflictException(
@@ -115,27 +172,37 @@ export class AnnouncedPlayersService {
       }
     }
 
-    const additions: AnnouncedPlayer[] = dto.players.map((p) => ({
-      teamId: actorOid,
-      name: p.name,
-      avatar: p.avatar,
-      email: p.email,
-      userId: new Types.ObjectId(p.userId),
-      is_substitute: p.is_substitute ?? false,
-      role: p.role as AnnouncedPlayerRole,
-      isCaption: p.isCaption ?? false,
-      isWiseCaption: p.isWiseCaption ?? false,
-    }));
+    const additions: AnnouncedPlayer[] = dto.players.map((p) => {
+      const isWalkIn = p.isGuest && !p.userId;
+      return {
+        teamId: actorOid,
+        name: p.name,
+        avatar: p.avatar,
+        email: p.email,
+        ...(p.userId ? { userId: new Types.ObjectId(p.userId) } : {}),
+        isGuest: p.isGuest ?? false,
+        ...(isWalkIn ? { guestId: new Types.ObjectId() } : {}),
+        is_substitute: p.is_substitute ?? false,
+        role: p.role as AnnouncedPlayerRole,
+        isCaption: p.isCaption ?? false,
+        isWiseCaption: p.isWiseCaption ?? false,
+      };
+    });
 
     match.announcedPlayers = [...existing, ...additions];
     await match.save();
     await this.dispatchAnnouncedPlayersUpdated(match, userId);
-    await notifyAnnouncedPlayers(this.notificationService, {
-      userIds: incomingIds,
-      matchId,
-      added: true,
-      excludeUserId: userId,
-    });
+    const notifyUserIds = dto.players
+      .filter((p) => !p.isGuest && p.userId)
+      .map((p) => p.userId as string);
+    if (notifyUserIds.length > 0) {
+      await notifyAnnouncedPlayers(this.notificationService, {
+        userIds: notifyUserIds,
+        matchId,
+        added: true,
+        excludeUserId: userId,
+      });
+    }
 
     const addedAvatars = additions
       .map((p) => p.avatar)
@@ -162,23 +229,22 @@ export class AnnouncedPlayersService {
     assertMatchAllowsAnnouncedPlayerEdits(match);
 
     const actorTeam = await this.teamService.requireTeam(dto.actorTeamId);
-    await assertCanActForTeam(
-      actorTeam,
-      userId,
-      this.teamService,
-      this.teamMemberService,
-    );
+    await this.assertCanAnnounceForTeam(match, actorTeam, userId);
     const actorOid = actorTeam._id;
     ensureMatchHasTeam(match, actorOid);
 
     const existing = [...(match.announcedPlayers ?? [])];
     const actorStr = resolveId(actorOid);
 
-    for (const uid of dto.userIds) {
+    const removeUserSet = new Set((dto.userIds ?? []).map((id) => resolveId(id)));
+    const removeGuestSet = new Set(
+      (dto.guestIds ?? []).map((id) => resolveId(id)),
+    );
+
+    for (const uid of removeUserSet) {
       const ok = existing.some(
         (p) =>
-          resolveId(p.teamId) === actorStr &&
-          resolveId(p.userId) === resolveId(uid),
+          resolveId(p.teamId) === actorStr && announcedUserId(p) === uid,
       );
       if (!ok) {
         throw new BadRequestException(
@@ -186,30 +252,48 @@ export class AnnouncedPlayersService {
         );
       }
     }
-    const removeSet = new Set(dto.userIds.map((id) => resolveId(id)));
-    const removedAvatars = existing
-      .filter(
+    for (const gid of removeGuestSet) {
+      const ok = existing.some(
         (p) =>
-          resolveId(p.teamId) === actorStr &&
-          removeSet.has(resolveId(p.userId)) &&
-          p.avatar,
-      )
-      .map((p) => p.avatar as string);
+          resolveId(p.teamId) === actorStr && announcedGuestId(p) === gid,
+      );
+      if (!ok) {
+        throw new BadRequestException(
+          `Guest ${gid} is not in your announced squad on this match`,
+        );
+      }
+    }
 
-    match.announcedPlayers = existing.filter(
-      (p) =>
-        !(
-          resolveId(p.teamId) === actorStr && removeSet.has(resolveId(p.userId))
-        ),
-    );
+    const shouldRemove = (p: AnnouncedPlayer): boolean => {
+      if (resolveId(p.teamId) !== actorStr) return false;
+      const uid = announcedUserId(p);
+      const gid = announcedGuestId(p);
+      return (
+        (uid != null && removeUserSet.has(uid)) ||
+        (gid != null && removeGuestSet.has(gid))
+      );
+    };
+
+    const removed = existing.filter(shouldRemove);
+    const removedAvatars = removed
+      .map((p) => p.avatar)
+      .filter((avatar): avatar is string => !!avatar);
+
+    match.announcedPlayers = existing.filter((p) => !shouldRemove(p));
     await match.save();
     await this.dispatchAnnouncedPlayersUpdated(match, userId);
-    await notifyAnnouncedPlayers(this.notificationService, {
-      userIds: dto.userIds,
-      matchId,
-      added: false,
-      excludeUserId: userId,
-    });
+    const notifyUserIds = removed
+      .filter((p) => !p.isGuest)
+      .map((p) => announcedUserId(p))
+      .filter((id): id is string => !!id);
+    if (notifyUserIds.length > 0) {
+      await notifyAnnouncedPlayers(this.notificationService, {
+        userIds: notifyUserIds,
+        matchId,
+        added: false,
+        excludeUserId: userId,
+      });
+    }
 
     if (removedAvatars.length > 0) {
       await this.storageLifecycle.deleteUrlsForUser(userId, removedAvatars);
@@ -227,12 +311,7 @@ export class AnnouncedPlayersService {
     assertMatchAllowsAnnouncedPlayerEdits(match);
 
     const actorTeam = await this.teamService.requireTeam(dto.actorTeamId);
-    await assertCanActForTeam(
-      actorTeam,
-      userId,
-      this.teamService,
-      this.teamMemberService,
-    );
+    await this.assertCanAnnounceForTeam(match, actorTeam, userId);
     const actorOid = actorTeam._id;
     ensureMatchHasTeam(match, actorOid);
 
@@ -240,14 +319,15 @@ export class AnnouncedPlayersService {
     const actorStr = resolveId(actorOid);
 
     for (const u of dto.updates) {
-      const idx = existing.findIndex(
-        (p) =>
-          resolveId(p.teamId) === actorStr &&
-          resolveId(p.userId) === resolveId(u.userId),
-      );
+      const idx = existing.findIndex((p) => {
+        if (resolveId(p.teamId) !== actorStr) return false;
+        if (u.userId) return announcedUserId(p) === resolveId(u.userId);
+        if (u.guestId) return announcedGuestId(p) === resolveId(u.guestId);
+        return false;
+      });
       if (idx === -1) {
         throw new BadRequestException(
-          `User ${u.userId} is not in your announced squad on this match`,
+          `${u.userId ? `User ${u.userId}` : `Guest ${u.guestId}`} is not in your announced squad on this match`,
         );
       }
       const row = existing[idx];
@@ -257,7 +337,7 @@ export class AnnouncedPlayersService {
         await this.storageLifecycle.syncUrlArrayOnEntitySave({
           userId,
           entityType: 'announced_player',
-          entityId: `${matchId}:${u.userId}`,
+          entityId: `${matchId}:${u.userId ?? u.guestId}`,
           previousUrls: previousAvatar ? [previousAvatar] : [],
           nextUrls: u.avatar ? [u.avatar] : [],
         });
@@ -286,12 +366,7 @@ export class AnnouncedPlayersService {
     }
     const match = await requireTeamMatch(this.teamMatchModel, matchId);
     const actorTeam = await this.teamService.requireTeam(actorTeamId);
-    await assertCanActForTeam(
-      actorTeam,
-      userId,
-      this.teamService,
-      this.teamMemberService,
-    );
+    await this.assertCanAnnounceForTeam(match, actorTeam, userId);
     ensureMatchHasTeam(match, actorTeam._id);
     return this.announcedPlayersForTeam(match, actorTeam._id);
   }

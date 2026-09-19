@@ -25,6 +25,7 @@ export type MatchmakingNotificationKind =
   | 'match_turf_decided'
   | 'match_schedule_finalized'
   | 'match_cancelled'
+  | 'match_abandoned'
   | 'match_result_recorded'
   | 'match_updated'
   | 'announced_player_added'
@@ -94,6 +95,7 @@ export type MatchmakingNotificationData =
   | { kind: 'match_turf_decided'; matchId: string; accepted: boolean }
   | { kind: 'match_schedule_finalized'; matchId: string }
   | { kind: 'match_cancelled'; matchId: string }
+  | { kind: 'match_abandoned'; matchId: string }
   | {
       kind: 'match_result_recorded';
       matchId: string;

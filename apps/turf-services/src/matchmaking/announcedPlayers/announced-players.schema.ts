@@ -29,12 +29,21 @@ export class AnnouncedPlayer {
   @Prop({ type: String, trim: true, lowercase: true })
   email?: string;
 
+  /** Registered user (roster member or registered guest). Omit for walk-in guests. */
   @Prop({
     type: MongooseSchema.Types.ObjectId,
     ref: User.name,
-    required: true,
+    required: false,
   })
-  userId!: Types.ObjectId;
+  userId?: Types.ObjectId;
+
+  /** True for registered guests and walk-ins. Roster members stay false. */
+  @Prop({ type: Boolean, default: false })
+  isGuest!: boolean;
+
+  /** Server-generated id for walk-in guests (no User). Used as the scoring participant id. */
+  @Prop({ type: MongooseSchema.Types.ObjectId, required: false })
+  guestId?: Types.ObjectId;
 
   @Prop({ type: Boolean, default: false })
   is_substitute!: boolean;

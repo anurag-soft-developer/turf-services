@@ -16,6 +16,7 @@ import {
   TeamMemberSchema,
 } from '../team-member/schemas/team-member.schema';
 import { NotificationModule } from '../notification/notification.module';
+import { UsersModule } from '../users/users.module';
 import { StorageModule } from '../storage/storage.module';
 import { ScoringModule } from '../scoring/scoring.module';
 import { AnnouncedPlayersController } from './announcedPlayers/announced-players.controller';
@@ -35,6 +36,7 @@ import { TeamMatch, TeamMatchSchema } from './schemas/team-match.schema';
     ]),
     TeamModule,
     TeamMemberModule,
+    UsersModule,
     NotificationModule,
     StorageModule,
     ScoringModule,

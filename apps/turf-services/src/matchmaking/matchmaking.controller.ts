@@ -23,6 +23,7 @@ import {
   RecordMatchResultDto,
   RespondMatchRequestDto,
   SendMatchRequestDto,
+  CreateCasualMatchDto,
 } from './dto/matchmaking.dto';
 import { MatchmakingService } from './matchmaking.service';
 
@@ -37,6 +38,14 @@ export class MatchmakingController {
     @CurrentUser('_id') userId: Types.ObjectId,
   ) {
     return this.matchmakingService.sendRequest(userId.toString(), dto);
+  }
+
+  @Post('casual')
+  async createCasualMatch(
+    @Body() dto: CreateCasualMatchDto,
+    @CurrentUser('_id') userId: Types.ObjectId,
+  ) {
+    return this.matchmakingService.createCasualMatch(userId.toString(), dto);
   }
 
   @Get('requests')

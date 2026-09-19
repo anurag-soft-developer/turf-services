@@ -6,63 +6,56 @@ import { TeamService } from '../../../team/team.service';
 import { TeamMemberService } from '../../../team-member/team-member.service';
 import { CreateCricketSessionDto } from '../dto/cricket-scoring.dto';
 import { resolveId } from '../../../core/utils/mongo-ref.util';
+import { findAnnouncedPlayingPlayer } from '../../../matchmaking/announcedPlayers/announced-player.identity';
 
-export async function assertUserOnTeam(
-  teamMemberService: TeamMemberService,
-  userId: Types.ObjectId,
+export function assertAnnouncedPlayingParticipant(
+  match: TeamMatchDocument,
   teamId: Types.ObjectId,
-): Promise<void> {
-  const ok = await teamMemberService.hasActiveMembership(
-    teamId.toString(),
-    userId.toString(),
+  scoringId: Types.ObjectId,
+  label: string,
+): void {
+  const ok = findAnnouncedPlayingPlayer(
+    match,
+    resolveId(teamId),
+    scoringId.toString(),
   );
   if (!ok) {
     throw new BadRequestException(
-      `User ${userId.toString()} is not an active member of team ${teamId.toString()}`,
+      `${label} is not in the announced playing XI for that team`,
     );
   }
 }
 
-export async function assertUsersInTeams(
-  teamMemberService: TeamMemberService,
+export function assertUsersInAnnouncedLineup(
+  match: TeamMatchDocument,
   dto: CreateCricketSessionDto,
   battingTeamId: Types.ObjectId,
   bowlingTeamId: Types.ObjectId,
-): Promise<void> {
+): void {
   if (dto.strikerUserId) {
-    await assertUserOnTeam(
-      teamMemberService,
-      new Types.ObjectId(dto.strikerUserId),
+    assertAnnouncedPlayingParticipant(
+      match,
       battingTeamId,
+      new Types.ObjectId(dto.strikerUserId),
+      'Striker',
     );
   }
   if (dto.nonStrikerUserId) {
-    await assertUserOnTeam(
-      teamMemberService,
-      new Types.ObjectId(dto.nonStrikerUserId),
+    assertAnnouncedPlayingParticipant(
+      match,
       battingTeamId,
+      new Types.ObjectId(dto.nonStrikerUserId),
+      'Non-striker',
     );
   }
   if (dto.bowlerUserId) {
-    await assertUserOnTeam(
-      teamMemberService,
-      new Types.ObjectId(dto.bowlerUserId),
+    assertAnnouncedPlayingParticipant(
+      match,
       bowlingTeamId,
+      new Types.ObjectId(dto.bowlerUserId),
+      'Bowler',
     );
   }
-}
-
-export async function assertBattingBowlingRoster(
-  teamMemberService: TeamMemberService,
-  match: TeamMatchDocument,
-  striker: Types.ObjectId,
-  nonStriker: Types.ObjectId,
-  bowler: Types.ObjectId,
-): Promise<void> {
-  const cs = match.cricketState!;
-  await assertUserOnTeam(teamMemberService, striker, cs.battingTeamId);
-  await assertUserOnTeam(teamMemberService, nonStriker, cs.battingTeamId);
-  await assertUserOnTeam(teamMemberService, bowler, cs.bowlingTeamId);
 }
 
 /** Striker / non-striker / bowler must each appear in the playing (non-substitute) announced XI for their team. */
@@ -74,29 +67,14 @@ export function assertAnnouncedPlayingLineup(
   nonStriker: Types.ObjectId,
   bowler: Types.ObjectId,
 ): void {
-  const players = match.announcedPlayers ?? [];
-
-  const assertOnTeam = (
-    label: string,
-    userId: Types.ObjectId,
-    teamId: Types.ObjectId,
-  ): void => {
-    const ok = players.some(
-      (p) =>
-        resolveId(p.userId) === resolveId(userId) &&
-        resolveId(p.teamId) === resolveId(teamId) &&
-        !p.is_substitute,
-    );
-    if (!ok) {
-      throw new BadRequestException(
-        `${label} is not in the announced playing XI for that team`,
-      );
-    }
-  };
-
-  assertOnTeam('Striker', striker, battingTeamId);
-  assertOnTeam('Non-striker', nonStriker, battingTeamId);
-  assertOnTeam('Bowler', bowler, bowlingTeamId);
+  assertAnnouncedPlayingParticipant(match, battingTeamId, striker, 'Striker');
+  assertAnnouncedPlayingParticipant(
+    match,
+    battingTeamId,
+    nonStriker,
+    'Non-striker',
+  );
+  assertAnnouncedPlayingParticipant(match, bowlingTeamId, bowler, 'Bowler');
 }
 
 export async function assertLeadershipOnMatchTeams(

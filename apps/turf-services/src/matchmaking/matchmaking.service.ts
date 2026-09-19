@@ -14,7 +14,7 @@ import {
   paginateSortedByDistance,
 } from '../core/utils/geo-near-page.util';
 import { GeoLocation } from '../core/schemas/geo-location.schema';
-import { Team, TeamDocument } from '../team/schemas/team.schema';
+import { SportType, Team, TeamDocument } from '../team/schemas/team.schema';
 import { TeamService } from '../team/team.service';
 import { TeamMemberService } from '../team-member/team-member.service';
 import { TeamMember } from '../team-member/schemas/team-member.schema';
@@ -43,6 +43,7 @@ import {
   RecordMatchResultDto,
   RespondMatchRequestDto,
   SendMatchRequestDto,
+  CreateCasualMatchDto,
 } from './dto/matchmaking.dto';
 import {
   TeamMatch,
@@ -154,6 +155,102 @@ export class MatchmakingService {
         fromTeam,
         userId,
       );
+      return populateTeamMatch(created);
+    } catch {
+      throw new ConflictException(
+        'An active match request already exists for this team pair',
+      );
+    }
+  }
+
+  async createCasualMatch(
+    userId: string,
+    dto: CreateCasualMatchDto,
+  ): Promise<TeamMatchDocument> {
+    if (dto.fromTeamId === dto.toTeamId) {
+      throw new BadRequestException('A team cannot play itself');
+    }
+
+    const [fromTeam, toTeam] = await Promise.all([
+      this.teamService.requireTeam(dto.fromTeamId),
+      this.teamService.requireTeam(dto.toTeamId),
+    ]);
+    await assertCanActForTeam(
+      fromTeam,
+      userId,
+      this.teamService,
+      this.teamMemberService,
+    );
+    assertTeamEligibleForMatching(fromTeam);
+    assertTeamEligibleForMatching(toTeam);
+
+    if (fromTeam.sportType !== toTeam.sportType) {
+      throw new BadRequestException('Teams must be in the same sport');
+    }
+    if (fromTeam.sportType !== SportType.CRICKET) {
+      throw new BadRequestException(
+        'Casual matches are currently available for cricket only',
+      );
+    }
+
+    const fromId = fromTeam._id;
+    const toId = toTeam._id;
+    const actorOnOpponentTeam =
+      this.teamService.isOwner(toTeam, userId) ||
+      (await this.teamMemberService.hasActiveMembership(
+        toId.toString(),
+        userId,
+      ));
+
+    const existingCasual = await this.teamMatchModel.findOne({
+      source: TeamMatchSource.CASUAL,
+      status: {
+        $in: [
+          TeamMatchStatus.REQUESTED,
+          TeamMatchStatus.ACCEPTED,
+          TeamMatchStatus.NEGOTIATING,
+          TeamMatchStatus.SCHEDULE_FINALIZED,
+          TeamMatchStatus.ONGOING,
+        ],
+      },
+      $or: [
+        { fromTeam: fromId, toTeam: toId },
+        { fromTeam: toId, toTeam: fromId },
+      ],
+    });
+    if (existingCasual) {
+      throw new ConflictException(
+        'An active casual match already exists for this team pair',
+      );
+    }
+
+    const now = new Date();
+    const uid = new Types.ObjectId(userId);
+    // Member of both teams → start ready to play; otherwise opponent must accept.
+    const status = actorOnOpponentTeam
+      ? TeamMatchStatus.SCHEDULE_FINALIZED
+      : TeamMatchStatus.REQUESTED;
+
+    try {
+      const created = await this.teamMatchModel.create({
+        source: TeamMatchSource.CASUAL,
+        fromTeam: fromId,
+        toTeam: toId,
+        sportType: fromTeam.sportType,
+        status,
+        statusUpdatedBy: uid,
+        statusUpdatedAt: now,
+      });
+      if (status === TeamMatchStatus.REQUESTED) {
+        await notifyMatchRequestReceived(
+          this.notificationService,
+          this.teamMemberModel,
+          this.teamService,
+          created,
+          fromTeam,
+          userId,
+        );
+      }
       return populateTeamMatch(created);
     } catch {
       throw new ConflictException(
@@ -731,21 +828,29 @@ export class MatchmakingService {
       this.teamService,
       this.teamMemberService,
     );
-    assertSchedulePhaseActionable(match);
     ensureMatchHasTeam(match, actorTeam._id);
 
-    if (
-      ![
-        TeamMatchStatus.REQUESTED,
-        TeamMatchStatus.ACCEPTED,
-        TeamMatchStatus.NEGOTIATING,
-      ].includes(match.status)
-    ) {
+    const cancellable: TeamMatchStatus[] = [
+      TeamMatchStatus.REQUESTED,
+      TeamMatchStatus.ACCEPTED,
+      TeamMatchStatus.NEGOTIATING,
+      TeamMatchStatus.SCHEDULE_FINALIZED,
+      TeamMatchStatus.ONGOING,
+    ];
+    if (!cancellable.includes(match.status)) {
       throw new BadRequestException('This match can no longer be cancelled');
     }
 
-    applyStatusUpdate(match, TeamMatchStatus.CANCELLED, userId);
+    const abandoning = match.status === TeamMatchStatus.ONGOING;
+    applyStatusUpdate(
+      match,
+      abandoning ? TeamMatchStatus.ABANDONED : TeamMatchStatus.CANCELLED,
+      userId,
+    );
     match.closedAt = new Date();
+    if (abandoning) {
+      match.winnerTeam = undefined;
+    }
     if (dto.reason) {
       match.notes = dto.reason;
     }
@@ -757,6 +862,7 @@ export class MatchmakingService {
       match,
       actorTeam._id.toString(),
       userId,
+      { abandoned: abandoning },
     );
     return populateTeamMatch(match);
   }

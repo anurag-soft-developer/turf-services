@@ -36,9 +36,10 @@ export {
   FootballStateSchema,
 } from './team-match-scoring.embedded';
 
-/** How the match record was created (e.g. feed challenge). */
+/** How the match record was created (e.g. feed challenge or casual). */
 export enum TeamMatchSource {
   FEED = 'feed',
+  CASUAL = 'casual',
 }
 
 /**
