@@ -187,9 +187,10 @@ export class MatchmakingService {
     if (fromTeam.sportType !== toTeam.sportType) {
       throw new BadRequestException('Teams must be in the same sport');
     }
-    if (fromTeam.sportType !== SportType.CRICKET) {
+    const casualSports = new Set([SportType.CRICKET, SportType.FOOTBALL]);
+    if (!casualSports.has(fromTeam.sportType)) {
       throw new BadRequestException(
-        'Casual matches are currently available for cricket only',
+        'Casual matches are not available for this sport',
       );
     }
 

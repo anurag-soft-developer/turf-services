@@ -27,3 +27,14 @@ export function findAnnouncedPlayingPlayer(
       announcedScoringId(p) === scoringId,
   );
 }
+
+export function findAnnouncedSquadPlayer(
+  match: { announcedPlayers?: AnnouncedPlayer[] },
+  teamId: string,
+  scoringId: string,
+): AnnouncedPlayer | undefined {
+  return (match.announcedPlayers ?? []).find(
+    (p) =>
+      resolveId(p.teamId) === teamId && announcedScoringId(p) === scoringId,
+  );
+}

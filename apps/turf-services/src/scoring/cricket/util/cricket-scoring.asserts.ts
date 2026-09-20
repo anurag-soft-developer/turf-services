@@ -6,25 +6,9 @@ import { TeamService } from '../../../team/team.service';
 import { TeamMemberService } from '../../../team-member/team-member.service';
 import { CreateCricketSessionDto } from '../dto/cricket-scoring.dto';
 import { resolveId } from '../../../core/utils/mongo-ref.util';
-import { findAnnouncedPlayingPlayer } from '../../../matchmaking/announcedPlayers/announced-player.identity';
+import { assertAnnouncedPlayingParticipant } from '../../common/scoring-participant.asserts';
 
-export function assertAnnouncedPlayingParticipant(
-  match: TeamMatchDocument,
-  teamId: Types.ObjectId,
-  scoringId: Types.ObjectId,
-  label: string,
-): void {
-  const ok = findAnnouncedPlayingPlayer(
-    match,
-    resolveId(teamId),
-    scoringId.toString(),
-  );
-  if (!ok) {
-    throw new BadRequestException(
-      `${label} is not in the announced playing XI for that team`,
-    );
-  }
-}
+export { assertAnnouncedPlayingParticipant } from '../../common/scoring-participant.asserts';
 
 export function assertUsersInAnnouncedLineup(
   match: TeamMatchDocument,

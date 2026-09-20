@@ -8,6 +8,7 @@ import {
   FootballState,
   TeamMatch,
   TeamMatchDocument,
+  TeamMatchSource,
   TeamMatchStatus,
 } from '../../matchmaking/schemas/team-match.schema';
 import { TeamService } from '../../team/team.service';
@@ -20,6 +21,10 @@ import {
   requireTeamMatchForScoring,
 } from '../common/scoring.helpers';
 import { assertAnnouncedSquadsForSport } from '../common/scoring-squad.asserts';
+import {
+  assertAnnouncedPlayingParticipant,
+  assertAnnouncedSquadParticipant,
+} from '../common/scoring-participant.asserts';
 import { ScoringRealtimeDispatcher } from '../common/scoring-realtime-dispatcher.service';
 import { resolveId } from '../../core/utils/mongo-ref.util';
 import {
@@ -39,10 +44,7 @@ import {
 } from './football-points.calculator';
 import { FootballMatchStatsService } from './football-match-stats.service';
 import { FootballRankingPointsService } from './football-ranking-points.service';
-import {
-  assertLeadershipOnMatchTeams,
-  assertUserOnTeam,
-} from './util/football-scoring.asserts';
+import { assertLeadershipOnMatchTeams } from './util/football-scoring.asserts';
 import {
   applyFootballScoreDeltas,
   createFootballInningsSummaries,
@@ -160,7 +162,7 @@ export class FootballScoringService {
       .lean();
     const sequence = (last?.sequence ?? 0) + 1;
 
-    const built = await this.buildEventFromPayload(match, dto, sequence);
+    const built = this.buildEventFromPayload(match, dto, sequence);
 
     await Promise.all([built.save(), match.save()]);
 
@@ -352,18 +354,20 @@ export class FootballScoringService {
       .sort({ sequence: 1 })
       .lean();
 
-    await this.footballMatchStatsService.applyMatchStats(
-      match,
-      events as FootballMatchEvent[],
-      winner?.toString() ?? null,
-      isDraw,
-    );
-    await this.footballRankingPointsService.applyMatchRankingPoints(
-      match,
-      events as FootballMatchEvent[],
-      winner?.toString() ?? null,
-      isDraw,
-    );
+    if (match.source !== TeamMatchSource.CASUAL) {
+      await this.footballMatchStatsService.applyMatchStats(
+        match,
+        events as FootballMatchEvent[],
+        winner?.toString() ?? null,
+        isDraw,
+      );
+      await this.footballRankingPointsService.applyMatchRankingPoints(
+        match,
+        events as FootballMatchEvent[],
+        winner?.toString() ?? null,
+        isDraw,
+      );
+    }
 
     await match.save();
     const populated = await match.populate(TEAM_MATCH_POPULATE);
@@ -543,11 +547,11 @@ export class FootballScoringService {
     throw new BadRequestException('beneficiaryTeamId must be a match team');
   }
 
-  private async buildEventFromPayload(
+  private buildEventFromPayload(
     match: TeamMatchDocument,
     dto: AppendFootballEventDto,
     sequence: number,
-  ): Promise<FootballMatchEventDocument> {
+  ): FootballMatchEventDocument {
     const p = dto.payload;
     const fs = match.footballState!;
     const innings = fs.currentInnings;
@@ -568,12 +572,13 @@ export class FootballScoringService {
       case 'goal': {
         const ben = new Types.ObjectId(p.beneficiaryTeamId);
         const scorer = new Types.ObjectId(p.scorerUserId);
-        await assertUserOnTeam(this.teamMemberService, scorer, ben);
+        assertAnnouncedPlayingParticipant(match, ben, scorer, 'Scorer');
         if (p.assistUserId) {
-          await assertUserOnTeam(
-            this.teamMemberService,
-            new Types.ObjectId(p.assistUserId),
+          assertAnnouncedPlayingParticipant(
+            match,
             ben,
+            new Types.ObjectId(p.assistUserId),
+            'Assist',
           );
         }
         const { d1, d2 } = this.scoreDeltasForBeneficiary(match, ben);
@@ -594,10 +599,11 @@ export class FootballScoringService {
         const ben = new Types.ObjectId(p.beneficiaryTeamId);
         const conceding = new Types.ObjectId(p.concedingPlayerUserId);
         const concedingTeam = this.otherTeam(match, ben);
-        await assertUserOnTeam(
-          this.teamMemberService,
-          conceding,
+        assertAnnouncedPlayingParticipant(
+          match,
           concedingTeam,
+          conceding,
+          'Conceding player',
         );
         const { d1, d2 } = this.scoreDeltasForBeneficiary(match, ben);
         applyFootballScoreDeltas(fs, d1, d2);
@@ -613,7 +619,7 @@ export class FootballScoringService {
       case 'yellow_card': {
         const teamId = new Types.ObjectId(p.teamId);
         const player = new Types.ObjectId(p.playerUserId);
-        await assertUserOnTeam(this.teamMemberService, player, teamId);
+        assertAnnouncedPlayingParticipant(match, teamId, player, 'Player');
         return new this.footballEventModel({
           ...base,
           kind: FootballEventKind.YELLOW_CARD,
@@ -626,7 +632,7 @@ export class FootballScoringService {
       case 'red_card': {
         const teamId = new Types.ObjectId(p.teamId);
         const player = new Types.ObjectId(p.playerUserId);
-        await assertUserOnTeam(this.teamMemberService, player, teamId);
+        assertAnnouncedPlayingParticipant(match, teamId, player, 'Player');
         return new this.footballEventModel({
           ...base,
           kind: FootballEventKind.RED_CARD,
@@ -638,15 +644,17 @@ export class FootballScoringService {
       }
       case 'substitution': {
         const teamId = new Types.ObjectId(p.teamId);
-        await assertUserOnTeam(
-          this.teamMemberService,
+        assertAnnouncedPlayingParticipant(
+          match,
+          teamId,
           new Types.ObjectId(p.playerOffUserId),
-          teamId,
+          'Player off',
         );
-        await assertUserOnTeam(
-          this.teamMemberService,
-          new Types.ObjectId(p.playerOnUserId),
+        assertAnnouncedSquadParticipant(
+          match,
           teamId,
+          new Types.ObjectId(p.playerOnUserId),
+          'Player on',
         );
         return new this.footballEventModel({
           ...base,
@@ -661,7 +669,7 @@ export class FootballScoringService {
       case 'penalty_scored': {
         const ben = new Types.ObjectId(p.beneficiaryTeamId);
         const taker = new Types.ObjectId(p.takerUserId);
-        await assertUserOnTeam(this.teamMemberService, taker, ben);
+        assertAnnouncedPlayingParticipant(match, ben, taker, 'Taker');
         const { d1, d2 } = this.scoreDeltasForBeneficiary(match, ben);
         applyFootballScoreDeltas(fs, d1, d2);
         return new this.footballEventModel({
@@ -676,7 +684,7 @@ export class FootballScoringService {
       case 'penalty_missed': {
         const teamId = new Types.ObjectId(p.teamId);
         const taker = new Types.ObjectId(p.takerUserId);
-        await assertUserOnTeam(this.teamMemberService, taker, teamId);
+        assertAnnouncedPlayingParticipant(match, teamId, taker, 'Taker');
         return new this.footballEventModel({
           ...base,
           kind: FootballEventKind.PENALTY_MISSED,
