@@ -12,6 +12,7 @@ export enum NotificationModule {
   FOLLOWINGS = 'followings',
   WITHDRAWALS = 'withdrawals',
   TURF_APPROVAL = 'turfApproval',
+  SUPPORT = 'support',
 }
 
 @Schema({

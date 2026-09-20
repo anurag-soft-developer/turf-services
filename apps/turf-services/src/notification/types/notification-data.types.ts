@@ -1,6 +1,7 @@
 import type { TeamMatchStatus } from '../../matchmaking/schemas/team-match.schema';
 import type { WithdrawalStatus } from '../../withdrawals/interfaces/withdrawal.interface';
 import type { WalletType } from '../../wallet/interfaces/wallet.interface';
+import type { SupportQueryStatus } from '../../support/interfaces/support.interface';
 
 export type TurfBookingNotificationKind =
   | 'booking_paid'
@@ -54,6 +55,10 @@ export type TurfApprovalNotificationKind =
   | 'turf_published'
   | 'turf_rejected';
 
+export type SupportNotificationKind =
+  | 'support_replied'
+  | 'support_status_changed';
+
 export type NotificationKind =
   | TurfBookingNotificationKind
   | EventBookingNotificationKind
@@ -61,7 +66,8 @@ export type NotificationKind =
   | TeamNotificationKind
   | FollowingNotificationKind
   | WithdrawalNotificationKind
-  | TurfApprovalNotificationKind;
+  | TurfApprovalNotificationKind
+  | SupportNotificationKind;
 
 export type TurfBookingNotificationData =
   | { kind: 'booking_paid'; bookingId: string }
@@ -181,6 +187,14 @@ export type TurfApprovalNotificationData =
   | { kind: 'turf_published'; turfId: string }
   | { kind: 'turf_rejected'; turfId: string; rejectionReason?: string };
 
+export type SupportNotificationData =
+  | { kind: 'support_replied'; queryId: string }
+  | {
+      kind: 'support_status_changed';
+      queryId: string;
+      status: SupportQueryStatus;
+    };
+
 export type NotificationData =
   | TurfBookingNotificationData
   | EventBookingNotificationData
@@ -188,4 +202,5 @@ export type NotificationData =
   | TeamNotificationData
   | FollowingNotificationData
   | WithdrawalNotificationData
-  | TurfApprovalNotificationData;
+  | TurfApprovalNotificationData
+  | SupportNotificationData;

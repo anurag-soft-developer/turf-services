@@ -9,6 +9,7 @@ import type {
   TurfApprovalNotificationData,
   TurfBookingNotificationData,
   WithdrawalNotificationData,
+  SupportNotificationData,
 } from '../types/notification-data.types';
 
 const createNotificationSchema = z.object({
@@ -80,6 +81,11 @@ export type CreateNotificationInput =
       recipientUserId: string;
       module: NotificationModule.TURF_APPROVAL;
       data: TurfApprovalNotificationData;
+    })
+  | (NotificationPayloadBase & {
+      recipientUserId: string;
+      module: NotificationModule.SUPPORT;
+      data: SupportNotificationData;
     });
 
 export type NotificationBaseDto = Omit<

@@ -24,6 +24,7 @@ import { StorageModule } from './storage/storage.module';
 import { WebhookModule } from './webhook/webhook.module';
 import { ScoringModule } from './scoring/scoring.module';
 import { WithdrawalsModule } from './withdrawals/withdrawals.module';
+import { SupportModule } from './support/support.module';
 import { WalletModule } from './wallet/wallet.module';
 import { EventsModule } from './events/events.module';
 import { EventBookingModule } from './event-booking/event-booking.module';
@@ -58,6 +59,7 @@ import { InternalJobsModule } from './jobs/internal-jobs.module';
     StorageModule,
     WalletModule,
     WithdrawalsModule,
+    SupportModule,
     DashboardModule,
     EngagementModule,
     ExploreModule,
