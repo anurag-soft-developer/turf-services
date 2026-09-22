@@ -6,8 +6,10 @@ import type {
 } from '../../core/points/ranking-points.types';
 import { TeamMatchDocument } from '../../matchmaking/schemas/team-match.schema';
 import {
+  ballEventsOf,
   CricketBallEvent,
   CricketOverEventDocument,
+  CricketScoringEntry,
   CricketWicketKind,
 } from './cricket-over-event.schema';
 import {
@@ -18,10 +20,14 @@ import {
 
 /** Minimal over slice needed for points (bowler at over level). */
 export type CricketOverPointsSlice = {
-  bowlerUserId: Types.ObjectId;
-  ballEvents: CricketBallEvent[];
+  bowlerUserId?: Types.ObjectId;
+  events?: CricketScoringEntry[];
   innings?: number;
 };
+
+function ballsFromOverSlice(over: CricketOverPointsSlice): CricketBallEvent[] {
+  return ballEventsOf(over);
+}
 
 export type PointsBreakdownEntry = RankingPointsBreakdownEntry;
 
@@ -119,11 +125,14 @@ export function computeCricketMatchRankingPoints(
   const includeResultBonuses = options.includeResultBonuses ?? true;
   const fromId = resolveId(match.fromTeam);
   const toId = resolveId(match.toTeam);
-  const slices: CricketOverPointsSlice[] = overs.map((o) => ({
-    bowlerUserId: o.bowlerUserId,
-    ballEvents: o.ballEvents,
-    innings: (o as CricketOverEventDocument).innings ?? o.innings,
-  }));
+  const slices: CricketOverPointsSlice[] = overs.map((o) => {
+    const doc = o as CricketOverEventDocument & CricketOverPointsSlice;
+    return {
+      bowlerUserId: doc.bowlerUserId,
+      events: doc.events,
+      innings: doc.innings,
+    };
+  });
 
   const battingTeamByInnings = new Map<number, string>();
   const cs = match.cricketState;
@@ -163,12 +172,16 @@ export function computeCricketMatchRankingPoints(
   };
 
   for (const over of slices) {
+    const balls = ballsFromOverSlice(over);
+    if (!over.bowlerUserId || balls.length === 0) {
+      continue;
+    }
     const bowler = resolveId(over.bowlerUserId);
     const innings = over.innings ?? 1;
     const battingTeamId = battingTeamByInnings.get(innings) ?? fromId;
     const bowlingTeamId = battingTeamId === fromId ? toId : fromId;
 
-    for (const e of over.ballEvents) {
+    for (const e of balls) {
       const striker = resolveId(e.strikerUserId);
       const nonStriker = resolveId(e.nonStrikerUserId);
 

@@ -23,16 +23,23 @@ import { ScoringRealtimeDispatcher } from '../common/scoring-realtime-dispatcher
 import { resolveId } from '../../core/utils/mongo-ref.util';
 import {
   CRICKET_OVER_EVENT_POPULATE,
-  CricketBallEvent,
   CricketOverEvent,
   CricketOverEventDocument,
+  isCricketBallEntry,
+  isCricketSubstitutionEntry,
 } from './cricket-over-event.schema';
 import { TEAM_MATCH_POPULATE } from '../../matchmaking/util/matchmaking.constants';
 import {
   AppendCricketBallDto,
+  AppendCricketSubstitutionDto,
   CreateCricketSessionDto,
   UpdateCricketStateDto,
 } from './dto/cricket-scoring.dto';
+import {
+  initialActiveParticipantIds,
+  applySubstitution,
+  revertSubstitution,
+} from '../common/lineup.helpers';
 import {
   computeCricketMatchRankingPoints,
   computeCricketPlayerPoints,
@@ -55,6 +62,12 @@ import {
   resolveCricketWinnerFromInnings,
   revertMatchStateFromBall,
 } from './util/cricket-scoring.helpers';
+import {
+  findLatestScoringEntry,
+  makeBallScoringEntry,
+  makeSubstitutionScoringEntry,
+  resolveTargetOverDoc,
+} from './util/cricket-over-routing.helpers';
 
 @Injectable()
 export class CricketScoringService {
@@ -127,6 +140,14 @@ export class CricketScoringService {
       battingTeamId: bat,
       bowlingTeamId: bowl,
       inningsSummaries: summaries,
+      fromTeamActiveParticipantIds: initialActiveParticipantIds(
+        match,
+        teamOneId.toString(),
+      ),
+      toTeamActiveParticipantIds: initialActiveParticipantIds(
+        match,
+        teamTwoId.toString(),
+      ),
       ...(dto.strikerUserId
         ? { strikerUserId: new Types.ObjectId(dto.strikerUserId) }
         : {}),
@@ -282,7 +303,7 @@ export class CricketScoringService {
 
     cs.bowlerUserId = bowler;
 
-    const ballPayload: CricketBallEvent = {
+    const ballPayload = makeBallScoringEntry({
       ballInOverAfter,
       strikerUserId: striker,
       nonStrikerUserId: nonStriker,
@@ -298,7 +319,7 @@ export class CricketScoringService {
       totalRunsOnDelivery: mapped.totalRunsOnDelivery,
       isLegalDelivery: mapped.isLegalDelivery,
       wicketsFallen: mapped.wicketsFallen,
-    };
+    });
 
     let overDoc = await this.overEventModel.findOne({
       teamMatchId: match._id,
@@ -318,15 +339,21 @@ export class CricketScoringService {
         sequence: overSequence,
         innings: inningsForThisBall,
         overAfter,
-        ballEvents: [ballPayload],
+        events: [ballPayload],
       });
     } else {
-      if (resolveId(overDoc.bowlerUserId) !== resolveId(bowler)) {
+      if (
+        overDoc.bowlerUserId &&
+        resolveId(overDoc.bowlerUserId) !== resolveId(bowler)
+      ) {
         throw new BadRequestException(
           'bowlerUserId must match the bowler for this over',
         );
       }
-      overDoc.ballEvents.push(ballPayload);
+      if (!overDoc.bowlerUserId) {
+        overDoc.bowlerUserId = bowler;
+      }
+      overDoc.events.push(ballPayload);
     }
 
     await Promise.all([overDoc.save(), match.save()]);
@@ -341,6 +368,90 @@ export class CricketScoringService {
       data: {
         over: populatedOver,
         cricketState: match.cricketState,
+        announcedPlayers: match.announcedPlayers,
+      },
+    });
+
+    return populatedOver;
+  }
+
+  async appendSubstitution(
+    userId: string,
+    teamMatchId: string,
+    dto: AppendCricketSubstitutionDto,
+  ): Promise<CricketOverEventDocument> {
+    const match = await requireTeamMatchForScoring(
+      this.teamMatchModel,
+      teamMatchId,
+    );
+    assertTeamMatchSport(match, SportType.CRICKET);
+    assertCanAppendScoringEvents(match);
+    if (!match.cricketState) {
+      throw new BadRequestException('Cricket scoring not initialized');
+    }
+
+    bumpMatchStatusToOngoingIfScheduled(match);
+
+    await assertLeadershipOnMatchTeams(
+      this.teamService,
+      this.teamMemberService,
+      userId,
+      match,
+    );
+
+    const cs = match.cricketState;
+    const teamId = new Types.ObjectId(dto.teamId);
+    const playerOff = new Types.ObjectId(dto.playerOffParticipantId);
+    const playerOn = new Types.ObjectId(dto.playerOnParticipantId);
+
+    applySubstitution(match, cs, teamId, playerOff, playerOn);
+
+    const subEntry = makeSubstitutionScoringEntry({
+      teamId,
+      playerOffParticipantId: playerOff,
+      playerOnParticipantId: playerOn,
+    });
+
+    let overDoc = await resolveTargetOverDoc(
+      this.overEventModel,
+      match._id,
+      cs,
+    );
+
+    if (!overDoc) {
+      const lastOver = await this.overEventModel
+        .findOne({ teamMatchId: match._id })
+        .sort({ sequence: -1 })
+        .lean();
+      const overSequence = (lastOver?.sequence ?? 0) + 1;
+      const summary = cs.inningsSummaries[cs.currentInnings - 1];
+      const legalBalls = summary?.legalBalls ?? 0;
+      const overAfter =
+        legalBalls === 0 ? 0 : Math.floor((legalBalls - 1) / 6);
+      overDoc = new this.overEventModel({
+        teamMatchId: match._id,
+        sequence: overSequence,
+        innings: cs.currentInnings,
+        overAfter,
+        events: [subEntry],
+      });
+    } else {
+      overDoc.events.push(subEntry);
+    }
+
+    await Promise.all([overDoc.save(), match.save()]);
+
+    const populatedOver = await overDoc.populate(CRICKET_OVER_EVENT_POPULATE);
+
+    await this.realtimeDispatcher.dispatch({
+      sport: 'cricket',
+      teamMatchId: match._id.toString(),
+      actorUserId: userId,
+      action: 'append_substitution',
+      data: {
+        over: populatedOver,
+        cricketState: match.cricketState,
+        announcedPlayers: match.announcedPlayers,
       },
     });
 
@@ -526,7 +637,7 @@ export class CricketScoringService {
     return populated;
   }
 
-  async undoLastBall(
+  async undoLastScoringEntry(
     userId: string,
     teamMatchId: string,
   ): Promise<CricketOverEventDocument | null> {
@@ -546,21 +657,30 @@ export class CricketScoringService {
       match,
     );
 
-    const overDoc = await this.overEventModel
-      .findOne({
-        teamMatchId: match._id,
-        'ballEvents.0': { $exists: true },
-      })
-      .sort({ sequence: -1 });
-
-    if (!overDoc || overDoc.ballEvents.length === 0) {
-      throw new BadRequestException('No ball to undo');
+    const latest = await findLatestScoringEntry(
+      this.overEventModel,
+      match._id,
+    );
+    if (!latest) {
+      throw new BadRequestException('No scoring entry to undo');
     }
 
-    const removedBall = overDoc.ballEvents[overDoc.ballEvents.length - 1];
-    overDoc.ballEvents.pop();
+    const { overDoc, entry, indexInEvents } = latest;
+    overDoc.events.splice(indexInEvents, 1);
 
-    revertMatchStateFromBall(match, overDoc, removedBall);
+    if (isCricketBallEntry(entry)) {
+      revertMatchStateFromBall(match, overDoc, entry);
+    } else if (isCricketSubstitutionEntry(entry)) {
+      revertSubstitution(
+        match,
+        match.cricketState,
+        entry.teamId,
+        entry.playerOffParticipantId,
+        entry.playerOnParticipantId,
+      );
+    } else {
+      throw new BadRequestException('Unsupported scoring entry kind');
+    }
 
     if (
       match.status === TeamMatchStatus.COMPLETED ||
@@ -573,7 +693,7 @@ export class CricketScoringService {
 
     const overId = overDoc._id.toString();
     let savedOver: CricketOverEventDocument | null = overDoc;
-    if (overDoc.ballEvents.length === 0) {
+    if (overDoc.events.length === 0) {
       await overDoc.deleteOne();
       savedOver = null;
     } else {
@@ -590,12 +710,13 @@ export class CricketScoringService {
       sport: 'cricket',
       teamMatchId: match._id.toString(),
       actorUserId: userId,
-      action: 'undo_ball',
+      action: 'undo_scoring_entry',
       data: {
         overId,
-        removedBall,
+        removedEntry: entry,
         over: populatedOver,
         cricketState: match.cricketState,
+        announcedPlayers: match.announcedPlayers,
         status: match.status,
       },
     });
@@ -656,7 +777,7 @@ export class CricketScoringService {
     const players = computeCricketPlayerPoints(
       overs.map((o) => ({
         bowlerUserId: o.bowlerUserId,
-        ballEvents: o.ballEvents,
+        events: o.events,
         innings: o.innings,
       })),
     );

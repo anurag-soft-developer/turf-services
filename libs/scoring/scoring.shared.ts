@@ -6,8 +6,10 @@ export type ScoringSport = z.infer<typeof scoringSportSchema>;
 export const scoringActionSchema = z.enum([
   'append_ball',
   'append_event',
+  'append_substitution',
   'undo_ball',
   'undo_event',
+  'undo_scoring_entry',
 ]);
 export type ScoringAction = z.infer<typeof scoringActionSchema>;
 

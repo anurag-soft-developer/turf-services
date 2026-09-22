@@ -73,11 +73,20 @@ const AppendCricketBallSchema = z.object({
   incomingBatsmanUserId: objectId.optional(),
 });
 
+const AppendCricketSubstitutionSchema = z.object({
+  teamId: objectId,
+  playerOffParticipantId: objectId,
+  playerOnParticipantId: objectId,
+});
+
 export class CreateCricketSessionDto extends createZodDto(
   CreateCricketSessionSchema,
 ) {}
 export class AppendCricketBallDto extends createZodDto(
   AppendCricketBallSchema,
+) {}
+export class AppendCricketSubstitutionDto extends createZodDto(
+  AppendCricketSubstitutionSchema,
 ) {}
 
 const UpdateCricketStateSchema = z

@@ -12,6 +12,7 @@ import {
 } from '../../../matchmaking/schemas/team-match.schema';
 import type { CricketStats } from '../../../team/schemas/team.schema';
 import {
+  ballEventsOf,
   CricketBallEvent,
   CricketOverEventDocument,
   CricketWicketKind,
@@ -213,6 +214,11 @@ export function aggregateCricketMatchStats(
       battingTeamByInnings.get(inn) ?? resolveId(cs.battingTeamId);
     const bowlingTeamId = battingTeamId === fromId ? toId : fromId;
 
+    const balls = ballEventsOf(over);
+    if (!over.bowlerUserId || balls.length === 0) {
+      continue;
+    }
+
     const bowlerId = resolveId(over.bowlerUserId);
     inningsTeamByUser.set(bowlerId, bowlingTeamId);
     const bowlerAcc = getPlayer(bowlerId, bowlingTeamId);
@@ -220,7 +226,7 @@ export function aggregateCricketMatchStats(
     let legalInOver = 0;
     let runsInOver = 0;
 
-    for (const ball of over.ballEvents) {
+    for (const ball of balls) {
       const strikerId = resolveId(ball.strikerUserId);
       const nonStrikerId = resolveId(ball.nonStrikerUserId);
       inningsTeamByUser.set(strikerId, battingTeamId);

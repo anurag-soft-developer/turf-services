@@ -51,14 +51,31 @@ export class CricketState {
   })
   bowlingTeamId!: Types.ObjectId;
 
+  /** Scoring participant id (registered userId or walk-in guestId). */
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: User.name })
   strikerUserId?: Types.ObjectId;
 
+  /** Scoring participant id (registered userId or walk-in guestId). */
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: User.name })
   nonStrikerUserId?: Types.ObjectId;
 
+  /** Scoring participant id (registered userId or walk-in guestId). */
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: User.name })
   bowlerUserId?: Types.ObjectId;
+
+  /** Live on-field participant ids for fromTeam (empty → starting XI at read time). */
+  @Prop({
+    type: [{ type: MongooseSchema.Types.ObjectId }],
+    default: [],
+  })
+  fromTeamActiveParticipantIds!: Types.ObjectId[];
+
+  /** Live on-field participant ids for toTeam (empty → starting XI at read time). */
+  @Prop({
+    type: [{ type: MongooseSchema.Types.ObjectId }],
+    default: [],
+  })
+  toTeamActiveParticipantIds!: Types.ObjectId[];
 
   @Prop({
     type: [CricketInningsSummarySchema],
@@ -136,6 +153,20 @@ export class FootballState {
 
   @Prop({ type: Boolean, default: true })
   isTimerPaused!: boolean;
+
+  /** Live on-field participant ids for fromTeam (empty → starting XI at read time). */
+  @Prop({
+    type: [{ type: MongooseSchema.Types.ObjectId }],
+    default: [],
+  })
+  fromTeamActiveParticipantIds!: Types.ObjectId[];
+
+  /** Live on-field participant ids for toTeam (empty → starting XI at read time). */
+  @Prop({
+    type: [{ type: MongooseSchema.Types.ObjectId }],
+    default: [],
+  })
+  toTeamActiveParticipantIds!: Types.ObjectId[];
 }
 
 export const FootballStateSchema = SchemaFactory.createForClass(FootballState);

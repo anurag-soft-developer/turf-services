@@ -6,7 +6,8 @@ import {
   Types,
 } from 'mongoose';
 import { TeamMatch } from '../../matchmaking/schemas/team-match.schema';
-import { User, userSelectFields } from '../../users/schemas/user.schema';
+import { Team } from '../../team/schemas/team.schema';
+import { User } from '../../users/schemas/user.schema';
 import { TEAM_MATCH_POPULATE } from '../../matchmaking/util/matchmaking.constants';
 
 export type CricketOverEventDocument = CricketOverEvent & Document;
@@ -21,35 +22,71 @@ export enum CricketWicketKind {
   OTHER = 'other',
 }
 
-/** One delivery within an over (embedded in `CricketOverEvent.ballEvents`). */
+export enum CricketScoringEntryKind {
+  BALL = 'ball',
+  SUBSTITUTION = 'substitution',
+}
+
+/** Ball delivery fields shared by `kind: ball` scoring entries. */
+export type CricketBallPayload = {
+  ballInOverAfter: number;
+  strikerUserId: Types.ObjectId;
+  nonStrikerUserId: Types.ObjectId;
+  runsOffBat: number;
+  extrasWide: number;
+  extrasNoBall: boolean;
+  extrasBye: number;
+  extrasLegBye: number;
+  isWicket: boolean;
+  wicketKind?: CricketWicketKind;
+  dismissedUserId?: Types.ObjectId;
+  primaryFielderUserId?: Types.ObjectId;
+  totalRunsOnDelivery: number;
+  isLegalDelivery: boolean;
+  wicketsFallen: number;
+};
+
+/** Discriminated scoring entry stored in `CricketOverEvent.events[]`. */
 @Schema({ _id: false })
-export class CricketBallEvent {
-  @Prop({ type: Number, required: true, min: 1, max: 6 })
-  ballInOverAfter!: number;
+export class CricketScoringEntry {
+  @Prop({
+    type: String,
+    enum: Object.values(CricketScoringEntryKind),
+    required: true,
+  })
+  kind!: CricketScoringEntryKind;
 
-  @Prop({ type: MongooseSchema.Types.ObjectId, ref: User.name, required: true })
-  strikerUserId!: Types.ObjectId;
+  /** Server-set append time; source of truth for global timeline / undo. */
+  @Prop({ type: Date, required: true })
+  recordedAt!: Date;
 
-  @Prop({ type: MongooseSchema.Types.ObjectId, ref: User.name, required: true })
-  nonStrikerUserId!: Types.ObjectId;
+  // --- kind: ball ---
+  @Prop({ type: Number, min: 1, max: 6 })
+  ballInOverAfter?: number;
 
-  @Prop({ type: Number, default: 0, min: 0 })
-  runsOffBat!: number;
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: User.name })
+  strikerUserId?: Types.ObjectId;
 
-  @Prop({ type: Number, default: 0, min: 0 })
-  extrasWide!: number;
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: User.name })
+  nonStrikerUserId?: Types.ObjectId;
 
-  @Prop({ type: Boolean, default: false })
-  extrasNoBall!: boolean;
+  @Prop({ type: Number, min: 0 })
+  runsOffBat?: number;
 
-  @Prop({ type: Number, default: 0, min: 0 })
-  extrasBye!: number;
+  @Prop({ type: Number, min: 0 })
+  extrasWide?: number;
 
-  @Prop({ type: Number, default: 0, min: 0 })
-  extrasLegBye!: number;
+  @Prop({ type: Boolean })
+  extrasNoBall?: boolean;
 
-  @Prop({ type: Boolean, default: false })
-  isWicket!: boolean;
+  @Prop({ type: Number, min: 0 })
+  extrasBye?: number;
+
+  @Prop({ type: Number, min: 0 })
+  extrasLegBye?: number;
+
+  @Prop({ type: Boolean })
+  isWicket?: boolean;
 
   @Prop({ type: String, enum: Object.values(CricketWicketKind) })
   wicketKind?: CricketWicketKind;
@@ -60,19 +97,59 @@ export class CricketBallEvent {
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: User.name })
   primaryFielderUserId?: Types.ObjectId;
 
-  /** Total runs added to batting innings from this delivery (including extras). */
-  @Prop({ type: Number, required: true, min: 0 })
-  totalRunsOnDelivery!: number;
+  @Prop({ type: Number, min: 0 })
+  totalRunsOnDelivery?: number;
 
-  @Prop({ type: Boolean, required: true })
-  isLegalDelivery!: boolean;
+  @Prop({ type: Boolean })
+  isLegalDelivery?: boolean;
 
-  @Prop({ type: Number, default: 0, min: 0, max: 1 })
-  wicketsFallen!: number;
+  @Prop({ type: Number, min: 0, max: 1 })
+  wicketsFallen?: number;
+
+  // --- kind: substitution ---
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: Team.name })
+  teamId?: Types.ObjectId;
+
+  @Prop({ type: MongooseSchema.Types.ObjectId })
+  playerOffParticipantId?: Types.ObjectId;
+
+  @Prop({ type: MongooseSchema.Types.ObjectId })
+  playerOnParticipantId?: Types.ObjectId;
 }
 
-export const CricketBallEventSchema =
-  SchemaFactory.createForClass(CricketBallEvent);
+export const CricketScoringEntrySchema =
+  SchemaFactory.createForClass(CricketScoringEntry);
+
+/** Narrowed ball entry (after `kind === ball` filter). */
+export type CricketBallEvent = CricketScoringEntry &
+  CricketBallPayload & {
+    kind: CricketScoringEntryKind.BALL;
+  };
+
+export type CricketSubstitutionEvent = CricketScoringEntry & {
+  kind: CricketScoringEntryKind.SUBSTITUTION;
+  teamId: Types.ObjectId;
+  playerOffParticipantId: Types.ObjectId;
+  playerOnParticipantId: Types.ObjectId;
+};
+
+export function isCricketBallEntry(
+  e: CricketScoringEntry,
+): e is CricketBallEvent {
+  return e.kind === CricketScoringEntryKind.BALL;
+}
+
+export function isCricketSubstitutionEntry(
+  e: CricketScoringEntry,
+): e is CricketSubstitutionEvent {
+  return e.kind === CricketScoringEntryKind.SUBSTITUTION;
+}
+
+export function ballEventsOf(
+  over: { events?: CricketScoringEntry[] },
+): CricketBallEvent[] {
+  return (over.events ?? []).filter(isCricketBallEntry);
+}
 
 @Schema({
   timestamps: true,
@@ -87,11 +164,14 @@ export class CricketOverEvent {
   })
   teamMatchId!: Types.ObjectId;
 
-  /** Bowler for every delivery in this over. */
-  @Prop({ type: MongooseSchema.Types.ObjectId, ref: User.name, required: true })
-  bowlerUserId!: Types.ObjectId;
+  /**
+   * Bowler for ball deliveries in this over.
+   * Optional for substitution-only placeholder over docs.
+   */
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: User.name })
+  bowlerUserId?: Types.ObjectId;
 
-  /** Monotonic over index for this match (first over = 1, …). */
+  /** Monotonic over-doc index for this match (first over = 1, …). */
   @Prop({ type: Number, required: true, min: 1 })
   sequence!: number;
 
@@ -101,8 +181,8 @@ export class CricketOverEvent {
   @Prop({ type: Number, required: true, min: 0 })
   overAfter!: number;
 
-  @Prop({ type: [CricketBallEventSchema], default: [] })
-  ballEvents!: CricketBallEvent[];
+  @Prop({ type: [CricketScoringEntrySchema], default: [] })
+  events!: CricketScoringEntry[];
 }
 
 export const CricketOverEventSchema =
@@ -117,9 +197,6 @@ CricketOverEventSchema.index({ teamMatchId: 1, createdAt: 1 });
 
 export const CRICKET_OVER_EVENT_POPULATE: PopulateOptions[] = [
   { path: 'teamMatchId', populate: TEAM_MATCH_POPULATE },
-  { path: 'bowlerUserId', select: userSelectFields },
-  { path: 'ballEvents.strikerUserId', select: userSelectFields },
-  { path: 'ballEvents.nonStrikerUserId', select: userSelectFields },
-  { path: 'ballEvents.dismissedUserId', select: userSelectFields },
-  { path: 'ballEvents.primaryFielderUserId', select: userSelectFields },
+  // Participant ids (userId or guestId) — leave as ObjectIds; clients resolve
+  // names from announcedPlayers. Populating as User nulls walk-in guests.
 ];

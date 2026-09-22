@@ -183,6 +183,8 @@ export class AnnouncedPlayersService {
         isGuest: p.isGuest ?? false,
         ...(isWalkIn ? { guestId: new Types.ObjectId() } : {}),
         is_substitute: p.is_substitute ?? false,
+        is_substituted: false,
+        substitute_count: 0,
         role: p.role as AnnouncedPlayerRole,
         isCaption: p.isCaption ?? false,
         isWiseCaption: p.isWiseCaption ?? false,

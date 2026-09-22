@@ -1,7 +1,6 @@
 import { PopulateOptions } from 'mongoose';
 import { teamPopulateSelectFields } from '../../team/schemas/team.schema';
 import { turfSelectFields } from '../../turf/schemas/turf.schema';
-import { userSelectFields } from '../../users/schemas/user.schema';
 import { TeamMatchStatus } from '../schemas/team-match.schema';
 
 export const TERMINAL_PRE_PLAY_STATUSES = [
@@ -28,7 +27,7 @@ export const TEAM_MATCH_POPULATE: PopulateOptions[] = [
   { path: 'turfBookingId', select: turfBookingPopulateSelectFields },
   { path: 'cricketState.battingTeamId', select: teamPopulateSelectFields },
   { path: 'cricketState.bowlingTeamId', select: teamPopulateSelectFields },
-  { path: 'cricketState.strikerUserId', select: userSelectFields },
-  { path: 'cricketState.nonStrikerUserId', select: userSelectFields },
-  { path: 'cricketState.bowlerUserId', select: userSelectFields },
+  // cricketState striker/nonStriker/bowler are scoring participant ids
+  // (registered userId or walk-in guestId) — do not populate as User
+  // (guest ids would become null).
 ];

@@ -6,6 +6,7 @@ import {
 } from '../../../matchmaking/schemas/team-match.schema';
 import { AppendCricketBallDto } from '../dto/cricket-scoring.dto';
 import {
+  ballEventsOf,
   CricketBallEvent,
   CricketOverEventDocument,
   CricketWicketKind,
@@ -129,7 +130,9 @@ export function revertMatchStateFromBall(
 
   cs.strikerUserId = removedBall.strikerUserId;
   cs.nonStrikerUserId = removedBall.nonStrikerUserId;
-  cs.bowlerUserId = overDoc.bowlerUserId;
+  if (overDoc.bowlerUserId) {
+    cs.bowlerUserId = overDoc.bowlerUserId;
+  }
 }
 
 export function mapCricketOutcome(
@@ -335,10 +338,10 @@ export async function getDismissedBatsmenUserIds(
   const outs = new Set<string>();
   const overs = await overEventModel
     .find({ teamMatchId: teamMatchOid, innings })
-    .select({ ballEvents: 1 })
+    .select({ events: 1 })
     .lean();
   for (const o of overs) {
-    for (const b of o.ballEvents ?? []) {
+    for (const b of ballEventsOf(o)) {
       if (b.isWicket && b.dismissedUserId && (b.wicketsFallen ?? 0) >= 1) {
         outs.add(b.dismissedUserId.toString());
       }

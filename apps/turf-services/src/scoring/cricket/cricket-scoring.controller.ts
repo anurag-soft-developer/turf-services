@@ -13,6 +13,7 @@ import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import {
   AppendCricketBallDto,
+  AppendCricketSubstitutionDto,
   CreateCricketSessionDto,
   UpdateCricketStateDto,
 } from './dto/cricket-scoring.dto';
@@ -49,6 +50,19 @@ export class CricketScoringController {
     );
   }
 
+  @Post('matches/:teamMatchId/substitutions')
+  async appendSubstitution(
+    @Param('teamMatchId') teamMatchId: string,
+    @Body() dto: AppendCricketSubstitutionDto,
+    @CurrentUser('_id') userId: Types.ObjectId,
+  ) {
+    return this.cricketScoringService.appendSubstitution(
+      userId.toString(),
+      teamMatchId,
+      dto,
+    );
+  }
+
   @Post('matches/:teamMatchId/inning/change')
   async changeInning(
     @Param('teamMatchId') teamMatchId: string,
@@ -71,12 +85,13 @@ export class CricketScoringController {
     );
   }
 
-  @Delete('matches/:teamMatchId/balls/last')
-  async undoLastBall(
+  /** Undo the globally latest scoring entry (ball or substitution) by recordedAt. */
+  @Delete('matches/:teamMatchId/events/last')
+  async undoLastScoringEntry(
     @Param('teamMatchId') teamMatchId: string,
     @CurrentUser('_id') userId: Types.ObjectId,
   ) {
-    return this.cricketScoringService.undoLastBall(
+    return this.cricketScoringService.undoLastScoringEntry(
       userId.toString(),
       teamMatchId,
     );

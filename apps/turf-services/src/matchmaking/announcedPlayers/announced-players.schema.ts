@@ -48,6 +48,14 @@ export class AnnouncedPlayer {
   @Prop({ type: Boolean, default: false })
   is_substitute!: boolean;
 
+  /** True once this player has been involved in any live substitution (off or on). */
+  @Prop({ type: Boolean, default: false })
+  is_substituted!: boolean;
+
+  /** Times this player has been involved in a substitution (off or on). */
+  @Prop({ type: Number, default: 0, min: 0 })
+  substitute_count!: number;
+
   @Prop({
     type: String,
     enum: Object.values(AnnouncedPlayerRole),

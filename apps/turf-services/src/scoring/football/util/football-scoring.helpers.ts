@@ -1,13 +1,16 @@
-import { Types } from 'mongoose';
 import {
   FootballPeriod,
   TeamMatchDocument,
 } from '../../../matchmaking/schemas/team-match.schema';
-import { FootballMatchEvent } from '../football-match-event.schema';
+import {
+  FootballEventKind,
+  FootballMatchEvent,
+} from '../football-match-event.schema';
 import {
   revertFootballScoreDeltas,
   resolveFootballWinnerFromInnings,
 } from './football-innings.helpers';
+import { revertSubstitution } from '../../common/lineup.helpers';
 
 export { resolveFootballWinnerFromInnings as resolveFootballWinnerFromScore };
 
@@ -27,6 +30,22 @@ export function revertMatchStateFromEvent(
     removed.scoreDeltaTeamTwo,
     removed.innings,
   );
+
+  if (removed.kind === FootballEventKind.SUBSTITUTION) {
+    if (
+      removed.beneficiaryTeamId &&
+      removed.primaryUserId &&
+      removed.secondaryUserId
+    ) {
+      revertSubstitution(
+        match,
+        fs,
+        removed.beneficiaryTeamId,
+        removed.primaryUserId,
+        removed.secondaryUserId,
+      );
+    }
+  }
 
   if (removed.innings < fs.currentInnings) {
     fs.currentInnings = removed.innings;
