@@ -36,10 +36,10 @@ export {
   FootballStateSchema,
 } from './team-match-scoring.embedded';
 
-/** How the match record was created (e.g. feed challenge or casual). */
+/** Ranked challenge vs unranked match. */
 export enum TeamMatchSource {
-  FEED = 'feed',
-  CASUAL = 'casual',
+  RANKED = 'ranked',
+  UNRANKED = 'unranked',
 }
 
 /**
@@ -107,7 +107,7 @@ export class TeamMatch {
   @Prop({
     type: String,
     enum: Object.values(TeamMatchSource),
-    default: TeamMatchSource.FEED,
+    default: TeamMatchSource.RANKED,
   })
   source!: TeamMatchSource;
 

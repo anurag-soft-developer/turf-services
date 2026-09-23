@@ -1,13 +1,8 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import {
-  Document,
-  Schema as MongooseSchema,
-  PopulateOptions,
-  Types,
-} from 'mongoose';
+import { Document, Schema as MongooseSchema, Types } from 'mongoose';
 import { TeamMatch } from '../../matchmaking/schemas/team-match.schema';
 import { Team } from '../../team/schemas/team.schema';
-import { User, userSelectFields } from '../../users/schemas/user.schema';
+import { User } from '../../users/schemas/user.schema';
 import { FootballPeriod } from '../../matchmaking/schemas/team-match.schema';
 
 export type FootballMatchEventDocument = FootballMatchEvent & Document;
@@ -22,11 +17,11 @@ export enum FootballEventKind {
   PENALTY_MISSED = 'penalty_missed',
 }
 
-export const FOOTBALL_EVENT_POPULATE: PopulateOptions[] = [
-  { path: 'primaryUserId', select: userSelectFields },
-  { path: 'secondaryUserId', select: userSelectFields },
-];
-
+/**
+ * Do not User-populate primary/secondary: values are scoring participant ids
+ * (registered `userId` or walk-in `guestId`). Guests are not User docs — populate
+ * would null them. Clients resolve display names via match.announcedPlayers.
+ */
 @Schema({
   timestamps: true,
   collection: 'football-match-events',
@@ -71,9 +66,11 @@ export class FootballMatchEvent {
   })
   beneficiaryTeamId!: Types.ObjectId;
 
+  /** Scorer / player off / etc. — userId or guestId (not User-populated). */
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: User.name })
   primaryUserId?: Types.ObjectId;
 
+  /** Assist / player on — userId or guestId (not User-populated). */
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: User.name })
   secondaryUserId?: Types.ObjectId;
 

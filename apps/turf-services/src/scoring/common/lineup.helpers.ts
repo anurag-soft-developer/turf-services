@@ -173,3 +173,44 @@ export function revertSubstitution(
   setActiveIdsForTeam(match, teamId, state, active);
   bumpSubstitutionFlags(match, [offStr, onStr], -1);
 }
+
+/** Remove a sent-off / unavailable player from the live active lineup. */
+export function removeFromActiveLineup(
+  match: TeamMatchDocument,
+  state: ActiveLineupState,
+  teamId: Types.ObjectId,
+  participantId: Types.ObjectId,
+): void {
+  const idStr = resolveId(participantId);
+  const active = activeIdsForTeam(match, teamId, state);
+  const idx = active.findIndex((id) => resolveId(id) === idStr);
+  if (idx < 0) {
+    throw new BadRequestException('Player is not in the active lineup');
+  }
+  active.splice(idx, 1);
+  setActiveIdsForTeam(match, teamId, state, active);
+}
+
+/** Re-add a player to the active lineup (e.g. undo red card). */
+export function restoreToActiveLineup(
+  match: TeamMatchDocument,
+  state: ActiveLineupState,
+  teamId: Types.ObjectId,
+  participantId: Types.ObjectId,
+): void {
+  const teamIdStr = resolveId(teamId);
+  const idStr = resolveId(participantId);
+
+  if (!findAnnouncedSquadPlayer(match, teamIdStr, idStr)) {
+    throw new BadRequestException(
+      'Player is not in the announced squad for that team',
+    );
+  }
+
+  const active = activeIdsForTeam(match, teamId, state);
+  if (active.some((id) => resolveId(id) === idStr)) {
+    return;
+  }
+  active.push(new Types.ObjectId(idStr));
+  setActiveIdsForTeam(match, teamId, state, active);
+}

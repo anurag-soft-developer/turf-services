@@ -601,7 +601,7 @@ export class CricketScoringService {
     const overs = await this.overEventModel
       .find({ teamMatchId: match._id })
       .exec();
-    if (match.source !== TeamMatchSource.CASUAL) {
+    if (match.source !== TeamMatchSource.UNRANKED) {
       await this.cricketMatchStatsService.applyMatchStats(
         match,
         overs,

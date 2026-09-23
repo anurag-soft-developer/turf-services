@@ -10,7 +10,7 @@ import {
   revertFootballScoreDeltas,
   resolveFootballWinnerFromInnings,
 } from './football-innings.helpers';
-import { revertSubstitution } from '../../common/lineup.helpers';
+import { revertSubstitution, restoreToActiveLineup } from '../../common/lineup.helpers';
 
 export { resolveFootballWinnerFromInnings as resolveFootballWinnerFromScore };
 
@@ -43,6 +43,17 @@ export function revertMatchStateFromEvent(
         removed.beneficiaryTeamId,
         removed.primaryUserId,
         removed.secondaryUserId,
+      );
+    }
+  }
+
+  if (removed.kind === FootballEventKind.RED_CARD) {
+    if (removed.beneficiaryTeamId && removed.primaryUserId) {
+      restoreToActiveLineup(
+        match,
+        fs,
+        removed.beneficiaryTeamId,
+        removed.primaryUserId,
       );
     }
   }

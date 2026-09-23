@@ -14,6 +14,7 @@ import { TeamService } from '../../team/team.service';
 import {
   MatchProposalStatus,
   TeamMatchDocument,
+  TeamMatchSource,
   TeamMatchStatus,
 } from '../schemas/team-match.schema';
 import {
@@ -273,6 +274,7 @@ export async function buildListRequestsQuery(
     search?: string;
     teamId?: string;
     teamIds?: string[];
+    source?: TeamMatchSource;
   },
   teamModel: Model<TeamDocument>,
   teamMemberService: TeamMemberService,
@@ -304,6 +306,10 @@ export async function buildListRequestsQuery(
 
   if (filter.sportType) {
     andClauses.push({ sportType: filter.sportType });
+  }
+
+  if (filter.source) {
+    andClauses.push({ source: filter.source });
   }
 
   const scopedTeamIds = hasExplicitTeamFilter ? uniqueScoped : actorTeamIds;

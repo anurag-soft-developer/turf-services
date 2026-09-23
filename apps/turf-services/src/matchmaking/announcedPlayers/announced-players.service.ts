@@ -54,7 +54,7 @@ export class AnnouncedPlayersService {
 
   /**
    * Leadership (or owner) can always announce.
-   * On casual matches, any active member of the actor team can announce
+   * On unranked matches, any active member of the actor team can announce
    * (supports users who belong to both sides).
    */
   private async assertCanAnnounceForTeam(
@@ -71,7 +71,7 @@ export class AnnouncedPlayersService {
       );
       return;
     } catch (err) {
-      if (match.source !== TeamMatchSource.CASUAL) throw err;
+      if (match.source !== TeamMatchSource.UNRANKED) throw err;
     }
     const isMember = await this.teamMemberService.hasActiveMembership(
       actorTeam._id.toString(),
@@ -79,7 +79,7 @@ export class AnnouncedPlayersService {
     );
     if (!isMember && !this.teamService.isOwner(actorTeam, userId)) {
       throw new ForbiddenException(
-        'Only team members can announce players for this casual match',
+        'Only team members can announce players for this unranked match',
       );
     }
   }
@@ -122,11 +122,11 @@ export class AnnouncedPlayersService {
       throw new BadRequestException('Duplicate userId in players payload');
     }
 
-    const isCasual = match.source === TeamMatchSource.CASUAL;
+    const isUnranked = match.source === TeamMatchSource.UNRANKED;
     for (const p of dto.players) {
-      if (p.isGuest && !isCasual) {
+      if (p.isGuest && !isUnranked) {
         throw new BadRequestException(
-          'Guests can only be announced on casual matches',
+          'Guests can only be announced on unranked matches',
         );
       }
     }

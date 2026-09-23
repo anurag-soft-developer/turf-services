@@ -43,7 +43,7 @@ import {
   RecordMatchResultDto,
   RespondMatchRequestDto,
   SendMatchRequestDto,
-  CreateCasualMatchDto,
+  CreateUnrankedMatchDto,
 } from './dto/matchmaking.dto';
 import {
   TeamMatch,
@@ -131,7 +131,7 @@ export class MatchmakingService {
 
     try {
       const created = await this.teamMatchModel.create({
-        source: TeamMatchSource.FEED,
+        source: TeamMatchSource.RANKED,
         fromTeam: fromTeam._id,
         toTeam: toTeam._id,
         sportType: fromTeam.sportType,
@@ -163,9 +163,9 @@ export class MatchmakingService {
     }
   }
 
-  async createCasualMatch(
+  async createUnrankedMatch(
     userId: string,
-    dto: CreateCasualMatchDto,
+    dto: CreateUnrankedMatchDto,
   ): Promise<TeamMatchDocument> {
     if (dto.fromTeamId === dto.toTeamId) {
       throw new BadRequestException('A team cannot play itself');
@@ -187,10 +187,10 @@ export class MatchmakingService {
     if (fromTeam.sportType !== toTeam.sportType) {
       throw new BadRequestException('Teams must be in the same sport');
     }
-    const casualSports = new Set([SportType.CRICKET, SportType.FOOTBALL]);
-    if (!casualSports.has(fromTeam.sportType)) {
+    const unrankedSports = new Set([SportType.CRICKET, SportType.FOOTBALL]);
+    if (!unrankedSports.has(fromTeam.sportType)) {
       throw new BadRequestException(
-        'Casual matches are not available for this sport',
+        'Unranked matches are not available for this sport',
       );
     }
 
@@ -203,8 +203,8 @@ export class MatchmakingService {
         userId,
       ));
 
-    const existingCasual = await this.teamMatchModel.findOne({
-      source: TeamMatchSource.CASUAL,
+    const existingUnranked = await this.teamMatchModel.findOne({
+      source: TeamMatchSource.UNRANKED,
       status: {
         $in: [
           TeamMatchStatus.REQUESTED,
@@ -219,9 +219,9 @@ export class MatchmakingService {
         { fromTeam: toId, toTeam: fromId },
       ],
     });
-    if (existingCasual) {
+    if (existingUnranked) {
       throw new ConflictException(
-        'An active casual match already exists for this team pair',
+        'An active unranked match already exists for this team pair',
       );
     }
 
@@ -234,7 +234,7 @@ export class MatchmakingService {
 
     try {
       const created = await this.teamMatchModel.create({
-        source: TeamMatchSource.CASUAL,
+        source: TeamMatchSource.UNRANKED,
         fromTeam: fromId,
         toTeam: toId,
         sportType: fromTeam.sportType,

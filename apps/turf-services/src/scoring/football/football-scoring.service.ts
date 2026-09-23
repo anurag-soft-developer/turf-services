@@ -24,7 +24,6 @@ import { assertAnnouncedSquadsForSport } from '../common/scoring-squad.asserts';
 import { ScoringRealtimeDispatcher } from '../common/scoring-realtime-dispatcher.service';
 import { resolveId } from '../../core/utils/mongo-ref.util';
 import {
-  FOOTBALL_EVENT_POPULATE,
   FootballMatchEvent,
   FootballMatchEventDocument,
 } from './football-match-event.schema';
@@ -174,8 +173,6 @@ export class FootballScoringService {
 
     await Promise.all([built.save(), match.save()]);
 
-    const populated = await built.populate(FOOTBALL_EVENT_POPULATE);
-
     await this.realtimeDispatcher.dispatch({
       sport: 'football',
       teamMatchId: match._id.toString(),
@@ -183,13 +180,13 @@ export class FootballScoringService {
       action: 'append_event',
       data: {
         kind: 'football_append_event',
-        event: populated,
+        event: built,
         footballState: match.footballState,
         announcedPlayers: match.announcedPlayers,
       },
     });
 
-    return populated;
+    return built;
   }
 
   async changeInning(
@@ -363,7 +360,7 @@ export class FootballScoringService {
       .sort({ sequence: 1 })
       .lean();
 
-    if (match.source !== TeamMatchSource.CASUAL) {
+    if (match.source !== TeamMatchSource.UNRANKED) {
       await this.footballMatchStatsService.applyMatchStats(
         match,
         events as FootballMatchEvent[],
@@ -417,7 +414,6 @@ export class FootballScoringService {
     return await this.footballEventModel
       .find({ teamMatchId: match._id })
       .sort({ sequence: 1 })
-      .populate(FOOTBALL_EVENT_POPULATE)
       .exec();
   }
 

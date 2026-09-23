@@ -23,7 +23,7 @@ import {
   RecordMatchResultDto,
   RespondMatchRequestDto,
   SendMatchRequestDto,
-  CreateCasualMatchDto,
+  CreateUnrankedMatchDto,
 } from './dto/matchmaking.dto';
 import { MatchmakingService } from './matchmaking.service';
 
@@ -40,12 +40,12 @@ export class MatchmakingController {
     return this.matchmakingService.sendRequest(userId.toString(), dto);
   }
 
-  @Post('casual')
-  async createCasualMatch(
-    @Body() dto: CreateCasualMatchDto,
+  @Post('unranked')
+  async createUnrankedMatch(
+    @Body() dto: CreateUnrankedMatchDto,
     @CurrentUser('_id') userId: Types.ObjectId,
   ) {
-    return this.matchmakingService.createCasualMatch(userId.toString(), dto);
+    return this.matchmakingService.createUnrankedMatch(userId.toString(), dto);
   }
 
   @Get('requests')

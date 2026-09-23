@@ -2,7 +2,7 @@ import { createZodDto, type ZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 import { nearbyLocationQuerySchema } from '../../core/dto';
 import { sportTypeSchema } from '../../core/sports/sport-types';
-import { TeamMatchStatus } from '../schemas/team-match.schema';
+import { TeamMatchSource, TeamMatchStatus } from '../schemas/team-match.schema';
 
 const matchResponseActionSchema = z.enum(['accept', 'reject']);
 const proposalDecisionActionSchema = z.enum(['accept', 'reject', 'withdraw']);
@@ -19,7 +19,7 @@ const SendMatchRequestSchema = z.object({
   expiresInMinutes: z.coerce.number().int().min(1).optional(),
 });
 
-const CreateCasualMatchSchema = z.object({
+const CreateUnrankedMatchSchema = z.object({
   fromTeamId: z.string().min(1),
   toTeamId: z.string().min(1),
 });
@@ -71,6 +71,8 @@ const ListNegotiationsFilterSchema = z.object({
    * `all` — platform-wide (JWT still required).
    */
   scope: z.enum(['mine', 'all']).default('mine'),
+  /** `ranked` or `unranked`. Omit for both. */
+  source: z.nativeEnum(TeamMatchSource).optional(),
   /** Case-insensitive match on either team's name / shortName. */
   search: z.string().trim().min(1).max(80).optional(),
   sportType: sportTypeSchema.optional(),
@@ -170,8 +172,8 @@ const UpdateTeamMatchSchema = z
   );
 
 export class SendMatchRequestDto extends createZodDto(SendMatchRequestSchema) {}
-export class CreateCasualMatchDto extends createZodDto(
-  CreateCasualMatchSchema,
+export class CreateUnrankedMatchDto extends createZodDto(
+  CreateUnrankedMatchSchema,
 ) {}
 export class ListNegotiationsFilterDto extends createZodDto(
   ListNegotiationsFilterSchema,

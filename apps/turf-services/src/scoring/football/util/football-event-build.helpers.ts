@@ -3,7 +3,7 @@ import { Model, Types } from 'mongoose';
 import { TeamMatchDocument } from '../../../matchmaking/schemas/team-match.schema';
 import { resolveId } from '../../../core/utils/mongo-ref.util';
 import { assertAnnouncedPlayingParticipant } from '../../common/scoring-participant.asserts';
-import { applySubstitution } from '../../common/lineup.helpers';
+import { applySubstitution, removeFromActiveLineup } from '../../common/lineup.helpers';
 import {
   FootballEventKind,
   FootballMatchEventDocument,
@@ -122,6 +122,7 @@ export function buildFootballEventFromPayload(
       const teamId = new Types.ObjectId(p.teamId);
       const player = new Types.ObjectId(p.playerUserId);
       assertAnnouncedPlayingParticipant(match, teamId, player, 'Player');
+      removeFromActiveLineup(match, fs, teamId, player);
       return new footballEventModel({
         ...base,
         kind: FootballEventKind.RED_CARD,
