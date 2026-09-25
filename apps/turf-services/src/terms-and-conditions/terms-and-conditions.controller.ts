@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { Roles, UserRole } from '../auth/decorators/roles.decorator';
+import { Public } from '../auth/decorators/public.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import type { IUser } from '../users/interfaces/user.interface';
@@ -27,6 +28,7 @@ export class TermsAndConditionsController {
     private readonly termsAndConditionsService: TermsAndConditionsService,
   ) {}
 
+  @Public()
   @Get('current')
   async getCurrent(@Query() query: TermsKindQueryDto) {
     return this.termsAndConditionsService.getCurrent(query.kind);

@@ -2,6 +2,8 @@ import { Types } from 'mongoose';
 
 export enum TermsAndConditionsKind {
   TURF_OWNER = 'turf_owner',
+  EVENT_BOOKING = 'event_booking',
+  EVENT_HOST = 'event_host',
 }
 
 export enum TermsAndConditionsStatus {
