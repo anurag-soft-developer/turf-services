@@ -15,7 +15,7 @@ import { TurfService } from './turf.service';
 import { TurfApprovalService } from './turf-approval.service';
 import { CreateTurfDto, UpdateTurfDto } from './dto/turf.dto';
 import { SearchTurfDto } from './dto/turf.filter.dto';
-import { ReviewTurfDto } from './dto/turf-approval.dto';
+import { ReviewTurfDto, SubmitTurfDto } from './dto/turf-approval.dto';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import * as UserInterface from '../users/interfaces/user.interface';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -75,8 +75,13 @@ export class TurfController {
   async submitForApproval(
     @Param('id') id: string,
     @CurrentUser() user: UserInterface.IUser,
+    @Body() dto: SubmitTurfDto,
   ) {
-    return this.turfApprovalService.submitForApproval(id, user._id);
+    return this.turfApprovalService.submitForApproval(
+      id,
+      user._id,
+      dto.termsAndConditionsId,
+    );
   }
 
   @Post(':id/withdraw')

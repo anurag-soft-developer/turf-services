@@ -19,3 +19,12 @@ export const ReviewTurfSchema = z
   });
 
 export class ReviewTurfDto extends createZodDto(ReviewTurfSchema) {}
+
+export const SubmitTurfSchema = z.preprocess(
+  (value) => (value == null ? {} : value),
+  z.object({
+    termsAndConditionsId: z.string().trim().min(1).optional(),
+  }),
+);
+
+export class SubmitTurfDto extends createZodDto(SubmitTurfSchema) {}

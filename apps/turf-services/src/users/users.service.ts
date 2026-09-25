@@ -9,6 +9,7 @@ import { Model, Types } from 'mongoose';
 import * as bcrypt from 'bcryptjs';
 import { OAuthProvider, User, UserDocument } from './schemas/user.schema';
 import type {
+  AcceptedTermsAndConditions,
   IUser,
   IOAuthStrategy,
   PublicProfile,
@@ -29,6 +30,7 @@ import type { FcmTokenEntryPayload } from './dto/fcm-devices.dto';
 import { UserRole } from '../auth/decorators/roles.decorator';
 import { StorageLifecycleService } from '../storage/storage-lifecycle.service';
 import { toIsoDateString } from '../core/utils/date.util';
+import { resolveId } from '../core/utils/mongo-ref.util';
 
 @Injectable()
 export class UsersService {
@@ -451,6 +453,53 @@ export class UsersService {
     });
   }
 
+  async appendAcceptedTerms(
+    userId: string,
+    entry: {
+      termsAndConditionsId: string;
+      kind: string;
+      acceptedAt: Date;
+    },
+  ): Promise<void> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new NotFoundException('User not found');
+    }
+    if (!Types.ObjectId.isValid(entry.termsAndConditionsId)) {
+      throw new BadRequestException('Invalid terms and conditions id');
+    }
+
+    const termsId = new Types.ObjectId(entry.termsAndConditionsId);
+    const result = await this.userModel.updateOne(
+      {
+        _id: userId,
+        acceptedTermsAndConditions: {
+          $not: {
+            $elemMatch: {
+              termsAndConditions: termsId,
+              kind: entry.kind,
+            },
+          },
+        },
+      },
+      {
+        $push: {
+          acceptedTermsAndConditions: {
+            termsAndConditions: termsId,
+            kind: entry.kind,
+            acceptedAt: entry.acceptedAt,
+          },
+        },
+      },
+    );
+
+    if (result.matchedCount === 0) {
+      const exists = await this.userModel.exists({ _id: userId });
+      if (!exists) {
+        throw new NotFoundException('User not found');
+      }
+    }
+  }
+
   async clearOTP(id: string): Promise<void> {
     await this.updateById(id, {
       otp: undefined,
@@ -494,9 +543,22 @@ export class UsersService {
       badges: user.badges || [],
       followerCount: user.followerCount ?? 0,
       followingCount: user.followingCount ?? 0,
+      acceptedTermsAndConditions:
+        UsersService.sanitizeAcceptedTerms(user),
       createdAt,
       updatedAt,
     };
+  }
+
+  private static sanitizeAcceptedTerms(
+    user: IUser | UserDocument,
+  ): AcceptedTermsAndConditions[] {
+    const entries = user.acceptedTermsAndConditions ?? [];
+    return entries.map((entry) => ({
+      termsAndConditions: resolveId(entry.termsAndConditions),
+      kind: entry.kind,
+      acceptedAt: toIsoDateString(entry.acceptedAt),
+    }));
   }
 
   static sanitizePublicProfile(user: IUser | UserDocument): PublicProfile {

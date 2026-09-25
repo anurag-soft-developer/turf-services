@@ -4,6 +4,7 @@ import type {
   FcmTokenEntry,
   IUser,
   IOAuthStrategy,
+  StoredAcceptedTerms,
 } from '../interfaces/user.interface';
 import { type NotificationModule } from '../../notification/schemas/notification.schema';
 import type { GeoPoint } from '../../core/schemas/geo-location.schema';
@@ -14,12 +15,17 @@ import type { SportRankingPointsEntry } from '../../core/points/ranking-points.t
 import type { EarnedBadge } from '../../core/badges/badges';
 export type UserDocument = Omit<
   IUser,
-  '_id' | 'lastLogin' | 'createdAt' | 'updatedAt'
+  | '_id'
+  | 'lastLogin'
+  | 'createdAt'
+  | 'updatedAt'
+  | 'acceptedTermsAndConditions'
 > &
   Document & {
     lastLogin?: Date;
     createdAt: Date;
     updatedAt: Date;
+    acceptedTermsAndConditions: StoredAcceptedTerms[];
   };
 
 export enum OAuthProvider {
@@ -273,6 +279,27 @@ export class User extends Document implements UserDocument {
 
   @Prop({ type: Number, default: 0, min: 0 })
   followerCount!: number;
+
+  /**
+   * Append-only record of accepted terms documents. Withdrawing a turf
+   * submission does not remove entries.
+   */
+  @Prop({
+    type: [
+      {
+        termsAndConditions: {
+          type: MongooseSchema.Types.ObjectId,
+          ref: 'TermsAndConditions',
+          required: true,
+        },
+        kind: { type: String, required: true },
+        acceptedAt: { type: Date, required: true },
+      },
+    ],
+    _id: false,
+    default: [],
+  })
+  acceptedTermsAndConditions!: StoredAcceptedTerms[];
 
   @Prop({
     type: Date,

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -20,6 +21,8 @@ import {
   notifyTurfReviewed,
   notifyTurfSubmittedForApproval,
 } from './utility/turf-approval-notification.utility';
+import { TermsAndConditionsService } from '../terms-and-conditions/terms-and-conditions.service';
+import { TermsAndConditionsKind } from '../terms-and-conditions/interfaces/terms-and-conditions.interface';
 
 @Injectable()
 export class TurfApprovalService {
@@ -28,11 +31,13 @@ export class TurfApprovalService {
     private readonly turfService: TurfService,
     private readonly notificationService: NotificationService,
     private readonly usersService: UsersService,
+    private readonly termsAndConditionsService: TermsAndConditionsService,
   ) {}
 
   async submitForApproval(
     turfId: string,
     ownerId: string,
+    termsAndConditionsId?: string,
   ): Promise<TurfDocument> {
     const turf = await this.loadTurfForOwner(turfId, ownerId);
 
@@ -40,6 +45,8 @@ export class TurfApprovalService {
       turf.status,
       TurfStatus.PENDING_APPROVAL,
     );
+
+    await this.acceptCurrentOwnerTerms(ownerId, termsAndConditionsId);
 
     turf.status = TurfStatus.PENDING_APPROVAL;
     turf.rejectionReason = undefined;
@@ -107,6 +114,47 @@ export class TurfApprovalService {
     return this.turfService.searchTurfs({
       ...filter,
       status: TurfStatus.PENDING_APPROVAL,
+    });
+  }
+
+  private async acceptCurrentOwnerTerms(
+    ownerId: string,
+    termsAndConditionsId?: string,
+  ): Promise<void> {
+    const current = await this.termsAndConditionsService.findLatestPublished(
+      TermsAndConditionsKind.TURF_OWNER,
+    );
+    if (!current) {
+      throw new BadRequestException(
+        'Turf owner terms are not published yet',
+      );
+    }
+
+    const currentId = current._id.toString();
+    const user = await this.usersService.findById(ownerId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const alreadyAccepted = (user.acceptedTermsAndConditions ?? []).some(
+      (entry) =>
+        entry.kind === TermsAndConditionsKind.TURF_OWNER &&
+        resolveId(entry.termsAndConditions) === currentId,
+    );
+    if (alreadyAccepted) {
+      return;
+    }
+
+    if (termsAndConditionsId !== currentId) {
+      throw new BadRequestException(
+        'Accept the current turf owner terms before submitting',
+      );
+    }
+
+    await this.usersService.appendAcceptedTerms(ownerId, {
+      termsAndConditionsId: currentId,
+      kind: current.kind,
+      acceptedAt: new Date(),
     });
   }
 

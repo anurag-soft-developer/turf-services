@@ -7,6 +7,7 @@ import { Turf, TurfSchema } from './schemas/turf.schema';
 import { UsersModule } from '../users/users.module';
 import { NotificationModule } from '../notification/notification.module';
 import { StorageModule } from '../storage/storage.module';
+import { TermsAndConditionsModule } from '../terms-and-conditions/terms-and-conditions.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { StorageModule } from '../storage/storage.module';
     UsersModule,
     NotificationModule,
     StorageModule,
+    TermsAndConditionsModule,
   ],
   controllers: [TurfController],
   providers: [TurfService, TurfApprovalService],

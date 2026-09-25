@@ -2,6 +2,20 @@ import type { PlayerSportEntry } from '../../core/sports/sport-stats';
 import type { SportRankingPointsEntry } from '../../core/points/ranking-points.types';
 import type { EarnedBadge } from '../../core/badges/badges';
 import { UserRole } from '../../auth/decorators/roles.decorator';
+import { Types } from 'mongoose';
+
+/** Stored acceptance. Profile responses stringify the id and timestamp. */
+export interface StoredAcceptedTerms {
+  termsAndConditions: Types.ObjectId;
+  kind: string;
+  acceptedAt: Date;
+}
+
+export interface AcceptedTermsAndConditions {
+  termsAndConditions: string;
+  kind: string;
+  acceptedAt: string;
+}
 
 export interface IOAuthStrategy {
   provider: 'google' | 'facebook' | 'github' | 'twitter' | 'linkedin';
@@ -45,6 +59,7 @@ export interface Profile {
   isPasswordExists?: boolean;
   phone?: string;
   lastLogin?: string;
+  acceptedTermsAndConditions?: AcceptedTermsAndConditions[];
   createdAt: string;
   updatedAt: string;
 }
