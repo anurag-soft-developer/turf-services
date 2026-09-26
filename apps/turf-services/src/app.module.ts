@@ -34,6 +34,7 @@ import { ExploreModule } from './explore/explore.module';
 import { EngagementModule } from './engagement/engagement.module';
 import { RedisModule } from './core/redis/redis.module';
 import { InternalJobsModule } from './jobs/internal-jobs.module';
+import { TelemetryModule } from './telemetry/telemetry.module';
 
 @Module({
   imports: [
@@ -66,6 +67,7 @@ import { InternalJobsModule } from './jobs/internal-jobs.module';
     EngagementModule,
     ExploreModule,
     InternalJobsModule,
+    TelemetryModule,
   ],
   controllers: [AppController],
   providers: [
