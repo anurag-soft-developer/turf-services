@@ -99,6 +99,23 @@ export class ProposedTurf {
   updatedAt!: Date;
 }
 
+/** Lets outsiders self-join an unranked match as temporary guests. Unranked only. */
+@Schema({ _id: false })
+export class GuestJoinSettings {
+  @Prop({ type: Boolean, default: false })
+  fromTeamOpen!: boolean;
+
+  @Prop({ type: Boolean, default: false })
+  toTeamOpen!: boolean;
+
+  /** Counts every announced player on a side, not just guests. 0 disables the cap. */
+  @Prop({ type: Number, default: 0, min: 0 })
+  maxPerTeam!: number;
+}
+
+export const GuestJoinSettingsSchema =
+  SchemaFactory.createForClass(GuestJoinSettings);
+
 @Schema({
   timestamps: true,
   collection: 'team-matches',
@@ -250,6 +267,12 @@ export class TeamMatch {
   /** Playing XI + substitutes announced for the fixture (e.g. cricket). */
   @Prop({ type: [AnnouncedPlayerSchema], default: [] })
   announcedPlayers!: AnnouncedPlayer[];
+
+  @Prop({
+    type: GuestJoinSettingsSchema,
+    default: () => ({ fromTeamOpen: false, toTeamOpen: false, maxPerTeam: 0 }),
+  })
+  guestJoin!: GuestJoinSettings;
 
   @Prop({ type: CricketStateSchema, required: false })
   cricketState?: CricketState;

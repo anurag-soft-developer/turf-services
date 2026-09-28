@@ -4,10 +4,7 @@ import {
   TurfBooking,
   TurfBookingSchema,
 } from '../turf-booking/schemas/turf-booking.schema';
-import {
-  Turf,
-  TurfSchema,
-} from '../turf/schemas/turf.schema';
+import { Turf, TurfSchema } from '../turf/schemas/turf.schema';
 import { Team, TeamSchema } from '../team/schemas/team.schema';
 import { TeamModule } from '../team/team.module';
 import { TeamMemberModule } from '../team-member/team-member.module';
@@ -21,6 +18,8 @@ import { StorageModule } from '../storage/storage.module';
 import { ScoringModule } from '../scoring/scoring.module';
 import { AnnouncedPlayersController } from './announcedPlayers/announced-players.controller';
 import { AnnouncedPlayersService } from './announcedPlayers/announced-players.service';
+import { GuestJoinController } from './guest-join/guest-join.controller';
+import { GuestJoinService } from './guest-join/guest-join.service';
 import { MatchmakingController } from './matchmaking.controller';
 import { MatchmakingService } from './matchmaking.service';
 import { TeamMatch, TeamMatchSchema } from './schemas/team-match.schema';
@@ -41,11 +40,12 @@ import { TeamMatch, TeamMatchSchema } from './schemas/team-match.schema';
     StorageModule,
     ScoringModule,
   ],
-  controllers: [MatchmakingController, AnnouncedPlayersController],
-  providers: [
-    MatchmakingService,
-    AnnouncedPlayersService,
+  controllers: [
+    MatchmakingController,
+    AnnouncedPlayersController,
+    GuestJoinController,
   ],
+  providers: [MatchmakingService, AnnouncedPlayersService, GuestJoinService],
   exports: [MatchmakingService],
 })
 export class MatchmakingModule {}

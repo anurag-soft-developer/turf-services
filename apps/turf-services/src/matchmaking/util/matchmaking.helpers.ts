@@ -40,6 +40,14 @@ export function assertMatchAllowsAnnouncedPlayerEdits(
   }
 }
 
+export function assertUnranked(match: TeamMatchDocument): void {
+  if (match.source !== TeamMatchSource.UNRANKED) {
+    throw new BadRequestException(
+      'This action is only available on unranked matches',
+    );
+  }
+}
+
 export async function populateTeamMatch(
   doc: TeamMatchDocument,
   populate: PopulateOptions[] = TEAM_MATCH_POPULATE,

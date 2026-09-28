@@ -30,7 +30,10 @@ export type MatchmakingNotificationKind =
   | 'match_result_recorded'
   | 'match_updated'
   | 'announced_player_added'
-  | 'announced_player_removed';
+  | 'announced_player_removed'
+  | 'match_guest_joined'
+  | 'match_guest_left'
+  | 'match_guest_switched';
 
 export type TeamNotificationKind =
   | 'team_join_request'
@@ -109,7 +112,10 @@ export type MatchmakingNotificationData =
     }
   | { kind: 'match_updated'; matchId: string }
   | { kind: 'announced_player_added'; matchId: string }
-  | { kind: 'announced_player_removed'; matchId: string };
+  | { kind: 'announced_player_removed'; matchId: string }
+  | { kind: 'match_guest_joined'; matchId: string; actorUserId: string }
+  | { kind: 'match_guest_left'; matchId: string; actorUserId: string }
+  | { kind: 'match_guest_switched'; matchId: string; actorUserId: string };
 
 export type TeamNotificationData =
   | {

@@ -21,8 +21,8 @@ export const turfBookingPopulateSelectFields =
   'turf bookedBy timeSlots status totalAmount paymentStatus playerCount createdAt updatedAt';
 
 export const TEAM_MATCH_POPULATE: PopulateOptions[] = [
-  { path: 'fromTeam', select: teamPopulateSelectFields },
-  { path: 'toTeam', select: teamPopulateSelectFields },
+  { path: 'fromTeam', select: `${teamPopulateSelectFields} ownerIds` },
+  { path: 'toTeam', select: `${teamPopulateSelectFields} ownerIds` },
   { path: 'proposedTurfs.turfId', select: turfSelectFields },
   { path: 'turfBookingId', select: turfBookingPopulateSelectFields },
   { path: 'cricketState.battingTeamId', select: teamPopulateSelectFields },

@@ -3,12 +3,16 @@ import { Schema as MongooseSchema, Types } from 'mongoose';
 import { Team } from '../../team/schemas/team.schema';
 import { User } from '../../users/schemas/user.schema';
 
-/** Cricket squad role for an announced player line-up. */
+/** Sport-specific role stored for an announced player line-up. */
 export enum AnnouncedPlayerRole {
   BATSMAN = 'batsman',
   BOWLER = 'bowler',
   ALL_ROUNDER = 'allrounder',
   WICKET_KEEPER = 'wicket_keeper',
+  FORWARD = 'forward',
+  DEFENDER = 'defender',
+  MIDFIELDER = 'midfielder',
+  GOALKEEPER = 'goalkeeper',
 }
 
 @Schema({ _id: false })

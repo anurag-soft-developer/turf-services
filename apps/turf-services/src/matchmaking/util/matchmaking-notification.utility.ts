@@ -350,3 +350,54 @@ export async function notifyAnnouncedPlayers(
     );
   }
 }
+
+
+export async function notifyGuestJoin(
+  notificationService: NotificationService,
+  teamMemberModel: Model<TeamMember>,
+  teamService: TeamService,
+  params: {
+    matchId: string;
+    teamIds: string[];
+    actorUserId: string;
+    action: 'joined' | 'left' | 'switched';
+  },
+): Promise<void> {
+
+const GUEST_JOIN_COPY = {
+  joined: {
+    title: 'Guest player joined',
+    body: 'A guest player joined your squad for an upcoming match.',
+    kind: 'match_guest_joined',
+  },
+  left: {
+    title: 'Guest player left',
+    body: 'A guest player left your squad for an upcoming match.',
+    kind: 'match_guest_left',
+  },
+  switched: {
+    title: 'Guest player switched teams',
+    body: 'A guest player switched sides in an upcoming match.',
+    kind: 'match_guest_switched',
+  },
+} as const;
+
+  const copy = GUEST_JOIN_COPY[params.action];
+  await notifyTeamsStaff(
+    notificationService,
+    teamMemberModel,
+    teamService,
+    params.teamIds,
+    params.actorUserId,
+    {
+      ...matchBase(params.matchId),
+      title: copy.title,
+      body: copy.body,
+      data: {
+        matchId: params.matchId,
+        kind: copy.kind,
+        actorUserId: params.actorUserId,
+      },
+    },
+  );
+}

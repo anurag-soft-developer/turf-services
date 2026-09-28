@@ -38,6 +38,7 @@ import {
   announcedGuestId,
   announcedUserId,
 } from './announced-player.identity';
+import { assertAnnouncedPlayerRoleMatchesSport } from './announced-player.roles';
 
 @Injectable()
 export class AnnouncedPlayersService {
@@ -120,6 +121,13 @@ export class AnnouncedPlayersService {
       .filter((id): id is string => !!id);
     if (new Set(incomingUserIds).size !== incomingUserIds.length) {
       throw new BadRequestException('Duplicate userId in players payload');
+    }
+
+    for (const player of dto.players) {
+      assertAnnouncedPlayerRoleMatchesSport(
+        match.sportType,
+        player.role as AnnouncedPlayerRole,
+      );
     }
 
     const isUnranked = match.source === TeamMatchSource.UNRANKED;
@@ -321,6 +329,12 @@ export class AnnouncedPlayersService {
     const actorStr = resolveId(actorOid);
 
     for (const u of dto.updates) {
+      if (u.role !== undefined) {
+        assertAnnouncedPlayerRoleMatchesSport(
+          match.sportType,
+          u.role as AnnouncedPlayerRole,
+        );
+      }
       const idx = existing.findIndex((p) => {
         if (resolveId(p.teamId) !== actorStr) return false;
         if (u.userId) return announcedUserId(p) === resolveId(u.userId);

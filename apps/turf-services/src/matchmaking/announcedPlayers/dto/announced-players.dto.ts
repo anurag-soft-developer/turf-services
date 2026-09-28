@@ -1,14 +1,9 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
+import { AnnouncedPlayerRole } from '../announced-players.schema';
 
 const objectId = z.string().min(1);
-
-const announcedPlayerRoleSchema = z.enum([
-  'batsman',
-  'bowler',
-  'allrounder',
-  'wicket_keeper',
-]);
+const announcedPlayerRoleSchema = z.enum(AnnouncedPlayerRole);
 
 const announcedPlayerSharedFields = {
   name: z.string().trim().min(1).max(200),
