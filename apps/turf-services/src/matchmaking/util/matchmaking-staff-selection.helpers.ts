@@ -1,10 +1,12 @@
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { Types } from 'mongoose';
+import { GeoLocation } from '../../core/schemas/geo-location.schema';
 import { TeamMemberService } from '../../team-member/team-member.service';
 import { TeamService } from '../../team/team.service';
 import {
   MatchProposalStatus,
   TeamMatchDocument,
+  TeamMatchStatus,
 } from '../schemas/team-match.schema';
 import { resolveId } from '../../core/utils/mongo-ref.util';
 
@@ -136,4 +138,49 @@ export function appendSelfAcceptedTurfProposal(
   });
   match.selectedTurfProposalId = proposalId;
   return proposalId;
+}
+
+export type OptionalMatchVenueFields = {
+  slot?: { startTime: Date; endTime: Date };
+  turfId?: string;
+  /** `null` clears; omit to leave unchanged. Never derived from turf. */
+  venueLocation?: GeoLocation | null;
+};
+
+/**
+ * Applies optional slot / turf / venueLocation. Location is only set when
+ * explicitly provided — never copied from the selected turf.
+ */
+export function applyOptionalMatchVenueFields(
+  match: TeamMatchDocument,
+  selfAcceptTeamId: Types.ObjectId,
+  fields: OptionalMatchVenueFields,
+): void {
+  if (fields.slot) {
+    appendSelfAcceptedSlotProposal(match, fields.slot, selfAcceptTeamId);
+  }
+  if (fields.turfId) {
+    appendSelfAcceptedTurfProposal(match, fields.turfId, selfAcceptTeamId);
+  }
+  if (fields.venueLocation !== undefined) {
+    match.venueLocation =
+      fields.venueLocation === null ? undefined : fields.venueLocation;
+  }
+
+  if (match.selectedSlotProposalId && match.selectedTurfProposalId) {
+    const skipFinalize = [
+      TeamMatchStatus.REJECTED,
+      TeamMatchStatus.EXPIRED,
+      TeamMatchStatus.CANCELLED,
+      TeamMatchStatus.COMPLETED,
+      TeamMatchStatus.DRAW,
+      TeamMatchStatus.ABANDONED,
+      TeamMatchStatus.ONGOING,
+    ].includes(match.status);
+    if (!skipFinalize) {
+      match.status = TeamMatchStatus.SCHEDULE_FINALIZED;
+      match.statusUpdatedAt = new Date();
+      match.statusUpdatedBy = undefined;
+    }
+  }
 }

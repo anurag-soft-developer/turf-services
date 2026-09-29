@@ -22,8 +22,8 @@ import {
   ProposeScheduleDto,
   RecordMatchResultDto,
   RespondMatchRequestDto,
-  SendMatchRequestDto,
-  CreateUnrankedMatchDto,
+  RevokeMatchRequestDto,
+  CreateMatchDto,
 } from './dto/matchmaking.dto';
 import { MatchmakingService } from './matchmaking.service';
 
@@ -32,20 +32,13 @@ import { MatchmakingService } from './matchmaking.service';
 export class MatchmakingController {
   constructor(private readonly matchmakingService: MatchmakingService) {}
 
-  @Post('requests')
-  async sendRequest(
-    @Body() dto: SendMatchRequestDto,
+  /** Create a ranked or unranked match (`source` in body). */
+  @Post()
+  async createMatch(
+    @Body() dto: CreateMatchDto,
     @CurrentUser('_id') userId: Types.ObjectId,
   ) {
-    return this.matchmakingService.sendRequest(userId.toString(), dto);
-  }
-
-  @Post('unranked')
-  async createUnrankedMatch(
-    @Body() dto: CreateUnrankedMatchDto,
-    @CurrentUser('_id') userId: Types.ObjectId,
-  ) {
-    return this.matchmakingService.createUnrankedMatch(userId.toString(), dto);
+    return this.matchmakingService.createMatch(userId.toString(), dto);
   }
 
   @Get('requests')
@@ -125,6 +118,16 @@ export class MatchmakingController {
     @CurrentUser('_id') userId: Types.ObjectId,
   ) {
     return this.matchmakingService.finalizeSchedule(id, userId.toString(), dto);
+  }
+
+  /** Sender deletes a still-`requested` challenge (recipient has not responded). */
+  @Post('requests/:id/revoke')
+  async revoke(
+    @Param('id') id: string,
+    @Body() dto: RevokeMatchRequestDto,
+    @CurrentUser('_id') userId: Types.ObjectId,
+  ) {
+    return this.matchmakingService.revoke(id, userId.toString(), dto);
   }
 
   @Post('requests/:id/cancel')

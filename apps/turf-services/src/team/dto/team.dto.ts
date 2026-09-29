@@ -46,7 +46,6 @@ const teamBaseSchema = z.object({
   preferredPlayDays: z.array(dayOfWeekSchema).max(7).optional(),
   preferredTimeSlot: preferredTimeSlotSchema.optional(),
   lookingForMembers: z.boolean().optional(),
-  teamOpenForMatch: z.boolean().optional(),
   pinnedNotices: z.array(z.string().trim().min(1).max(500)).max(10).optional(),
 });
 
@@ -99,10 +98,6 @@ const TeamFilterSchema = z
     page: z.coerce.number().min(1).default(1),
     limit: z.coerce.number().min(1).max(50).default(10),
     location: nearbyLocationQuerySchema.optional(),
-    teamOpenForMatch: z
-      .enum(['true', 'false'])
-      .transform((v) => v === 'true')
-      .optional(),
     skipTeamsWithSentRequest: z
       .enum(['true', 'false'])
       .transform((v) => v === 'true')

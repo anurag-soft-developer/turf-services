@@ -164,7 +164,6 @@ export class TeamService {
       sportType,
       genderCategory,
       lookingForMembers,
-      teamOpenForMatch,
       skipTeamsWithSentRequest,
       fromTeamId,
       search,
@@ -209,9 +208,6 @@ export class TeamService {
     }
     if (lookingForMembers !== undefined) {
       baseMatch.lookingForMembers = lookingForMembers;
-    }
-    if (teamOpenForMatch !== undefined) {
-      baseMatch.teamOpenForMatch = teamOpenForMatch;
     }
 
     if (skipTeamsWithSentRequest && fromTeamId) {

@@ -403,7 +403,6 @@ export class ExploreService {
       sportType: query.sportType,
       search,
       lookingForMembers: query.lookingForMembers,
-      teamOpenForMatch: query.teamOpenForMatch,
       location: query.location,
       page: query.page,
       limit: query.limit,

@@ -203,6 +203,18 @@ export class NotificationService {
     return { deletedCount: result.deletedCount };
   }
 
+  /** Removes notifications tied to a deleted source entity (e.g. revoked match). */
+  async deleteBySource(
+    sourceType: string,
+    sourceId: string,
+  ): Promise<{ deletedCount: number }> {
+    const result = await this.notificationModel.deleteMany({
+      sourceType,
+      sourceId,
+    });
+    return { deletedCount: result.deletedCount };
+  }
+
   private async dispatchToRealtime(
     payload: NotificationDocument,
   ): Promise<boolean> {

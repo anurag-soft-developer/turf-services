@@ -1,6 +1,6 @@
 import { createZodDto, type ZodDto } from 'nestjs-zod';
 import { z } from 'zod';
-import { nearbyLocationQuerySchema } from '../../core/dto';
+import { geoLocationSchema, nearbyLocationQuerySchema } from '../../core/dto';
 import { sportTypeSchema } from '../../core/sports/sport-types';
 import { TeamMatchSource, TeamMatchStatus } from '../schemas/team-match.schema';
 
@@ -12,17 +12,37 @@ const TimeSlotSchema = z.object({
   endTime: z.coerce.date(),
 });
 
-const SendMatchRequestSchema = z.object({
-  fromTeamId: z.string().min(1),
-  toTeamId: z.string().min(1),
-  notes: z.string().trim().max(500).optional(),
-  expiresInMinutes: z.coerce.number().int().min(1).optional(),
-});
+/** Optional venue fields shared by create / update. Location is never derived from turf. */
+const optionalMatchVenueFieldsSchema = {
+  slot: TimeSlotSchema.optional(),
+  turfId: z.string().min(1).optional(),
+  venueLocation: geoLocationSchema.optional(),
+};
 
-const CreateUnrankedMatchSchema = z.object({
-  fromTeamId: z.string().min(1),
-  toTeamId: z.string().min(1),
-});
+const CreateMatchSchema = z
+  .object({
+    source: z.enum(TeamMatchSource),
+    fromTeamId: z.string().min(1),
+    toTeamId: z.string().min(1),
+    notes: z.string().trim().max(500).optional(),
+    expiresInMinutes: z.coerce.number().int().min(1).optional(),
+    ...optionalMatchVenueFieldsSchema,
+    /**
+     * Open guest-join for nearby players on teams the creator can act for.
+     * Unranked only. Always opens fromTeam; also opens toTeam when the
+     * creator belongs to both.
+     */
+    allowNearbyPlayers: z.boolean().optional(),
+  })
+  .superRefine((d, ctx) => {
+    if (d.source === TeamMatchSource.RANKED && d.allowNearbyPlayers) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'allowNearbyPlayers is only valid for unranked matches',
+        path: ['allowNearbyPlayers'],
+      });
+    }
+  });
 
 /**
  * Nest/Express query: `key=a,b` and/or repeated `key=` → trimmed non-empty
@@ -135,6 +155,11 @@ const CancelNegotiationSchema = z.object({
   reason: z.string().trim().max(500).optional(),
 });
 
+/** Sender withdraws a challenge before the recipient responds (`requested` only). */
+const RevokeMatchRequestSchema = z.object({
+  actorTeamId: z.string().min(1),
+});
+
 const RecordMatchResultSchema = z
   .object({
     actorTeamId: z.string().min(1),
@@ -151,14 +176,11 @@ const UpdateTeamMatchSchema = z
     turfBookingId: z.union([z.string().min(1), z.null()]).optional(),
     notes: z.string().trim().max(500).optional(),
     /** New accepted slot; server creates the proposal and `selectedSlotProposalId`. */
-    slot: z
-      .object({
-        startTime: z.coerce.date(),
-        endTime: z.coerce.date(),
-      })
-      .optional(),
+    slot: TimeSlotSchema.optional(),
     /** Turf id for a new accepted proposal; server creates the proposal and `selectedTurfProposalId`. */
     turfId: z.string().min(1).optional(),
+    /** Explicit venue only — never copied from turf on the server. */
+    venueLocation: geoLocationSchema.nullable().optional(),
     /** When set, must be from or to team and the caller must belong to that team. If omitted, caller must belong to exactly one of the two teams (or pass this when they belong to both). */
     selfAcceptTeamId: z.string().min(1).optional(),
   })
@@ -167,14 +189,12 @@ const UpdateTeamMatchSchema = z
       d.turfBookingId !== undefined ||
       d.notes !== undefined ||
       d.slot !== undefined ||
-      d.turfId !== undefined,
+      d.turfId !== undefined ||
+      d.venueLocation !== undefined,
     { message: 'Provide at least one field to update' },
   );
 
-export class SendMatchRequestDto extends createZodDto(SendMatchRequestSchema) {}
-export class CreateUnrankedMatchDto extends createZodDto(
-  CreateUnrankedMatchSchema,
-) {}
+export class CreateMatchDto extends createZodDto(CreateMatchSchema) {}
 export class ListNegotiationsFilterDto extends createZodDto(
   ListNegotiationsFilterSchema,
 ) {}
@@ -194,6 +214,9 @@ export class DecideTurfProposalDto extends createZodDto(
 export class FinalizeScheduleDto extends createZodDto(FinalizeScheduleSchema) {}
 export class CancelNegotiationDto extends createZodDto(
   CancelNegotiationSchema,
+) {}
+export class RevokeMatchRequestDto extends createZodDto(
+  RevokeMatchRequestSchema,
 ) {}
 export class RecordMatchResultDto extends createZodDto(
   RecordMatchResultSchema,

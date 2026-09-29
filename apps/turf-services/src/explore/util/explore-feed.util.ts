@@ -16,7 +16,6 @@ export function exploreFiltersHash(query: ExploreQueryDto): string {
     query.matchStatus ?? '',
     query.matchScope ?? '',
     query.lookingForMembers === undefined ? '' : String(query.lookingForMembers),
-    query.teamOpenForMatch === undefined ? '' : String(query.teamOpenForMatch),
   ].join('|');
   return createHash('sha1').update(payload).digest('hex').slice(0, 12);
 }

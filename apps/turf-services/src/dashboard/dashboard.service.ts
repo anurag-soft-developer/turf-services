@@ -43,7 +43,7 @@ export class DashboardService {
     const [nearbyTeamsCount, unreadNotificationCount, upcomingBookings] =
       await Promise.all([
         hasLocation
-          ? this.countNearbyOpenForMatchTeams(userId, {
+          ? this.countNearbyTeams(userId, {
               nearbyLat: location.nearbyLat,
               nearbyLng: location.nearbyLng,
               nearbyRadiusKm,
@@ -127,7 +127,7 @@ export class DashboardService {
     return result.data;
   }
 
-  private async countNearbyOpenForMatchTeams(
+  private async countNearbyTeams(
     userId: string,
     location: {
       nearbyLat: number;
@@ -136,7 +136,6 @@ export class DashboardService {
     },
   ): Promise<number> {
     const result = await this.teamService.findMany(userId, {
-      teamOpenForMatch: true,
       status: TeamStatus.ACTIVE,
       location,
       page: 1,

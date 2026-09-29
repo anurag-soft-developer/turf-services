@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   NotFoundException,
 } from '@nestjs/common';
@@ -23,6 +24,87 @@ import {
   TERMINAL_PRE_PLAY_STATUSES,
 } from './matchmaking.constants';
 import { resolveId } from '../../core/utils/mongo-ref.util';
+
+/** Active matches that can collide on scheduled time for the same team pair. */
+export const SLOT_OVERLAP_ACTIVE_STATUSES: TeamMatchStatus[] = [
+  TeamMatchStatus.REQUESTED,
+  TeamMatchStatus.ACCEPTED,
+  TeamMatchStatus.NEGOTIATING,
+  TeamMatchStatus.SCHEDULE_FINALIZED,
+  TeamMatchStatus.ONGOING,
+];
+
+export function timeRangesOverlap(
+  a: { startTime: Date; endTime: Date },
+  b: { startTime: Date; endTime: Date },
+): boolean {
+  return a.startTime < b.endTime && a.endTime > b.startTime;
+}
+
+/** Resolved selected slot on a match, if any. */
+export function selectedSlotOf(
+  match: Pick<TeamMatchDocument, 'proposedSlots' | 'selectedSlotProposalId'>,
+): { startTime: Date; endTime: Date } | null {
+  if (!match.selectedSlotProposalId) return null;
+  const selectedId = resolveId(match.selectedSlotProposalId);
+  const proposal = (match.proposedSlots ?? []).find(
+    (p) => resolveId(p.proposalId) === selectedId,
+  );
+  if (!proposal?.slot) return null;
+  return {
+    startTime: new Date(proposal.slot.startTime),
+    endTime: new Date(proposal.slot.endTime),
+  };
+}
+
+/**
+ * Same team pair may have multiple active matches; only overlapping
+ * selected slots are rejected. No-op when [slot] is omitted.
+ */
+export async function assertNoOverlappingMatchSlot(
+  teamMatchModel: Model<TeamMatchDocument>,
+  fromTeamId: Types.ObjectId,
+  toTeamId: Types.ObjectId,
+  slot: { startTime: Date; endTime: Date } | undefined,
+  excludeMatchId?: Types.ObjectId | string,
+): Promise<void> {
+  if (!slot) return;
+  if (!(slot.endTime > slot.startTime)) {
+    throw new BadRequestException('slot.endTime must be after startTime');
+  }
+
+  const filter: Record<string, unknown> = {
+    status: { $in: SLOT_OVERLAP_ACTIVE_STATUSES },
+    selectedSlotProposalId: { $exists: true, $ne: null },
+    $or: [
+      { fromTeam: fromTeamId, toTeam: toTeamId },
+      { fromTeam: toTeamId, toTeam: fromTeamId },
+    ],
+  };
+  if (excludeMatchId) {
+    filter._id = { $ne: new Types.ObjectId(excludeMatchId.toString()) };
+  }
+
+  const candidates = await teamMatchModel
+    .find(filter)
+    .select({ proposedSlots: 1, selectedSlotProposalId: 1 })
+    .lean()
+    .exec();
+
+  for (const match of candidates) {
+    const existing = selectedSlotOf(
+      match as Pick<
+        TeamMatchDocument,
+        'proposedSlots' | 'selectedSlotProposalId'
+      >,
+    );
+    if (existing && timeRangesOverlap(slot, existing)) {
+      throw new ConflictException(
+        'An active match already exists for this team pair in this time range',
+      );
+    }
+  }
+}
 
 /** Blocks squad edits once the match is terminal or cricket scoring has started. */
 export function assertMatchAllowsAnnouncedPlayerEdits(

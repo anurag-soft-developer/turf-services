@@ -293,24 +293,10 @@ export class TeamMatch {
 
 export const TeamMatchSchema = SchemaFactory.createForClass(TeamMatch);
 
-const ACTIVE_PAIR_STATUSES = [
-  TeamMatchStatus.REQUESTED,
-  TeamMatchStatus.ACCEPTED,
-  TeamMatchStatus.NEGOTIATING,
-];
-
 TeamMatchSchema.index(
   { 'venueLocation.coordinates': '2dsphere' },
   { sparse: true },
 );
 TeamMatchSchema.index({ fromTeam: 1, status: 1, createdAt: -1 });
 TeamMatchSchema.index({ toTeam: 1, status: 1, createdAt: -1 });
-TeamMatchSchema.index(
-  { fromTeam: 1, toTeam: 1 },
-  {
-    unique: true,
-    partialFilterExpression: {
-      status: { $in: ACTIVE_PAIR_STATUSES },
-    },
-  },
-);
+TeamMatchSchema.index({ fromTeam: 1, toTeam: 1, status: 1, createdAt: -1 });

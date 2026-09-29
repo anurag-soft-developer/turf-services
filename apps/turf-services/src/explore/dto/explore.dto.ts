@@ -21,10 +21,6 @@ const ExploreQuerySchema = z.object({
     .enum(['true', 'false'])
     .transform((v) => v === 'true')
     .optional(),
-  teamOpenForMatch: z
-    .enum(['true', 'false'])
-    .transform((v) => v === 'true')
-    .optional(),
 });
 
 export class ExploreQueryDto extends createZodDto(ExploreQuerySchema) {}

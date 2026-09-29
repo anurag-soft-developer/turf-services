@@ -13,13 +13,12 @@ import {
   applyExcludeIds,
   paginateSortedByDistance,
 } from '../core/utils/geo-near-page.util';
-import { GeoLocation } from '../core/schemas/geo-location.schema';
 import { SportType, Team, TeamDocument } from '../team/schemas/team.schema';
+import { RANKING_SPORT_TYPES } from '../core/sports/sport-types';
 import { TeamService } from '../team/team.service';
 import { TeamMemberService } from '../team-member/team-member.service';
 import { TeamMember } from '../team-member/schemas/team-member.schema';
 import { NotificationService } from '../notification/notification.service';
-import { Turf } from '../turf/schemas/turf.schema';
 import {
   notifyMatchCancelled,
   notifyMatchRequestReceived,
@@ -42,8 +41,8 @@ import {
   ProposeScheduleDto,
   RecordMatchResultDto,
   RespondMatchRequestDto,
-  SendMatchRequestDto,
-  CreateUnrankedMatchDto,
+  RevokeMatchRequestDto,
+  CreateMatchDto,
 } from './dto/matchmaking.dto';
 import {
   TeamMatch,
@@ -57,14 +56,14 @@ import {
   TERMINAL_ALL_STATUSES,
 } from './util/matchmaking.constants';
 import {
-  appendSelfAcceptedSlotProposal,
-  appendSelfAcceptedTurfProposal,
+  applyOptionalMatchVenueFields,
   resolveSelfAcceptTeamId,
 } from './util/matchmaking-staff-selection.helpers';
 import { buildMongoSortOptions } from '../core/utils/mongo-sort.util';
 import {
   applyStatusUpdate,
   assertCanActForTeam,
+  assertNoOverlappingMatchSlot,
   buildPreMatchInboxStatusClause,
   assertMatchAllowsProposalWithdraw,
   assertSchedulePhaseActionable,
@@ -90,82 +89,12 @@ export class MatchmakingService {
     private readonly teamMemberService: TeamMemberService,
     @InjectModel(TeamMember.name)
     private readonly teamMemberModel: Model<TeamMember>,
-    @InjectModel(Turf.name)
-    private readonly turfModel: Model<Turf>,
     private readonly notificationService: NotificationService,
   ) {}
 
-  async sendRequest(
+  async createMatch(
     userId: string,
-    dto: SendMatchRequestDto,
-  ): Promise<TeamMatchDocument> {
-    if (dto.fromTeamId === dto.toTeamId) {
-      throw new BadRequestException('A team cannot request itself');
-    }
-
-    const [fromTeam, toTeam] = await Promise.all([
-      this.teamService.requireTeam(dto.fromTeamId),
-      this.teamService.requireTeam(dto.toTeamId),
-    ]);
-    await assertCanActForTeam(
-      fromTeam,
-      userId,
-      this.teamService,
-      this.teamMemberService,
-    );
-    assertTeamEligibleForMatching(fromTeam);
-    assertTeamEligibleForMatching(toTeam);
-
-    if (fromTeam.sportType !== toTeam.sportType) {
-      throw new BadRequestException('Teams must be in the same sport');
-    }
-
-    if (!toTeam.teamOpenForMatch) {
-      throw new BadRequestException(
-        'Target team is not open for match requests',
-      );
-    }
-
-    const now = new Date();
-    const uid = new Types.ObjectId(userId);
-
-    try {
-      const created = await this.teamMatchModel.create({
-        source: TeamMatchSource.RANKED,
-        fromTeam: fromTeam._id,
-        toTeam: toTeam._id,
-        sportType: fromTeam.sportType,
-        status: TeamMatchStatus.REQUESTED,
-        statusUpdatedBy: uid,
-        statusUpdatedAt: now,
-        notes: dto.notes,
-        ...(dto.expiresInMinutes != null
-          ? {
-              expiresAt: new Date(
-                Date.now() + dto.expiresInMinutes * 60 * 1000,
-              ),
-            }
-          : {}),
-      });
-      await notifyMatchRequestReceived(
-        this.notificationService,
-        this.teamMemberModel,
-        this.teamService,
-        created,
-        fromTeam,
-        userId,
-      );
-      return populateTeamMatch(created);
-    } catch {
-      throw new ConflictException(
-        'An active match request already exists for this team pair',
-      );
-    }
-  }
-
-  async createUnrankedMatch(
-    userId: string,
-    dto: CreateUnrankedMatchDto,
+    dto: CreateMatchDto,
   ): Promise<TeamMatchDocument> {
     if (dto.fromTeamId === dto.toTeamId) {
       throw new BadRequestException('A team cannot play itself');
@@ -187,61 +116,83 @@ export class MatchmakingService {
     if (fromTeam.sportType !== toTeam.sportType) {
       throw new BadRequestException('Teams must be in the same sport');
     }
-    const unrankedSports = new Set([SportType.CRICKET, SportType.FOOTBALL]);
-    if (!unrankedSports.has(fromTeam.sportType)) {
+
+    const isRanked = dto.source === TeamMatchSource.RANKED;
+    if (
+      isRanked &&
+      !(RANKING_SPORT_TYPES as readonly SportType[]).includes(
+        fromTeam.sportType,
+      )
+    ) {
       throw new BadRequestException(
-        'Unranked matches are not available for this sport',
+        'Ranked matches are only available for cricket and football',
       );
     }
 
     const fromId = fromTeam._id;
     const toId = toTeam._id;
     const actorOnOpponentTeam =
-      this.teamService.isOwner(toTeam, userId) ||
-      (await this.teamMemberService.hasActiveMembership(
-        toId.toString(),
-        userId,
-      ));
+      !isRanked &&
+      (this.teamService.isOwner(toTeam, userId) ||
+        (await this.teamMemberService.hasActiveMembership(
+          toId.toString(),
+          userId,
+        )));
 
-    const existingUnranked = await this.teamMatchModel.findOne({
-      source: TeamMatchSource.UNRANKED,
-      status: {
-        $in: [
-          TeamMatchStatus.REQUESTED,
-          TeamMatchStatus.ACCEPTED,
-          TeamMatchStatus.NEGOTIATING,
-          TeamMatchStatus.SCHEDULE_FINALIZED,
-          TeamMatchStatus.ONGOING,
-        ],
-      },
-      $or: [
-        { fromTeam: fromId, toTeam: toId },
-        { fromTeam: toId, toTeam: fromId },
-      ],
-    });
-    if (existingUnranked) {
-      throw new ConflictException(
-        'An active unranked match already exists for this team pair',
-      );
-    }
+    await assertNoOverlappingMatchSlot(
+      this.teamMatchModel,
+      fromId,
+      toId,
+      dto.slot,
+    );
 
     const now = new Date();
     const uid = new Types.ObjectId(userId);
-    // Member of both teams → start ready to play; otherwise opponent must accept.
-    const status = actorOnOpponentTeam
-      ? TeamMatchStatus.SCHEDULE_FINALIZED
-      : TeamMatchStatus.REQUESTED;
+    // Unranked + member of both teams → start ready to play; otherwise accept.
+    const status =
+      !isRanked && actorOnOpponentTeam
+        ? TeamMatchStatus.SCHEDULE_FINALIZED
+        : TeamMatchStatus.REQUESTED;
 
     try {
       const created = await this.teamMatchModel.create({
-        source: TeamMatchSource.UNRANKED,
+        source: dto.source,
         fromTeam: fromId,
         toTeam: toId,
         sportType: fromTeam.sportType,
         status,
         statusUpdatedBy: uid,
         statusUpdatedAt: now,
+        ...(isRanked
+          ? {
+              notes: dto.notes,
+              ...(dto.expiresInMinutes != null
+                ? {
+                    expiresAt: new Date(
+                      Date.now() + dto.expiresInMinutes * 60 * 1000,
+                    ),
+                  }
+                : {}),
+            }
+          : {}),
+        ...(!isRanked && dto.allowNearbyPlayers
+          ? {
+              guestJoin: {
+                fromTeamOpen: true,
+                toTeamOpen: actorOnOpponentTeam,
+                maxPerTeam: 0,
+              },
+            }
+          : {}),
       });
+      if (dto.slot || dto.turfId || dto.venueLocation) {
+        applyOptionalMatchVenueFields(created, fromId, {
+          slot: dto.slot,
+          turfId: dto.turfId,
+          venueLocation: dto.venueLocation,
+        });
+        await created.save();
+      }
       if (status === TeamMatchStatus.REQUESTED) {
         await notifyMatchRequestReceived(
           this.notificationService,
@@ -253,9 +204,15 @@ export class MatchmakingService {
         );
       }
       return populateTeamMatch(created);
-    } catch {
+    } catch (err) {
+      if (
+        err instanceof ConflictException ||
+        err instanceof BadRequestException
+      ) {
+        throw err;
+      }
       throw new ConflictException(
-        'An active match request already exists for this team pair',
+        'Could not create match for this team pair',
       );
     }
   }
@@ -798,9 +755,19 @@ export class MatchmakingService {
       );
     }
 
+    await assertNoOverlappingMatchSlot(
+      this.teamMatchModel,
+      match.fromTeam as Types.ObjectId,
+      match.toTeam as Types.ObjectId,
+      {
+        startTime: new Date(slotProposal.slot.startTime),
+        endTime: new Date(slotProposal.slot.endTime),
+      },
+      match._id,
+    );
+
     match.selectedSlotProposalId = slotProposal.proposalId;
     match.selectedTurfProposalId = turfProposal.proposalId;
-    await this.copyVenueLocationFromSelectedTurf(match);
     applyStatusUpdate(match, TeamMatchStatus.SCHEDULE_FINALIZED, userId);
     match.notes = dto.notes ?? match.notes;
     await match.save();
@@ -812,6 +779,42 @@ export class MatchmakingService {
       userId,
     );
     return populateTeamMatch(match);
+  }
+
+  /**
+   * Sender withdraws a challenge before the recipient responds.
+   * Hard-deletes the match document (and related notifications).
+   */
+  async revoke(
+    matchId: string,
+    userId: string,
+    dto: RevokeMatchRequestDto,
+  ): Promise<{ deleted: true }> {
+    const [match, actorTeam] = await Promise.all([
+      requireTeamMatch(this.teamMatchModel, matchId),
+      this.teamService.requireTeam(dto.actorTeamId),
+    ]);
+    await assertCanActForTeam(
+      actorTeam,
+      userId,
+      this.teamService,
+      this.teamMemberService,
+    );
+
+    if (match.status !== TeamMatchStatus.REQUESTED) {
+      throw new BadRequestException(
+        'Only a pending request (not yet responded) can be revoked',
+      );
+    }
+    if (resolveId(actorTeam._id) !== resolveId(match.fromTeam)) {
+      throw new ForbiddenException(
+        'Only the sending team can revoke this request',
+      );
+    }
+
+    await this.notificationService.deleteBySource('teamMatch', matchId);
+    await this.teamMatchModel.deleteOne({ _id: match._id });
+    return { deleted: true };
   }
 
   async cancel(
@@ -831,15 +834,19 @@ export class MatchmakingService {
     );
     ensureMatchHasTeam(match, actorTeam._id);
 
+    // Pending `requested` challenges must use revoke (hard delete), not cancel.
     const cancellable: TeamMatchStatus[] = [
-      TeamMatchStatus.REQUESTED,
       TeamMatchStatus.ACCEPTED,
       TeamMatchStatus.NEGOTIATING,
       TeamMatchStatus.SCHEDULE_FINALIZED,
       TeamMatchStatus.ONGOING,
     ];
     if (!cancellable.includes(match.status)) {
-      throw new BadRequestException('This match can no longer be cancelled');
+      throw new BadRequestException(
+        match.status === TeamMatchStatus.REQUESTED
+          ? 'Pending requests must be revoked, not cancelled'
+          : 'This match can no longer be cancelled',
+      );
     }
 
     const abandoning = match.status === TeamMatchStatus.ONGOING;
@@ -938,6 +945,7 @@ export class MatchmakingService {
   /**
    * Direct field updates. Optional `slot` / `turfId` add new ACCEPTED self-accept proposals
    * (server generates proposal ids) and set `selectedSlotProposalId` / `selectedTurfProposalId`.
+   * `venueLocation` is only set when explicitly provided — never copied from turf.
    * `selfAcceptTeamId` or membership disambiguation applies when `slot` and/or `turfId` are sent.
    * When both selected ids are set after the update, status becomes `schedule_finalized`
    * unless the match is already in a terminal pre-play or post-play outcome state.
@@ -962,7 +970,10 @@ export class MatchmakingService {
       match.notes = dto.notes;
     }
 
-    const needsSelfTeam = dto.slot !== undefined || dto.turfId !== undefined;
+    const needsSelfTeam =
+      dto.slot !== undefined ||
+      dto.turfId !== undefined ||
+      dto.venueLocation !== undefined;
     const selfTeam = needsSelfTeam
       ? await resolveSelfAcceptTeamId(
           match,
@@ -977,35 +988,21 @@ export class MatchmakingService {
       match.status === TeamMatchStatus.SCHEDULE_FINALIZED;
 
     if (dto.slot) {
-      appendSelfAcceptedSlotProposal(
-        match,
-        {
-          startTime: new Date(dto.slot.startTime),
-          endTime: new Date(dto.slot.endTime),
-        },
-        selfTeam!,
+      await assertNoOverlappingMatchSlot(
+        this.teamMatchModel,
+        match.fromTeam as Types.ObjectId,
+        match.toTeam as Types.ObjectId,
+        dto.slot,
+        match._id,
       );
     }
-    if (dto.turfId) {
-      appendSelfAcceptedTurfProposal(match, dto.turfId, selfTeam!);
-      await this.copyVenueLocationFromSelectedTurf(match);
-    }
 
-    if (match.selectedSlotProposalId && match.selectedTurfProposalId) {
-      const skipFinalize = [
-        TeamMatchStatus.REJECTED,
-        TeamMatchStatus.EXPIRED,
-        TeamMatchStatus.CANCELLED,
-        TeamMatchStatus.COMPLETED,
-        TeamMatchStatus.DRAW,
-        TeamMatchStatus.ABANDONED,
-        TeamMatchStatus.ONGOING,
-      ].includes(match.status);
-      if (!skipFinalize) {
-        match.status = TeamMatchStatus.SCHEDULE_FINALIZED;
-        match.statusUpdatedAt = new Date();
-        match.statusUpdatedBy = undefined;
-      }
+    if (dto.slot || dto.turfId || dto.venueLocation !== undefined) {
+      applyOptionalMatchVenueFields(match, selfTeam!, {
+        slot: dto.slot,
+        turfId: dto.turfId,
+        venueLocation: dto.venueLocation,
+      });
     }
 
     await match.save();
@@ -1016,6 +1013,7 @@ export class MatchmakingService {
     if (
       dto.slot ||
       dto.turfId ||
+      dto.venueLocation !== undefined ||
       dto.turfBookingId !== undefined ||
       becameFinalized
     ) {
@@ -1053,24 +1051,5 @@ export class MatchmakingService {
       },
     );
     return result.modifiedCount;
-  }
-
-  private async copyVenueLocationFromSelectedTurf(
-    match: TeamMatchDocument,
-  ): Promise<void> {
-    if (!match.selectedTurfProposalId) return;
-    const selected = match.proposedTurfs.find(
-      (p) =>
-        resolveId(p.proposalId) === resolveId(match.selectedTurfProposalId!),
-    );
-    if (!selected) return;
-    const turf = await this.turfModel
-      .findById(resolveId(selected.turfId))
-      .select('location')
-      .lean()
-      .exec();
-    if (turf?.location) {
-      match.venueLocation = turf.location as GeoLocation;
-    }
   }
 }
