@@ -15,6 +15,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { randomUUID } from 'crypto';
 import { config } from '../core/config/env.config';
 import { MediaUploadPurpose } from '../post/dto/media-upload.dto';
+import { UsageQuotaService } from '../usage-quota/usage-quota.service';
 import { StorageLifecycleService } from './storage-lifecycle.service';
 
 interface SignUploadParams {
@@ -66,6 +67,7 @@ export class StorageService {
   constructor(
     @Inject(forwardRef(() => StorageLifecycleService))
     private readonly storageLifecycle: StorageLifecycleService,
+    private readonly usageQuota: UsageQuotaService,
   ) {}
 
   async createSignedUploadUrl(params: SignUploadParams): Promise<{
@@ -89,6 +91,12 @@ export class StorageService {
       params.idempotencyKey,
     );
 
+    const consumed = await this.usageQuota.consumeUpload({
+      userId: params.userId,
+      sizeBytes: params.sizeBytes,
+      objectKey,
+    });
+
     const command = new PutObjectCommand({
       Bucket: config.SPACES_BUCKET,
       Key: objectKey,
@@ -97,29 +105,36 @@ export class StorageService {
     });
 
     const ttlSeconds = Number(config.SPACES_SIGNED_URL_TTL_SECONDS);
-    const uploadUrl = await getSignedUrl(this.s3, command, {
-      expiresIn: ttlSeconds,
-    });
-
-    const result = {
-      uploadUrl,
-      fileUrl: this.getPublicUrl(objectKey),
-      objectKey,
-      expiresAt: new Date(Date.now() + ttlSeconds * 1000).toISOString(),
-      headers: {
-        'Content-Type': params.mimeType,
-        'x-amz-acl': OBJECT_ACL_PUBLIC_READ,
-      },
-    };
-
-    await this.storageLifecycle.registerPendingUpload({
-      userId: params.userId,
-      objectKey,
-      fileUrl: result.fileUrl,
-      purpose: params.purpose,
-    });
-
-    return result;
+    try {
+      const uploadUrl = await getSignedUrl(this.s3, command, {
+        expiresIn: ttlSeconds,
+      });
+      const result = {
+        uploadUrl,
+        fileUrl: this.getPublicUrl(objectKey),
+        objectKey,
+        expiresAt: new Date(Date.now() + ttlSeconds * 1000).toISOString(),
+        headers: {
+          'Content-Type': params.mimeType,
+          'x-amz-acl': OBJECT_ACL_PUBLIC_READ,
+        },
+      };
+      await this.storageLifecycle.registerPendingUpload({
+        userId: params.userId,
+        objectKey,
+        fileUrl: result.fileUrl,
+        purpose: params.purpose,
+      });
+      return result;
+    } catch (error) {
+      if (consumed) {
+        await this.usageQuota.releaseUpload({
+          userId: params.userId,
+          sizeBytes: params.sizeBytes,
+        });
+      }
+      throw error;
+    }
   }
 
   async uploadBuffer(params: DirectUploadParams): Promise<{
@@ -135,30 +150,40 @@ export class StorageService {
       params.purpose,
       params.fileName,
     );
+    const sizeBytes = params.buffer.byteLength;
 
-    await this.s3.send(
-      new PutObjectCommand({
-        Bucket: config.SPACES_BUCKET,
-        Key: objectKey,
-        Body: params.buffer,
-        ContentType: params.mimeType,
-        ACL: OBJECT_ACL_PUBLIC_READ,
-      }),
-    );
-
-    const fileUrl = this.getPublicUrl(objectKey);
-
-    await this.storageLifecycle.registerPendingUpload({
+    const consumed = await this.usageQuota.consumeUpload({
       userId: params.userId,
-      objectKey,
-      fileUrl,
-      purpose: params.purpose,
+      sizeBytes,
     });
 
-    return {
-      fileUrl,
-      objectKey,
-    };
+    try {
+      await this.s3.send(
+        new PutObjectCommand({
+          Bucket: config.SPACES_BUCKET,
+          Key: objectKey,
+          Body: params.buffer,
+          ContentType: params.mimeType,
+          ACL: OBJECT_ACL_PUBLIC_READ,
+        }),
+      );
+      const fileUrl = this.getPublicUrl(objectKey);
+      await this.storageLifecycle.registerPendingUpload({
+        userId: params.userId,
+        objectKey,
+        fileUrl,
+        purpose: params.purpose,
+      });
+      return { fileUrl, objectKey };
+    } catch (error) {
+      if (consumed) {
+        await this.usageQuota.releaseUpload({
+          userId: params.userId,
+          sizeBytes,
+        });
+      }
+      throw error;
+    }
   }
 
   async deleteObjects(params: {

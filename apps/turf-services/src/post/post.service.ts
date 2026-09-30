@@ -24,6 +24,7 @@ import { userSelectFields } from '../users/schemas/user.schema';
 import { turfSelectFields, Turf, TurfDocument } from '../turf/schemas/turf.schema';
 import { GeoLocation } from '../core/schemas/geo-location.schema';
 import { StorageLifecycleService } from '../storage/storage-lifecycle.service';
+import { UsageQuotaService } from '../usage-quota/usage-quota.service';
 import { resolveId } from '../core/utils/mongo-ref.util';
 import {
   TeamMatch,
@@ -56,6 +57,7 @@ export class PostService {
     private turfModel: Model<TurfDocument>,
     private teamService: TeamService,
     private readonly storageLifecycle: StorageLifecycleService,
+    private readonly usageQuota: UsageQuotaService,
   ) {}
 
   async create(
@@ -105,7 +107,14 @@ export class PostService {
       media,
     });
 
-    const saved = await doc.save();
+    await this.usageQuota.consumePost(userId);
+    let saved: ContentPostDocument;
+    try {
+      saved = await doc.save();
+    } catch (error) {
+      await this.usageQuota.releasePost(userId);
+      throw error;
+    }
 
     const mediaUrls = dto.media?.map((m) => m.url) ?? [];
     if (mediaUrls.length > 0) {

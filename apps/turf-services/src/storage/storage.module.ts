@@ -24,6 +24,7 @@ import {
   UnusedUploadRegistry,
   UnusedUploadRegistrySchema,
 } from './schemas/unused-upload-registry.schema';
+import { UsageQuotaModule } from '../usage-quota/usage-quota.module';
 import { StorageReferenceCollectorService } from './storage-reference-collector.service';
 import { StorageLifecycleService } from './storage-lifecycle.service';
 import { StorageService } from './storage.service';
@@ -42,6 +43,7 @@ import { StorageController } from './storage.controller';
       { name: Withdrawal.name, schema: WithdrawalSchema },
       { name: TeamMatch.name, schema: TeamMatchSchema },
     ]),
+    UsageQuotaModule,
   ],
   controllers: [StorageController],
   providers: [

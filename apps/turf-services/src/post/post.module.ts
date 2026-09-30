@@ -5,6 +5,7 @@ import { PostService } from './post.service';
 import { PostController } from './post.controller';
 import { TeamModule } from '../team/team.module';
 import { StorageModule } from '../storage/storage.module';
+import { UsageQuotaModule } from '../usage-quota/usage-quota.module';
 import { Team, TeamSchema } from '../team/schemas/team.schema';
 import { Turf, TurfSchema } from '../turf/schemas/turf.schema';
 import {
@@ -22,6 +23,7 @@ import {
     ]),
     forwardRef(() => TeamModule),
     StorageModule,
+    UsageQuotaModule,
   ],
   controllers: [PostController],
   providers: [PostService],
