@@ -124,6 +124,13 @@ export class CricketScoringService {
 
     assertUsersInAnnouncedLineup(match, dto, bat, bowl);
 
+    const powerplayOvers = dto.powerplayOvers ?? 0;
+    if (powerplayOvers > dto.maxOvers) {
+      throw new BadRequestException(
+        'Powerplay overs cannot exceed overs per innings',
+      );
+    }
+
     const summaries = Array.from(
       { length: CRICKET_INNINGS_PER_MATCH },
       (_, i) => ({
@@ -136,6 +143,7 @@ export class CricketScoringService {
 
     const cricketState: CricketState = {
       maxOvers: dto.maxOvers,
+      powerplayOvers,
       currentInnings: 1,
       battingTeamId: bat,
       bowlingTeamId: bowl,

@@ -34,6 +34,10 @@ export class CricketState {
   @Prop({ type: Number, required: true, min: 1, max: 120 })
   maxOvers!: number;
 
+  /** Opening overs with a restricted field. 0 means none. */
+  @Prop({ type: Number, default: 0, min: 0, max: 120 })
+  powerplayOvers!: number;
+
   @Prop({ type: Number, default: 1, min: 1, max: 2 })
   currentInnings!: number;
 

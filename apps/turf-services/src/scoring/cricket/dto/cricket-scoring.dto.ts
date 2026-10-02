@@ -59,6 +59,8 @@ const CreateCricketSessionSchema = z.object({
   battingTeamId: objectId,
   bowlingTeamId: objectId,
   maxOvers: z.coerce.number().int().min(1).max(120).default(20),
+  /** Opening overs with a restricted field. Omitted means no powerplay. */
+  powerplayOvers: z.coerce.number().int().min(0).max(120).default(0),
   strikerUserId: objectId.optional(),
   nonStrikerUserId: objectId.optional(),
   bowlerUserId: objectId.optional(),
