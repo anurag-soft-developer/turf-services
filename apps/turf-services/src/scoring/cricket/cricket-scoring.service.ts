@@ -1,4 +1,11 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+  Optional,
+  forwardRef,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { applyStatusUpdate } from '../../matchmaking/util/matchmaking.helpers';
@@ -46,6 +53,7 @@ import {
 } from './cricket-points.calculator';
 import { CricketMatchStatsService } from './cricket-match-stats.service';
 import { CricketRankingPointsService } from './cricket-ranking-points.service';
+import { TournamentService } from '../../tournament/tournament.service';
 import {
   assertAnnouncedPlayingLineup,
   assertAnnouncedPlayingParticipant,
@@ -71,6 +79,8 @@ import {
 
 @Injectable()
 export class CricketScoringService {
+  private readonly logger = new Logger(CricketScoringService.name);
+
   constructor(
     @InjectModel(CricketOverEvent.name)
     private readonly overEventModel: Model<CricketOverEventDocument>,
@@ -81,6 +91,9 @@ export class CricketScoringService {
     private readonly realtimeDispatcher: ScoringRealtimeDispatcher,
     private readonly cricketMatchStatsService: CricketMatchStatsService,
     private readonly cricketRankingPointsService: CricketRankingPointsService,
+    @Optional()
+    @Inject(forwardRef(() => TournamentService))
+    private readonly tournamentService?: TournamentService,
   ) {}
 
   async createSession(
@@ -107,6 +120,11 @@ export class CricketScoringService {
 
     const teamOneId = match.fromTeam;
     const teamTwoId = match.toTeam;
+    if (!teamOneId || !teamTwoId) {
+      throw new BadRequestException(
+        'Both teams must be set before this match can be played',
+      );
+    }
 
     const bat = new Types.ObjectId(dto.battingTeamId);
     const bowl = new Types.ObjectId(dto.bowlingTeamId);
@@ -170,6 +188,7 @@ export class CricketScoringService {
     match.cricketState = cricketState;
     match.status = TeamMatchStatus.ONGOING;
     const saved = await (await match.save()).populate(TEAM_MATCH_POPULATE);
+    await this.noteTournamentBall(saved);
 
     await this.realtimeDispatcher.dispatch({
       sport: 'cricket',
@@ -365,6 +384,7 @@ export class CricketScoringService {
     }
 
     await Promise.all([overDoc.save(), match.save()]);
+    await this.noteTournamentBall(match);
 
     const populatedOver = await overDoc.populate(CRICKET_OVER_EVENT_POPULATE);
 
@@ -625,6 +645,7 @@ export class CricketScoringService {
     }
 
     await match.save();
+    await this.noteTournamentResult(match);
     const populated = await match.populate(TEAM_MATCH_POPULATE);
 
     await this.realtimeDispatcher.dispatch({
@@ -690,6 +711,7 @@ export class CricketScoringService {
       throw new BadRequestException('Unsupported scoring entry kind');
     }
 
+    let reopenedTournament = false;
     if (
       match.status === TeamMatchStatus.COMPLETED ||
       match.status === TeamMatchStatus.DRAW
@@ -697,6 +719,8 @@ export class CricketScoringService {
       match.status = TeamMatchStatus.ONGOING;
       match.winnerTeam = undefined;
       match.closedAt = undefined;
+      match.tournamentBracketWinner = undefined;
+      reopenedTournament = true;
     }
 
     const overId = overDoc._id.toString();
@@ -709,6 +733,9 @@ export class CricketScoringService {
     }
 
     await match.save();
+    if (reopenedTournament) {
+      await this.noteTournamentReopened(match);
+    }
 
     const populatedOver = savedOver
       ? await savedOver.populate(CRICKET_OVER_EVENT_POPULATE)
@@ -881,5 +908,37 @@ export class CricketScoringService {
     });
 
     return populated;
+  }
+
+  private async noteTournamentBall(match: TeamMatchDocument): Promise<void> {
+    if (!this.tournamentService) {
+      return;
+    }
+    try {
+      await this.tournamentService.onMatchUpdated(match);
+    } catch (err) {
+      this.logger.error(
+        `Tournament update failed for match ${match._id.toString()}`,
+        err instanceof Error ? err.stack : String(err),
+      );
+    }
+  }
+
+  private async noteTournamentResult(match: TeamMatchDocument): Promise<void> {
+    await this.noteTournamentBall(match);
+  }
+
+  private async noteTournamentReopened(match: TeamMatchDocument): Promise<void> {
+    if (!match.tournamentId || !this.tournamentService) {
+      return;
+    }
+    try {
+      await this.tournamentService.onMatchReopened(match);
+    } catch (err) {
+      this.logger.error(
+        `Tournament reopen failed for match ${match._id.toString()}`,
+        err instanceof Error ? err.stack : String(err),
+      );
+    }
   }
 }

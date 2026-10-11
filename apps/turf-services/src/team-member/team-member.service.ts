@@ -224,6 +224,7 @@ export class TeamMemberService {
     limit: number,
     search?: string,
     history = false,
+    sportType?: SportType,
   ): Promise<PaginatedResult<TeamMemberDocument>> {
     const emptyPage = (): PaginatedResult<TeamMemberDocument> => ({
       data: [],
@@ -267,6 +268,10 @@ export class TeamMemberService {
         seenTeams.add(teamKey);
         rows.push(doc);
       }
+    }
+
+    if (sportType) {
+      rows = rows.filter((doc) => this.teamSportOf(doc) === sportType);
     }
 
     const totalDocuments = rows.length;
@@ -635,6 +640,12 @@ export class TeamMemberService {
     if (n >= max) {
       throw new ConflictException('Team roster is full');
     }
+  }
+
+  private teamSportOf(doc: TeamMemberDocument): string | undefined {
+    const team = doc.team;
+    if (!team || typeof team !== 'object') return undefined;
+    return (team as { sportType?: string }).sportType;
   }
 
   private async assertNoOpenStint(

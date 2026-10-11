@@ -15,7 +15,11 @@ export type ActiveLineupState = {
 
 /** Starting XI scoring ids for a team (`!is_substitute`). */
 export function initialActiveParticipantIds(
-  match: { announcedPlayers?: AnnouncedPlayer[]; fromTeam: Types.ObjectId; toTeam: Types.ObjectId },
+  match: {
+    announcedPlayers?: AnnouncedPlayer[];
+    fromTeam?: Types.ObjectId;
+    toTeam?: Types.ObjectId;
+  },
   teamId: string,
 ): Types.ObjectId[] {
   return (match.announcedPlayers ?? [])
@@ -31,7 +35,11 @@ export function initialActiveParticipantIds(
 
 /** Stored active ids, or starting XI when empty / missing. */
 export function getActiveIds(
-  match: { announcedPlayers?: AnnouncedPlayer[]; fromTeam: Types.ObjectId; toTeam: Types.ObjectId },
+  match: {
+    announcedPlayers?: AnnouncedPlayer[];
+    fromTeam?: Types.ObjectId;
+    toTeam?: Types.ObjectId;
+  },
   teamId: string,
   stored: Types.ObjectId[] | undefined | null,
 ): Types.ObjectId[] {

@@ -103,6 +103,9 @@ export function resolveFootballWinnerFromInnings(
   if (fs.scoreTeamOne === fs.scoreTeamTwo) {
     return null;
   }
+  if (!match.fromTeam || !match.toTeam) {
+    return null;
+  }
   return fs.scoreTeamOne > fs.scoreTeamTwo ? match.fromTeam : match.toTeam;
 }
 

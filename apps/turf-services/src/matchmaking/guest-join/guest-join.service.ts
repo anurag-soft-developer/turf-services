@@ -24,6 +24,7 @@ import {
 import {
   assertCanActForTeam,
   assertMatchAllowsAnnouncedPlayerEdits,
+  assertMatchHasBothTeams,
   assertUnranked,
   ensureMatchHasTeam,
   requireTeamMatch,
@@ -200,6 +201,7 @@ export class GuestJoinService {
   ): Promise<TeamMatchDocument> {
     const match = await requireTeamMatch(this.teamMatchModel, matchId);
     assertUnranked(match);
+    assertMatchHasBothTeams(match);
     assertMatchAllowsAnnouncedPlayerEdits(match);
     return match;
   }

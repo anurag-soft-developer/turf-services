@@ -1,4 +1,11 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+  Optional,
+  forwardRef,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { applyStatusUpdate } from '../../matchmaking/util/matchmaking.helpers';
@@ -22,7 +29,7 @@ import {
 } from '../common/scoring.helpers';
 import { assertAnnouncedSquadsForSport } from '../common/scoring-squad.asserts';
 import { ScoringRealtimeDispatcher } from '../common/scoring-realtime-dispatcher.service';
-import { resolveId } from '../../core/utils/mongo-ref.util';
+import { requireSideId, resolveId } from '../../core/utils/mongo-ref.util';
 import {
   FootballMatchEvent,
   FootballMatchEventDocument,
@@ -54,9 +61,12 @@ import {
   revertMatchStateFromEvent,
 } from './util/football-scoring.helpers';
 import { initialActiveParticipantIds } from '../common/lineup.helpers';
+import { TournamentService } from '../../tournament/tournament.service';
 
 @Injectable()
 export class FootballScoringService {
+  private readonly logger = new Logger(FootballScoringService.name);
+
   constructor(
     @InjectModel(FootballMatchEvent.name)
     private readonly footballEventModel: Model<FootballMatchEventDocument>,
@@ -67,6 +77,9 @@ export class FootballScoringService {
     private readonly realtimeDispatcher: ScoringRealtimeDispatcher,
     private readonly footballMatchStatsService: FootballMatchStatsService,
     private readonly footballRankingPointsService: FootballRankingPointsService,
+    @Optional()
+    @Inject(forwardRef(() => TournamentService))
+    private readonly tournamentService?: TournamentService,
   ) {}
 
   async createSession(
@@ -107,17 +120,18 @@ export class FootballScoringService {
       isTimerPaused: true,
       fromTeamActiveParticipantIds: initialActiveParticipantIds(
         match,
-        match.fromTeam.toString(),
+        requireSideId(match.fromTeam),
       ),
       toTeamActiveParticipantIds: initialActiveParticipantIds(
         match,
-        match.toTeam.toString(),
+        requireSideId(match.toTeam),
       ),
     };
 
     match.footballState = footballState;
     match.status = TeamMatchStatus.ONGOING;
     const saved = await (await match.save()).populate(TEAM_MATCH_POPULATE);
+    await this.noteMatchUpdated(saved);
 
     await this.realtimeDispatcher.dispatch({
       sport: 'football',
@@ -172,6 +186,9 @@ export class FootballScoringService {
     );
 
     await Promise.all([built.save(), match.save()]);
+    if (match.status === TeamMatchStatus.ONGOING) {
+      await this.noteMatchUpdated(match);
+    }
 
     await this.realtimeDispatcher.dispatch({
       sport: 'football',
@@ -539,5 +556,19 @@ export class FootballScoringService {
       match,
     );
     return match;
+  }
+
+  private async noteMatchUpdated(match: TeamMatchDocument): Promise<void> {
+    if (!this.tournamentService) {
+      return;
+    }
+    try {
+      await this.tournamentService.onMatchUpdated(match);
+    } catch (err) {
+      this.logger.error(
+        `Match roster snapshot failed for match ${match._id.toString()}`,
+        err instanceof Error ? err.stack : String(err),
+      );
+    }
   }
 }

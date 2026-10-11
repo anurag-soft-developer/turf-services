@@ -11,7 +11,7 @@ import { TeamDocument } from '../../team/schemas/team.schema';
 import { UserDocument } from '../../users/schemas/user.schema';
 import { ChatMessageDocument } from '../schemas/chat-message.schema';
 import { ChatReadCursorDocument } from '../schemas/chat-read-cursor.schema';
-import { resolveId } from '../../core/utils/mongo-ref.util';
+import { resolveIdOrNull } from '../../core/utils/mongo-ref.util';
 
 export type GroupedInboxRow = {
   _id: { scope: ChatScope; scopeId: string };
@@ -264,8 +264,10 @@ async function resolveInboxTitles(
     : [];
 
   for (const match of matches) {
-    teamIds.add(resolveId(match.fromTeam));
-    teamIds.add(resolveId(match.toTeam));
+    const fromId = resolveIdOrNull(match.fromTeam);
+    const toId = resolveIdOrNull(match.toTeam);
+    if (fromId) teamIds.add(fromId);
+    if (toId) teamIds.add(toId);
   }
 
   const validTeamObjectIds = [...teamIds]
@@ -316,12 +318,12 @@ async function resolveInboxTitles(
   );
   const matchById = new Map<string, InboxTitle>(
     matches.map((match): [string, InboxTitle] => {
-      const from = teamById.get(resolveId(match.fromTeam));
-      const to = teamById.get(resolveId(match.toTeam));
+      const from = teamById.get(resolveIdOrNull(match.fromTeam) ?? '');
+      const to = teamById.get(resolveIdOrNull(match.toTeam) ?? '');
       return [
         match._id.toString(),
         {
-          title: `${from?.title ?? 'Team'} vs ${to?.title ?? 'Team'}`,
+          title: `${from?.title ?? 'TBD'} vs ${to?.title ?? 'TBD'}`,
           imageUrl: from?.imageUrl,
           secondaryImageUrl: to?.imageUrl,
         },

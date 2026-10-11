@@ -5,7 +5,8 @@ import { TeamMatchDocument } from '../../../matchmaking/schemas/team-match.schem
 import { TeamService } from '../../../team/team.service';
 import { TeamMemberService } from '../../../team-member/team-member.service';
 import { CreateCricketSessionDto } from '../dto/cricket-scoring.dto';
-import { resolveId } from '../../../core/utils/mongo-ref.util';
+import { requireSideId } from '../../../core/utils/mongo-ref.util';
+import { assertMatchHasBothTeams } from '../../../matchmaking/util/matchmaking.helpers';
 import { assertAnnouncedPlayingParticipant } from '../../common/scoring-participant.asserts';
 
 export { assertAnnouncedPlayingParticipant } from '../../common/scoring-participant.asserts';
@@ -67,8 +68,9 @@ export async function assertLeadershipOnMatchTeams(
   userId: string,
   match: TeamMatchDocument,
 ): Promise<void> {
-  const t1 = await teamService.requireTeam(match.fromTeam.toString());
-  const t2 = await teamService.requireTeam(match.toTeam.toString());
+  assertMatchHasBothTeams(match);
+  const t1 = await teamService.requireTeam(requireSideId(match.fromTeam));
+  const t2 = await teamService.requireTeam(requireSideId(match.toTeam));
   const can1 = await canLeadershipAct(
     teamService,
     teamMemberService,

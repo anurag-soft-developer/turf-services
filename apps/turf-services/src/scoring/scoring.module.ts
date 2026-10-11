@@ -25,6 +25,7 @@ import { FootballMatchStatsService } from './football/football-match-stats.servi
 import { FootballRankingPointsService } from './football/football-ranking-points.service';
 import { FootballScoringService } from './football/football-scoring.service';
 import { FootballScoringController } from './football/football-scoring.controller';
+import { TournamentModule } from '../tournament/tournament.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { FootballScoringController } from './football/football-scoring.controlle
     ]),
     TeamModule,
     TeamMemberModule,
+    TournamentModule,
   ],
   controllers: [CricketScoringController, FootballScoringController],
   providers: [

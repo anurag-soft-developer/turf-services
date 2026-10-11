@@ -9,7 +9,7 @@ import {
 } from '../../core/utils/geo-near-page.util';
 import type { EntityStats } from '../../engagement/engagement.service';
 import type { ScoredExploreItem } from '../types/explore.types';
-import { resolveId } from '../../core/utils/mongo-ref.util';
+import { resolveId, resolveIdOrNull } from '../../core/utils/mongo-ref.util';
 
 export type RankingOrigin = { lat: number; lng: number };
 
@@ -184,8 +184,9 @@ function socialScore(item: ScoredExploreItem, ctx: RankingContext): number {
   switch (item.type) {
     case 'match': {
       const match = item.data as TeamMatchDocument;
-      const fromId = resolveId(match.fromTeam);
-      const toId = resolveId(match.toTeam);
+      const fromId = resolveIdOrNull(match.fromTeam);
+      const toId = resolveIdOrNull(match.toTeam);
+      if (!fromId || !toId) return 0;
       return ctx.followedTeamIds.has(fromId) || ctx.followedTeamIds.has(toId)
         ? 1
         : 0;

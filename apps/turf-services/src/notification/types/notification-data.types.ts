@@ -33,7 +33,14 @@ export type MatchmakingNotificationKind =
   | 'announced_player_removed'
   | 'match_guest_joined'
   | 'match_guest_left'
-  | 'match_guest_switched';
+  | 'match_guest_switched'
+  | 'tournament_invite'
+  | 'tournament_invite_accepted'
+  | 'tournament_invite_declined'
+  | 'tournament_request'
+  | 'tournament_request_accepted'
+  | 'tournament_request_declined'
+  | 'tournament_request_withdrawn';
 
 export type TeamNotificationKind =
   | 'team_join_request'
@@ -115,7 +122,34 @@ export type MatchmakingNotificationData =
   | { kind: 'announced_player_removed'; matchId: string }
   | { kind: 'match_guest_joined'; matchId: string; actorUserId: string }
   | { kind: 'match_guest_left'; matchId: string; actorUserId: string }
-  | { kind: 'match_guest_switched'; matchId: string; actorUserId: string };
+  | { kind: 'match_guest_switched'; matchId: string; actorUserId: string }
+  | { kind: 'tournament_invite'; tournamentId: string; invitationId: string }
+  | {
+      kind: 'tournament_invite_accepted';
+      tournamentId: string;
+      invitationId: string;
+    }
+  | {
+      kind: 'tournament_invite_declined';
+      tournamentId: string;
+      invitationId: string;
+    }
+  | { kind: 'tournament_request'; tournamentId: string; invitationId: string }
+  | {
+      kind: 'tournament_request_accepted';
+      tournamentId: string;
+      invitationId: string;
+    }
+  | {
+      kind: 'tournament_request_declined';
+      tournamentId: string;
+      invitationId: string;
+    }
+  | {
+      kind: 'tournament_request_withdrawn';
+      tournamentId: string;
+      invitationId: string;
+    };
 
 export type TeamNotificationData =
   | {

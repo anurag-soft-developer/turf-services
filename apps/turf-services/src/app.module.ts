@@ -12,12 +12,13 @@ import { TurfReviewModule } from './turf-review/turf-review.module';
 import { AppMetadataModule } from './app-metadata/app-metadata.module';
 import { FollowingsModule } from './followings/followings.module';
 import { TeamModule } from './team/team.module';
-import { TeamInviteModule } from './team-invite/team-invite.module';
+import { InvitationModule } from './invitations/invitation.module';
 import { PostModule } from './post/post.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { ConfigModule } from '@nestjs/config';
 import { config } from './core/config/env.config';
 import { MatchmakingModule } from './matchmaking/matchmaking.module';
+import { TournamentModule } from './tournament/tournament.module';
 import { ChatModule } from './chat/chat.module';
 import { NotificationModule } from './notification/notification.module';
 import { StorageModule } from './storage/storage.module';
@@ -52,9 +53,10 @@ import { TelemetryModule } from './telemetry/telemetry.module';
     AppMetadataModule,
     FollowingsModule,
     TeamModule,
-    TeamInviteModule,
+    InvitationModule,
     PostModule,
     MatchmakingModule,
+    TournamentModule,
     ScoringModule,
     ChatModule,
     NotificationModule,

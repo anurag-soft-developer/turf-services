@@ -8,7 +8,7 @@ import {
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { PaginatedResult } from '../core/interfaces/common';
-import { resolveId } from '../core/utils/mongo-ref.util';
+import { requireSideId, resolveId } from '../core/utils/mongo-ref.util';
 import {
   applyExcludeIds,
   paginateSortedByDistance,
@@ -19,6 +19,11 @@ import { TeamService } from '../team/team.service';
 import { TeamMemberService } from '../team-member/team-member.service';
 import { TeamMember } from '../team-member/schemas/team-member.schema';
 import { NotificationService } from '../notification/notification.service';
+import {
+  Tournament,
+  TournamentDocument,
+} from '../tournament/schemas/tournament.schema';
+import { requireOrganizer } from '../tournament/util/tournament-asserts.util';
 import {
   notifyMatchCancelled,
   notifyMatchRequestReceived,
@@ -63,6 +68,7 @@ import { buildMongoSortOptions } from '../core/utils/mongo-sort.util';
 import {
   applyStatusUpdate,
   assertCanActForTeam,
+  assertMatchHasBothTeams,
   assertNoOverlappingMatchSlot,
   buildPreMatchInboxStatusClause,
   assertMatchAllowsProposalWithdraw,
@@ -90,6 +96,8 @@ export class MatchmakingService {
     @InjectModel(TeamMember.name)
     private readonly teamMemberModel: Model<TeamMember>,
     private readonly notificationService: NotificationService,
+    @InjectModel(Tournament.name)
+    private readonly tournamentModel: Model<TournamentDocument>,
   ) {}
 
   async createMatch(
@@ -822,17 +830,28 @@ export class MatchmakingService {
     userId: string,
     dto: CancelNegotiationDto,
   ): Promise<TeamMatchDocument> {
-    const [match, actorTeam] = await Promise.all([
-      requireTeamMatch(this.teamMatchModel, matchId),
-      this.teamService.requireTeam(dto.actorTeamId),
-    ]);
-    await assertCanActForTeam(
-      actorTeam,
-      userId,
-      this.teamService,
-      this.teamMemberService,
-    );
-    ensureMatchHasTeam(match, actorTeam._id);
+    const match = await requireTeamMatch(this.teamMatchModel, matchId);
+    assertMatchHasBothTeams(match);
+    const tournamentFixture = Boolean(match.tournamentId);
+    if (tournamentFixture) {
+      await requireOrganizer(
+        this.tournamentModel,
+        resolveId(match.tournamentId!),
+        userId,
+      );
+    } else {
+      if (!dto.actorTeamId) {
+        throw new BadRequestException('actorTeamId is required');
+      }
+      const actorTeam = await this.teamService.requireTeam(dto.actorTeamId);
+      await assertCanActForTeam(
+        actorTeam,
+        userId,
+        this.teamService,
+        this.teamMemberService,
+      );
+      ensureMatchHasTeam(match, actorTeam._id);
+    }
 
     // Pending `requested` challenges must use revoke (hard delete), not cancel.
     const cancellable: TeamMatchStatus[] = [
@@ -868,9 +887,9 @@ export class MatchmakingService {
       this.teamMemberModel,
       this.teamService,
       match,
-      actorTeam._id.toString(),
+      dto.actorTeamId ?? '',
       userId,
-      { abandoned: abandoning },
+      { abandoned: abandoning, bothTeams: tournamentFixture },
     );
     return populateTeamMatch(match);
   }
@@ -880,17 +899,26 @@ export class MatchmakingService {
     userId: string,
     dto: RecordMatchResultDto,
   ): Promise<TeamMatchDocument> {
-    const [match, actorTeam] = await Promise.all([
-      requireTeamMatch(this.teamMatchModel, matchId),
-      this.teamService.requireTeam(dto.actorTeamId),
-    ]);
-    await assertCanActForTeam(
-      actorTeam,
-      userId,
-      this.teamService,
-      this.teamMemberService,
-    );
-    ensureMatchHasTeam(match, actorTeam._id);
+    const match = await requireTeamMatch(this.teamMatchModel, matchId);
+    if (match.tournamentId) {
+      await requireOrganizer(
+        this.tournamentModel,
+        resolveId(match.tournamentId),
+        userId,
+      );
+    } else {
+      if (!dto.actorTeamId) {
+        throw new BadRequestException('actorTeamId is required');
+      }
+      const actorTeam = await this.teamService.requireTeam(dto.actorTeamId);
+      await assertCanActForTeam(
+        actorTeam,
+        userId,
+        this.teamService,
+        this.teamMemberService,
+      );
+      ensureMatchHasTeam(match, actorTeam._id);
+    }
 
     if (TERMINAL_ALL_STATUSES.includes(match.status)) {
       throw new BadRequestException('Match is already closed');
@@ -1017,7 +1045,7 @@ export class MatchmakingService {
       dto.turfBookingId !== undefined ||
       becameFinalized
     ) {
-      const actorTeamId = selfTeam?.toString() ?? match.fromTeam.toString();
+      const actorTeamId = selfTeam?.toString() ?? requireSideId(match.fromTeam);
       await notifyMatchUpdated(
         this.notificationService,
         this.teamMemberModel,

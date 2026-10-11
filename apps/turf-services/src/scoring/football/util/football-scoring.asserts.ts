@@ -1,5 +1,9 @@
 import { ForbiddenException } from '@nestjs/common';
-import { assertCanActForTeam } from '../../../matchmaking/util/matchmaking.helpers';
+import { requireSideId } from '../../../core/utils/mongo-ref.util';
+import {
+  assertCanActForTeam,
+  assertMatchHasBothTeams,
+} from '../../../matchmaking/util/matchmaking.helpers';
 import { TeamMatchDocument } from '../../../matchmaking/schemas/team-match.schema';
 import { TeamService } from '../../../team/team.service';
 import { TeamMemberService } from '../../../team-member/team-member.service';
@@ -10,8 +14,9 @@ export async function assertLeadershipOnMatchTeams(
   userId: string,
   match: TeamMatchDocument,
 ): Promise<void> {
-  const t1 = await teamService.requireTeam(match.fromTeam.toString());
-  const t2 = await teamService.requireTeam(match.toTeam.toString());
+  assertMatchHasBothTeams(match);
+  const t1 = await teamService.requireTeam(requireSideId(match.fromTeam));
+  const t2 = await teamService.requireTeam(requireSideId(match.toTeam));
   const can1 = await canLeadershipAct(
     teamService,
     teamMemberService,

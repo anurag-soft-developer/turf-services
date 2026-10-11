@@ -1,6 +1,7 @@
 import { createZodDto, type ZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 import { parseBooleanQuery } from '../../core/dto';
+import { sportTypeSchema } from '../../core/sports/sport-types';
 
 const teamMemberStatusSchema = z.enum([
   'pending',
@@ -47,6 +48,7 @@ const MyMembershipsFilterSchema = z.object({
   history: parseBooleanQuery(),
   /** Case-insensitive match on team name / shortName. */
   search: z.string().trim().min(1).max(80).optional(),
+  sportType: sportTypeSchema.optional(),
   page: z.coerce.number().min(1).default(1),
   limit: z.coerce.number().min(1).max(100).default(20),
 });

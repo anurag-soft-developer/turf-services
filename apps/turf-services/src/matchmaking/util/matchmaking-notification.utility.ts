@@ -10,6 +10,7 @@ import { NotificationModule } from '../../notification/schemas/notification.sche
 import { TeamMember } from '../../team-member/schemas/team-member.schema';
 import type { TeamDocument } from '../../team/schemas/team.schema';
 import { TeamService } from '../../team/team.service';
+import { requireSideId } from '../../core/utils/mongo-ref.util';
 import type { TeamMatchDocument } from '../schemas/team-match.schema';
 
 const logger = new Logger('MatchmakingNotification');
@@ -25,9 +26,9 @@ function matchBase(
 }
 
 function opponentTeamId(match: TeamMatchDocument, actorTeamId: string): string {
-  return match.fromTeam.toString() === actorTeamId
-    ? match.toTeam.toString()
-    : match.fromTeam.toString();
+  return requireSideId(match.fromTeam) === actorTeamId
+    ? requireSideId(match.toTeam)
+    : requireSideId(match.fromTeam);
 }
 
 async function notifyTeamsStaff(
@@ -80,7 +81,7 @@ export async function notifyMatchRequestReceived(
     notificationService,
     teamMemberModel,
     teamService,
-    [match.toTeam.toString()],
+    [requireSideId(match.toTeam)],
     actorUserId,
     {
       ...matchBase(matchId),
@@ -105,7 +106,7 @@ export async function notifyMatchRequestResponded(
     notificationService,
     teamMemberModel,
     teamService,
-    [match.fromTeam.toString()],
+    [requireSideId(match.fromTeam)],
     actorUserId,
     {
       ...matchBase(matchId),
@@ -212,7 +213,7 @@ export async function notifyMatchScheduleFinalized(
     notificationService,
     teamMemberModel,
     teamService,
-    [match.fromTeam.toString(), match.toTeam.toString()],
+    [requireSideId(match.fromTeam), requireSideId(match.toTeam)],
     actorUserId,
     {
       ...matchBase(matchId),
@@ -230,16 +231,21 @@ export async function notifyMatchCancelled(
   match: TeamMatchDocument,
   actorTeamId: string,
   actorUserId: string,
-  options?: { abandoned?: boolean },
+  options?: { abandoned?: boolean; bothTeams?: boolean },
 ): Promise<void> {
   const matchId = match._id.toString();
-  const actorName = await teamDisplayName(teamService, actorTeamId);
   const abandoned = options?.abandoned === true;
+  const bothTeams = options?.bothTeams === true;
+  const actorName = bothTeams
+    ? 'The organizer'
+    : await teamDisplayName(teamService, actorTeamId);
   await notifyTeamsStaff(
     notificationService,
     teamMemberModel,
     teamService,
-    [opponentTeamId(match, actorTeamId)],
+    bothTeams
+      ? [requireSideId(match.fromTeam), requireSideId(match.toTeam)]
+      : [opponentTeamId(match, actorTeamId)],
     actorUserId,
     {
       ...matchBase(matchId),
@@ -267,7 +273,7 @@ export async function notifyMatchResultRecorded(
     notificationService,
     teamMemberModel,
     teamService,
-    [match.fromTeam.toString(), match.toTeam.toString()],
+    [requireSideId(match.fromTeam), requireSideId(match.toTeam)],
     actorUserId,
     {
       ...matchBase(matchId),
@@ -291,7 +297,7 @@ export async function notifyMatchUpdated(
   const matchId = match._id.toString();
   const teamIds =
     finalized || bothTeams
-      ? [match.fromTeam.toString(), match.toTeam.toString()]
+      ? [requireSideId(match.fromTeam), requireSideId(match.toTeam)]
       : [opponentTeamId(match, actorTeamId)];
   await notifyTeamsStaff(
     notificationService,

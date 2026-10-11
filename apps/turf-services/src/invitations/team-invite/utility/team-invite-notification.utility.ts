@@ -1,10 +1,10 @@
 import { Logger } from '@nestjs/common';
-import { dispatchToUsers } from '../../notification/utility/notification-dispatch.utility';
-import { NotificationService } from '../../notification/notification.service';
-import { NotificationModule } from '../../notification/schemas/notification.schema';
-import type { TeamDocument } from '../../team/schemas/team.schema';
-import { EmailService } from '../../core/services/email.service';
-import { SmsService } from '../../core/services/sms.service';
+import { dispatchToUsers } from '../../../notification/utility/notification-dispatch.utility';
+import { NotificationService } from '../../../notification/notification.service';
+import { NotificationModule } from '../../../notification/schemas/notification.schema';
+import type { TeamDocument } from '../../../team/schemas/team.schema';
+import { EmailService } from '../../../core/services/email.service';
+import { SmsService } from '../../../core/services/sms.service';
 
 const logger = new Logger('TeamInviteNotification');
 

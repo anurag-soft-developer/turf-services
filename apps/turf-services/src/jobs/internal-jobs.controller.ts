@@ -12,7 +12,7 @@ import { EngagementService } from '../engagement/engagement.service';
 import { EventBookingService } from '../event-booking/event-booking.service';
 import { MatchmakingService } from '../matchmaking/matchmaking.service';
 import { StorageLifecycleService } from '../storage/storage-lifecycle.service';
-import { TeamInviteService } from '../team-invite/team-invite.service';
+import { TeamInviteService } from '../invitations/team-invite/team-invite.service';
 import { TurfBookingService } from '../turf-booking/turf-booking.service';
 
 @Public()

@@ -3,7 +3,7 @@ import { EngagementModule } from '../engagement/engagement.module';
 import { EventBookingModule } from '../event-booking/event-booking.module';
 import { MatchmakingModule } from '../matchmaking/matchmaking.module';
 import { StorageModule } from '../storage/storage.module';
-import { TeamInviteModule } from '../team-invite/team-invite.module';
+import { InvitationModule } from '../invitations/invitation.module';
 import { TurfBookingModule } from '../turf-booking/turf-booking.module';
 import { InternalJobsController } from './internal-jobs.controller';
 
@@ -11,7 +11,7 @@ import { InternalJobsController } from './internal-jobs.controller';
   imports: [
     TurfBookingModule,
     EventBookingModule,
-    TeamInviteModule,
+    InvitationModule,
     MatchmakingModule,
     StorageModule,
     EngagementModule,

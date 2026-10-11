@@ -23,7 +23,7 @@ import {
   TERMINAL_ALL_STATUSES,
   TERMINAL_PRE_PLAY_STATUSES,
 } from './matchmaking.constants';
-import { resolveId } from '../../core/utils/mongo-ref.util';
+import { resolveId, resolveIdOrNull } from '../../core/utils/mongo-ref.util';
 
 /** Active matches that can collide on scheduled time for the same team pair. */
 export const SLOT_OVERLAP_ACTIVE_STATUSES: TeamMatchStatus[] = [
@@ -194,13 +194,25 @@ export function assertTeamEligibleForMatching(team: TeamDocument): void {
   }
 }
 
+export function assertMatchHasBothTeams(match: TeamMatchDocument): void {
+  if (
+    resolveIdOrNull(match.fromTeam) == null ||
+    resolveIdOrNull(match.toTeam) == null
+  ) {
+    throw new BadRequestException(
+      'Both teams must be set before this match can be played',
+    );
+  }
+}
+
 export function ensureMatchHasTeam(
   match: TeamMatchDocument,
   teamId: Types.ObjectId,
 ): void {
+  const side = resolveId(teamId);
   if (
-    resolveId(match.fromTeam) !== resolveId(teamId) &&
-    resolveId(match.toTeam) !== resolveId(teamId)
+    resolveIdOrNull(match.fromTeam) !== side &&
+    resolveIdOrNull(match.toTeam) !== side
   ) {
     throw new ForbiddenException('Team is not part of this match');
   }
@@ -352,7 +364,7 @@ export async function getActorTeamIds(
   return [...all.values()];
 }
 
-/** `null` means the list is empty (no actor teams or search matched nothing). */
+/** `null` means the list cannot be satisfied (e.g. search matched nothing). */
 export async function buildListRequestsQuery(
   userId: string,
   filter: {
@@ -376,9 +388,6 @@ export async function buildListRequestsQuery(
   let actorTeamIds: Types.ObjectId[] = [];
   if (scope === 'mine' && !hasExplicitTeamFilter) {
     actorTeamIds = await getActorTeamIds(userId, teamModel, teamMemberService);
-    if (actorTeamIds.length === 0) {
-      return null;
-    }
   }
 
   const andClauses: Record<string, unknown>[] = [];
@@ -402,16 +411,39 @@ export async function buildListRequestsQuery(
     andClauses.push({ source: filter.source });
   }
 
-  const scopedTeamIds = hasExplicitTeamFilter ? uniqueScoped : actorTeamIds;
   if (scope === 'mine' || hasExplicitTeamFilter) {
-    if (filter.type === 'incoming') {
-      andClauses.push({ toTeam: scopedTeamIds });
-    } else if (filter.type === 'outgoing') {
-      andClauses.push({ fromTeam: scopedTeamIds });
+    const scopedTeamIds = hasExplicitTeamFilter ? uniqueScoped : actorTeamIds;
+    if (hasExplicitTeamFilter) {
+      if (filter.type === 'incoming') {
+        andClauses.push({ toTeam: scopedTeamIds });
+      } else if (filter.type === 'outgoing') {
+        andClauses.push({ fromTeam: scopedTeamIds });
+      } else {
+        andClauses.push({
+          $or: [{ fromTeam: scopedTeamIds }, { toTeam: scopedTeamIds }],
+        });
+      }
     } else {
-      andClauses.push({
-        $or: [{ fromTeam: scopedTeamIds }, { toTeam: scopedTeamIds }],
-      });
+      const uid = new Types.ObjectId(userId);
+      const accessClauses: Record<string, unknown>[] = [];
+      if (scopedTeamIds.length > 0) {
+        if (filter.type === 'incoming') {
+          accessClauses.push({ toTeam: scopedTeamIds });
+        } else if (filter.type === 'outgoing') {
+          accessClauses.push({ fromTeam: scopedTeamIds });
+        } else {
+          accessClauses.push(
+            { fromTeam: scopedTeamIds },
+            { toTeam: scopedTeamIds },
+          );
+        }
+      }
+      accessClauses.push({ associatedUserIds: uid });
+      andClauses.push(
+        accessClauses.length === 1
+          ? accessClauses[0]
+          : { $or: accessClauses },
+      );
     }
   }
 

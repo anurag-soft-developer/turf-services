@@ -15,7 +15,7 @@ import {
   TeamMemberStatus,
 } from '../../team-member/schemas/team-member.schema';
 import { TeamMatchDocument } from '../../matchmaking/schemas/team-match.schema';
-import { resolveId } from '../../core/utils/mongo-ref.util';
+import { resolveId, resolveIdOrNull } from '../../core/utils/mongo-ref.util';
 
 export async function assertScopeAccess(
   userId: string,
@@ -47,8 +47,8 @@ export async function assertScopeAccess(
       await teamMemberService.distinctActiveTeamIds(userId);
     const activeSet = new Set(activeTeamIds.map((id) => resolveId(id)));
     const isRelated =
-      activeSet.has(resolveId(match.fromTeam)) ||
-      activeSet.has(resolveId(match.toTeam));
+      activeSet.has(resolveIdOrNull(match.fromTeam) ?? '') ||
+      activeSet.has(resolveIdOrNull(match.toTeam) ?? '');
 
     if (!isRelated) {
       throw new ForbiddenException('User is not part of this match');
@@ -92,10 +92,11 @@ export async function listChatParticipantUserIds(
     if (!match) {
       return [];
     }
-    return teamMemberService.distinctActiveUserIds([
-      resolveId(match.fromTeam),
-      resolveId(match.toTeam),
-    ]);
+    return teamMemberService.distinctActiveUserIds(
+      [resolveIdOrNull(match.fromTeam), resolveIdOrNull(match.toTeam)].filter(
+        (id): id is string => !!id,
+      ),
+    );
   }
 
   const participants = scopeId.split(':').filter(Boolean);
@@ -251,8 +252,8 @@ async function resolveAllowedMatchKeys(
     }
     const activeSet = teamsByUser.get(ref.senderUserId);
     if (
-      !activeSet?.has(resolveId(match.fromTeam)) &&
-      !activeSet?.has(resolveId(match.toTeam))
+      !activeSet?.has(resolveIdOrNull(match.fromTeam) ?? '') &&
+      !activeSet?.has(resolveIdOrNull(match.toTeam) ?? '')
     ) {
       continue;
     }

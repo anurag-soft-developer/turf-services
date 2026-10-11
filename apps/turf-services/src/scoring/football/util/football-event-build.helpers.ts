@@ -1,7 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { Model, Types } from 'mongoose';
 import { TeamMatchDocument } from '../../../matchmaking/schemas/team-match.schema';
-import { resolveId } from '../../../core/utils/mongo-ref.util';
+import { requireSideId, resolveId } from '../../../core/utils/mongo-ref.util';
 import { assertAnnouncedPlayingParticipant } from '../../common/scoring-participant.asserts';
 import { applySubstitution, removeFromActiveLineup } from '../../common/lineup.helpers';
 import {
@@ -19,8 +19,8 @@ function scoreDeltasForBeneficiary(
   beneficiaryTeamId: Types.ObjectId,
 ): { d1: number; d2: number } {
   const b = beneficiaryTeamId.toString();
-  const t1 = match.fromTeam.toString();
-  const t2 = match.toTeam.toString();
+  const t1 = requireSideId(match.fromTeam);
+  const t2 = requireSideId(match.toTeam);
   if (b === t1) return { d1: 1, d2: 0 };
   if (b === t2) return { d1: 0, d2: 1 };
   throw new BadRequestException('beneficiaryTeamId must be a match team');
@@ -30,8 +30,15 @@ function otherTeam(
   match: TeamMatchDocument,
   teamId: Types.ObjectId,
 ): Types.ObjectId {
-  if (resolveId(teamId) === resolveId(match.fromTeam)) return match.toTeam;
-  if (resolveId(teamId) === resolveId(match.toTeam)) return match.fromTeam;
+  const fromTeam = match.fromTeam;
+  const toTeam = match.toTeam;
+  if (!fromTeam || !toTeam) {
+    throw new BadRequestException(
+      'Both teams must be set before this match can be played',
+    );
+  }
+  if (resolveId(teamId) === resolveId(fromTeam)) return toTeam;
+  if (resolveId(teamId) === resolveId(toTeam)) return fromTeam;
   throw new BadRequestException('Invalid team id');
 }
 

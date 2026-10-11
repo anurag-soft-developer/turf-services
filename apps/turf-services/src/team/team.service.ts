@@ -103,6 +103,13 @@ export class TeamService {
     return populated;
   }
 
+  async distinctOwnedActiveTeamIds(userId: string): Promise<Types.ObjectId[]> {
+    return this.teamModel.distinct('_id', {
+      ownerIds: new Types.ObjectId(userId),
+      status: TeamStatus.ACTIVE,
+    });
+  }
+
   async findIdsByNameSearch(search: string): Promise<Types.ObjectId[]> {
     const trimmed = search.trim();
     if (!trimmed) return [];

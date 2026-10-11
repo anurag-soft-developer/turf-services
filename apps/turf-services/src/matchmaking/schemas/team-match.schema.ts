@@ -128,21 +128,21 @@ export class TeamMatch {
   })
   source!: TeamMatchSource;
 
+  /** Empty on a knockout slot that is still waiting for a team. */
   @Prop({
     type: MongooseSchema.Types.ObjectId,
     ref: Team.name,
-    required: true,
     index: true,
   })
-  fromTeam!: Types.ObjectId;
+  fromTeam?: Types.ObjectId;
 
+  /** Empty on a knockout slot that is still waiting for a team. */
   @Prop({
     type: MongooseSchema.Types.ObjectId,
     ref: Team.name,
-    required: true,
     index: true,
   })
-  toTeam!: Types.ObjectId;
+  toTeam?: Types.ObjectId;
 
   @Prop({
     type: String,
@@ -280,6 +280,44 @@ export class TeamMatch {
   @Prop({ type: FootballStateSchema, required: false })
   footballState?: FootballState;
 
+  /** Set when this match was created as a tournament fixture. Normal matches leave these empty. */
+  @Prop({ type: MongooseSchema.Types.ObjectId, index: true })
+  tournamentId?: Types.ObjectId;
+
+  @Prop({ type: String, enum: ['group', 'knockout', 'league'] })
+  stage?: 'group' | 'knockout' | 'league';
+
+  @Prop({ type: Number })
+  round?: number;
+
+  @Prop({ type: String, trim: true })
+  groupLabel?: string;
+
+  @Prop({ type: Number })
+  matchNumber?: number;
+
+  /** Earlier fixture numbers whose winners fill this match. Empty on the opening round. */
+  @Prop({ type: [Number] })
+  sourceMatchNumbers?: number[];
+
+  /** Stable id for a hybrid semi or final so it can be updated when qualifiers change. */
+  @Prop({ type: String, trim: true })
+  bracketKey?: string;
+
+  /**
+   * Winner chosen only to advance a knockout bracket after a drawn match.
+   * Does not change `winnerTeam`, match status, or ranking points.
+   */
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: Team.name })
+  tournamentBracketWinner?: Types.ObjectId;
+
+  /**
+   * Owners and active members of both teams, copied once when this fixture starts.
+   * Later roster changes do not add or remove ids.
+   */
+  @Prop({ type: [{ type: MongooseSchema.Types.ObjectId, ref: User.name }] })
+  associatedUserIds?: Types.ObjectId[];
+
   /** Set when ranking points from this match have been applied to teams/players. */
   @Prop({ type: Date })
   rankingPointsAppliedAt?: Date;
@@ -300,3 +338,8 @@ TeamMatchSchema.index(
 TeamMatchSchema.index({ fromTeam: 1, status: 1, createdAt: -1 });
 TeamMatchSchema.index({ toTeam: 1, status: 1, createdAt: -1 });
 TeamMatchSchema.index({ fromTeam: 1, toTeam: 1, status: 1, createdAt: -1 });
+TeamMatchSchema.index(
+  { tournamentId: 1, matchNumber: 1 },
+  { unique: true, sparse: true },
+);
+TeamMatchSchema.index({ associatedUserIds: 1, tournamentId: 1 });

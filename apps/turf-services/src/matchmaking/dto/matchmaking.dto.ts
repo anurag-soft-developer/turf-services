@@ -151,7 +151,7 @@ const FinalizeScheduleSchema = z.object({
 });
 
 const CancelNegotiationSchema = z.object({
-  actorTeamId: z.string().min(1),
+  actorTeamId: z.string().min(1).optional(),
   reason: z.string().trim().max(500).optional(),
 });
 
@@ -162,7 +162,7 @@ const RevokeMatchRequestSchema = z.object({
 
 const RecordMatchResultSchema = z
   .object({
-    actorTeamId: z.string().min(1),
+    actorTeamId: z.string().min(1).optional(),
     outcome: z.enum(['ongoing', 'completed', 'draw']),
     winnerTeam: z.string().min(1).optional(),
   })

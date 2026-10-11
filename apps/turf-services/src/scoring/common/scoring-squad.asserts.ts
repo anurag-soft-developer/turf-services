@@ -5,7 +5,8 @@ import {
   SPORT_ROSTER_CONFIG,
   SportType,
 } from '../../core/sports/sport-types';
-import { resolveId } from '../../core/utils/mongo-ref.util';
+import { requireSideId, resolveId } from '../../core/utils/mongo-ref.util';
+import { assertMatchHasBothTeams } from '../../matchmaking/util/matchmaking.helpers';
 import {
   announcedGuestId,
   announcedUserId,
@@ -33,14 +34,16 @@ export function assertAnnouncedSquadsForSport(
   const sportLabel = SPORT_SCORING_LABEL[sportType];
   const minPlayers = SCORING_MIN_ANNOUNCED_PLAYERS[sportType];
 
+  assertMatchHasBothTeams(match);
+
   if (players.length === 0) {
     throw new BadRequestException(
       `Announced playing squads are required before starting ${sportLabel} scoring`,
     );
   }
 
-  const t1 = resolveId(match.fromTeam);
-  const t2 = resolveId(match.toTeam);
+  const t1 = requireSideId(match.fromTeam);
+  const t2 = requireSideId(match.toTeam);
 
   for (const p of players) {
     const tid = resolveId(p.teamId);

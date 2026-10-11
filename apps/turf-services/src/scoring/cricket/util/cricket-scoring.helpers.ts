@@ -61,13 +61,20 @@ export function resolveCricketWinnerFromInnings(
     runsByBattingTeam.set(id, (runsByBattingTeam.get(id) ?? 0) + inn.runs);
   }
 
-  const fromRuns = runsByBattingTeam.get(match.fromTeam.toString()) ?? 0;
-  const toRuns = runsByBattingTeam.get(match.toTeam.toString()) ?? 0;
+  const fromTeam = match.fromTeam;
+  const toTeam = match.toTeam;
+  if (!fromTeam || !toTeam) {
+    throw new BadRequestException(
+      'Both teams must be set before this match can be played',
+    );
+  }
+  const fromRuns = runsByBattingTeam.get(fromTeam.toString()) ?? 0;
+  const toRuns = runsByBattingTeam.get(toTeam.toString()) ?? 0;
 
   if (fromRuns === toRuns) {
     return null;
   }
-  return fromRuns > toRuns ? match.fromTeam : match.toTeam;
+  return fromRuns > toRuns ? fromTeam : toTeam;
 }
 
 export function isCricketInningsComplete(

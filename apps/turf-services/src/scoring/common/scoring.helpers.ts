@@ -4,7 +4,11 @@ import {
   TeamMatchDocument,
   TeamMatchStatus,
 } from '../../matchmaking/schemas/team-match.schema';
-import { ensureMatchHasTeam } from '../../matchmaking/util/matchmaking.helpers';
+import {
+  assertMatchHasBothTeams,
+  ensureMatchHasTeam,
+} from '../../matchmaking/util/matchmaking.helpers';
+import { requireSideId } from '../../core/utils/mongo-ref.util';
 import { TERMINAL_ALL_STATUSES } from '../../matchmaking/util/matchmaking.constants';
 import { SportType } from '../../team/schemas/team.schema';
 
@@ -42,10 +46,11 @@ export function assertTeamsAlignWithMatch(
   teamOneId: Types.ObjectId,
   teamTwoId: Types.ObjectId,
 ): void {
+  assertMatchHasBothTeams(match);
   const a = teamOneId.toString();
   const b = teamTwoId.toString();
-  const from = match.fromTeam.toString();
-  const to = match.toTeam.toString();
+  const from = requireSideId(match.fromTeam);
+  const to = requireSideId(match.toTeam);
   const pairMatches = (a === from && b === to) || (a === to && b === from);
   if (!pairMatches) {
     throw new BadRequestException(
@@ -63,6 +68,7 @@ export function ensureActorTeamOnMatch(
 
 /** Scorekeeping uses `TeamMatch.status`: terminal → closed; otherwise must be finalized or ongoing. */
 export function assertCanAppendScoringEvents(match: TeamMatchDocument): void {
+  assertMatchHasBothTeams(match);
   if (TERMINAL_ALL_STATUSES.includes(match.status)) {
     throw new BadRequestException('Scoring is closed for this match');
   }

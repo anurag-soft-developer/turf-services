@@ -23,6 +23,10 @@ import { GuestJoinService } from './guest-join/guest-join.service';
 import { MatchmakingController } from './matchmaking.controller';
 import { MatchmakingService } from './matchmaking.service';
 import { TeamMatch, TeamMatchSchema } from './schemas/team-match.schema';
+import {
+  Tournament,
+  TournamentSchema,
+} from '../tournament/schemas/tournament.schema';
 
 @Module({
   imports: [
@@ -32,6 +36,7 @@ import { TeamMatch, TeamMatchSchema } from './schemas/team-match.schema';
       { name: TurfBooking.name, schema: TurfBookingSchema },
       { name: TeamMember.name, schema: TeamMemberSchema },
       { name: Turf.name, schema: TurfSchema },
+      { name: Tournament.name, schema: TournamentSchema },
     ]),
     TeamModule,
     TeamMemberModule,

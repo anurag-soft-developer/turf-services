@@ -59,19 +59,25 @@ export async function resolveSelfAcceptTeamId(
     return tid;
   }
 
+  const fromTeam = match.fromTeam;
+  const toTeam = match.toTeam;
   const [fromOk, toOk] = await Promise.all([
-    isUserAffiliatedWithMatchTeam(
-      match.fromTeam,
-      userId,
-      teamService,
-      teamMemberService,
-    ),
-    isUserAffiliatedWithMatchTeam(
-      match.toTeam,
-      userId,
-      teamService,
-      teamMemberService,
-    ),
+    fromTeam
+      ? isUserAffiliatedWithMatchTeam(
+          fromTeam,
+          userId,
+          teamService,
+          teamMemberService,
+        )
+      : Promise.resolve(false),
+    toTeam
+      ? isUserAffiliatedWithMatchTeam(
+          toTeam,
+          userId,
+          teamService,
+          teamMemberService,
+        )
+      : Promise.resolve(false),
   ]);
 
   if (fromOk && toOk) {
@@ -79,11 +85,11 @@ export async function resolveSelfAcceptTeamId(
       'Provide selfAcceptTeamId because you belong to both teams in this match',
     );
   }
-  if (fromOk) {
-    return match.fromTeam;
+  if (fromOk && fromTeam) {
+    return fromTeam;
   }
-  if (toOk) {
-    return match.toTeam;
+  if (toOk && toTeam) {
+    return toTeam;
   }
   throw new ForbiddenException(
     'You must be an owner or active member of one of the teams in this match',

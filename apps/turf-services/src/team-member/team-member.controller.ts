@@ -173,6 +173,7 @@ export class TeamMembershipSelfController {
       filter.limit,
       filter.search,
       filter.history ?? false,
+      filter.sportType,
     );
   }
 }

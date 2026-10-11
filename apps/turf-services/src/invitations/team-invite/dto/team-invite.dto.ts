@@ -1,6 +1,7 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
-import { normalizePhone } from '../../core/utils/phone.util';
+import { normalizePhone } from '../../../core/utils/phone.util';
+import { InvitationKind, InvitationStatus } from '../../invitation.constants';
 
 const optionalEmail = z.email('Please provide a valid email address').optional();
 
@@ -13,14 +14,6 @@ const optionalPhone = z.preprocess((val) => {
   }
   return normalizePhone(val);
 }, z.string().optional());
-
-const teamInviteStatusSchema = z.enum([
-  'pending',
-  'accepted',
-  'rejected',
-  'expired',
-  'revoked',
-]);
 
 const CreateTeamInviteSchema = z
   .object({
@@ -38,13 +31,14 @@ const CreateTeamInviteSchema = z
   );
 
 const TeamInviteFilterSchema = z.object({
-  status: teamInviteStatusSchema.optional(),
+  status: z.enum(InvitationStatus).optional(),
   page: z.coerce.number().min(1).default(1),
   limit: z.coerce.number().min(1).max(100).default(20),
 });
 
 const MyInvitesFilterSchema = z.object({
-  status: teamInviteStatusSchema.optional(),
+  kind: z.enum(InvitationKind).optional(),
+  status: z.enum(InvitationStatus).optional(),
   page: z.coerce.number().min(1).default(1),
   limit: z.coerce.number().min(1).max(100).default(20),
 });

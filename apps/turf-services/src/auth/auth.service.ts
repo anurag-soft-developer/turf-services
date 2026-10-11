@@ -35,7 +35,7 @@ import { EmailService } from '../core/services/email.service';
 import { SmsService } from '../core/services/sms.service';
 import type { CookieOptions, Response } from 'express';
 import { config } from '../core/config/env.config';
-import { TeamInviteService } from '../team-invite/team-invite.service';
+import { TeamInviteService } from '../invitations/team-invite/team-invite.service';
 
 type OtpChannel = 'email' | 'sms';
 

@@ -1,6 +1,6 @@
 import { ForbiddenException } from '@nestjs/common';
 import { Types } from 'mongoose';
-import { resolveId } from '../../core/utils/mongo-ref.util';
+import { resolveId, resolveIdOrNull } from '../../core/utils/mongo-ref.util';
 import { announcedUserId } from '../announcedPlayers/announced-player.identity';
 import {
     AnnouncedPlayer,
@@ -32,16 +32,19 @@ export function settingsOf(
 export function openTeamIds(match: TeamMatchDocument): string[] {
     const settings = settingsOf(match);
     const ids: string[] = [];
-    if (settings.fromTeamOpen) ids.push(resolveId(match.fromTeam));
-    if (settings.toTeamOpen) ids.push(resolveId(match.toTeam));
+    const fromId = resolveIdOrNull(match.fromTeam);
+    const toId = resolveIdOrNull(match.toTeam);
+    if (settings.fromTeamOpen && fromId) ids.push(fromId);
+    if (settings.toTeamOpen && toId) ids.push(toId);
     return ids;
 }
 
 export function countForTeam(
     match: TeamMatchDocument,
-    teamId: Types.ObjectId | string,
+    teamId: Types.ObjectId | string | null | undefined,
 ): number {
-    const tid = resolveId(teamId);
+    const tid = resolveIdOrNull(teamId);
+    if (!tid) return 0;
     return (match.announcedPlayers ?? []).filter(
         (player) => resolveId(player.teamId) === tid,
     ).length;
@@ -55,15 +58,17 @@ export function buildGuestJoinState(
     const current = (match.announcedPlayers ?? []).find(
         (player) => player.isGuest && announcedUserId(player) === userId,
     );
+    const fromId = resolveIdOrNull(match.fromTeam);
+    const toId = resolveIdOrNull(match.toTeam);
+    const counts: Record<string, number> = {};
+    if (fromId) counts[fromId] = countForTeam(match, fromId);
+    if (toId) counts[toId] = countForTeam(match, toId);
     return {
         guestJoin: settingsOf(match),
         openTeamIds: availableTeamIds,
         joinedTeamId: current ? resolveId(current.teamId) : null,
         canSwitch: availableTeamIds.length > 1,
-        counts: {
-            [resolveId(match.fromTeam)]: countForTeam(match, match.fromTeam),
-            [resolveId(match.toTeam)]: countForTeam(match, match.toTeam),
-        },
+        counts,
     };
 }
 
