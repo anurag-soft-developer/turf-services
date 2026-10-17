@@ -12,6 +12,8 @@ import { TurfReviewModule } from './turf-review/turf-review.module';
 import { AppMetadataModule } from './app-metadata/app-metadata.module';
 import { FollowingsModule } from './followings/followings.module';
 import { TeamModule } from './team/team.module';
+import { OpeningsModule } from './openings/openings.module';
+import { EnrollmentsModule } from './enrollments/enrollments.module';
 import { InvitationModule } from './invitations/invitation.module';
 import { PostModule } from './post/post.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
@@ -53,6 +55,8 @@ import { TelemetryModule } from './telemetry/telemetry.module';
     AppMetadataModule,
     FollowingsModule,
     TeamModule,
+    OpeningsModule,
+    EnrollmentsModule,
     InvitationModule,
     PostModule,
     MatchmakingModule,

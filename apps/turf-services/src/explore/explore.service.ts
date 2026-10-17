@@ -3,6 +3,9 @@ import { MatchmakingService } from '../matchmaking/matchmaking.service';
 import { TeamService } from '../team/team.service';
 import { UsersService } from '../users/users.service';
 import { PostService } from '../post/post.service';
+import { OpeningsService } from '../openings/openings.service';
+import { OpeningStatus } from '../openings/schemas/opening.schema';
+import type { OpeningView } from '../openings/util/opening-view.util';
 import { FollowingsService } from '../followings/followings.service';
 import { FollowTargetType } from '../followings/schemas/following.schema';
 import { EngagementService } from '../engagement/engagement.service';
@@ -11,7 +14,9 @@ import { TeamStatus } from '../team/schemas/team.schema';
 import { PostStatus } from '../post/schemas/content-post.schema';
 import type { ExploreQueryDto } from './dto/explore.dto';
 import type { PublicProfile } from '../users/interfaces/user.interface';
+import type { PaginatedResult } from '../core/interfaces/common';
 import type {
+  ExploreFeedItemType,
   ExploreItem,
   ExploreItemType,
   ExploreResponse,
@@ -23,6 +28,8 @@ import {
   parseExploreFeedSession,
   resolveExploreMatchStatuses,
   toPlainExploreData,
+  weaveOpenings,
+  type ExploreFeedRef,
   type ExploreFeedSession,
 } from './util/explore-feed.util';
 import {
@@ -49,6 +56,7 @@ export class ExploreService {
     private readonly teamService: TeamService,
     private readonly usersService: UsersService,
     private readonly postService: PostService,
+    private readonly openingsService: OpeningsService,
     private readonly followingsService: FollowingsService,
     private readonly engagementService: EngagementService,
     private readonly redis: RedisService,
@@ -167,6 +175,13 @@ export class ExploreService {
     const isFeed = !query.q?.trim();
     const redisOk = (await this.redis.getClient()) != null;
 
+    if (query.category === 'post') {
+      if (isFeed && redisOk) {
+        return this.exploreFeedWithSession(userId, query, type);
+      }
+      return this.explorePostsPage(userId, query);
+    }
+
     if (isFeed && redisOk) {
       return this.exploreFeedWithSession(userId, query, type);
     }
@@ -188,20 +203,36 @@ export class ExploreService {
 
     let session = parseExploreFeedSession(await this.redis.get(sessionKey));
     if (!session) {
-      session = await this.buildAndStoreFeedSession(
-        userId,
-        query,
-        type,
-        sessionKey,
-      );
+      session =
+        query.category === 'post'
+          ? await this.buildPostsFeedSession(userId, query, sessionKey)
+          : await this.buildAndStoreFeedSession(
+              userId,
+              query,
+              type,
+              sessionKey,
+            );
     }
 
     const skip = (query.page - 1) * query.limit;
-    const pageIds = session.ids.slice(skip, skip + query.limit);
+    if (
+      query.category === 'post' &&
+      skip >= session.refs.length &&
+      session.refs.length < session.totalDocuments
+    ) {
+      session = await this.extendPostsFeedSession(
+        userId,
+        query,
+        sessionKey,
+        session,
+        skip + query.limit,
+      );
+    }
+
+    const pageRefs = session.refs.slice(skip, skip + query.limit);
     return this.toPageResponse(
       userId,
-      type,
-      pageIds,
+      pageRefs,
       query,
       session.totalDocuments,
     );
@@ -209,13 +240,11 @@ export class ExploreService {
 
   private async toPageResponse(
     userId: string,
-    type: ExploreItemType,
-    pageIds: string[],
+    pageRefs: ExploreFeedRef[],
     query: ExploreQueryDto,
     totalDocuments: number,
   ): Promise<ExploreResponse> {
-    const hydrated = await this.hydrateByIds(type, pageIds);
-    const items = toScoredExploreItems(type, hydrated as never);
+    const items = await this.hydrateRefs(userId, pageRefs);
     const data = await this.attachEngagement(
       userId,
       items.map((item) => this.toExploreItem(item)),
@@ -243,12 +272,10 @@ export class ExploreService {
     const items = toScoredExploreItems(type, result.data as never);
     const ctx = await this.buildRankingContext(userId, query, items);
     const ranked = rankExploreItems(items, ctx);
-    const ids = ranked
-      .map((item) => String((item.data as { _id?: unknown })._id ?? ''))
-      .filter(Boolean);
+    const refs = feedRefsFromRanked(ranked, type);
 
     const session: ExploreFeedSession = {
-      ids,
+      refs,
       totalDocuments: result.totalDocuments,
     };
     await this.redis.setEx(
@@ -257,6 +284,164 @@ export class ExploreService {
       JSON.stringify(session),
     );
     return session;
+  }
+
+  /**
+   * One page from each posts source, ranked separately and woven.
+   * Search uses this. The feed uses it only when Redis is unavailable.
+   */
+  private async explorePostsPage(
+    userId: string,
+    query: ExploreQueryDto,
+  ): Promise<ExploreResponse> {
+    const sources = postSources(query.postKind);
+    const paging = { page: query.page, limit: query.limit };
+    const [postRes, openingRes] = await Promise.all([
+      sources.posts
+        ? this.fetchPosts(userId, { ...query, ...paging })
+        : Promise.resolve(emptyExplorePage<never>()),
+      sources.openings
+        ? this.fetchOpenings(userId, { ...query, ...paging })
+        : Promise.resolve(emptyExplorePage<OpeningView>()),
+    ]);
+    const ranked = await this.rankPostSources(
+      userId,
+      query,
+      postRes.data,
+      openingRes.data,
+    );
+    const woven = weaveOpenings(ranked.posts, ranked.openings, {
+      keepRemainder: true,
+    });
+    const data = await this.attachEngagement(
+      userId,
+      woven.map((item) => this.toExploreItem(item)),
+    );
+    const totalDocuments =
+      postRes.totalDocuments + openingRes.totalDocuments;
+    return {
+      data,
+      page: query.page,
+      limit: query.limit,
+      totalDocuments,
+      totalPages: Math.max(postRes.totalPages, openingRes.totalPages),
+    };
+  }
+
+  private async buildPostsFeedSession(
+    userId: string,
+    query: ExploreQueryDto,
+    sessionKey: string,
+  ): Promise<ExploreFeedSession> {
+    const window = await this.loadRankedPostWindow(userId, query, []);
+    const session: ExploreFeedSession = {
+      refs: window.refs,
+      totalDocuments: window.totalDocuments,
+    };
+    await this.storeFeedSession(sessionKey, session);
+    return session;
+  }
+
+  private async extendPostsFeedSession(
+    userId: string,
+    query: ExploreQueryDto,
+    sessionKey: string,
+    session: ExploreFeedSession,
+    needed: number,
+  ): Promise<ExploreFeedSession> {
+    let next = session;
+    let guard = 0;
+    while (
+      next.refs.length < needed &&
+      next.refs.length < next.totalDocuments &&
+      guard < 15
+    ) {
+      guard += 1;
+      const window = await this.loadRankedPostWindow(userId, query, next.refs);
+      const seen = new Set(next.refs.map((ref) => feedRefKey(ref)));
+      const appended = window.refs.filter((ref) => !seen.has(feedRefKey(ref)));
+      if (!appended.length) break;
+      next = {
+        refs: [...next.refs, ...appended],
+        totalDocuments: next.totalDocuments,
+      };
+      await this.storeFeedSession(sessionKey, next);
+    }
+    return next;
+  }
+
+  private async loadRankedPostWindow(
+    userId: string,
+    query: ExploreQueryDto,
+    stored: ExploreFeedRef[],
+  ): Promise<{ refs: ExploreFeedRef[]; totalDocuments: number }> {
+    const sources = postSources(query.postKind);
+    const paging = {
+      page: 1,
+      limit: Math.max(query.limit, CANDIDATE_LIMIT),
+    };
+    const q = { ...query, page: paging.page, limit: paging.limit };
+    const [postRes, openingRes] = await Promise.all([
+      sources.posts
+        ? this.fetchPosts(
+            userId,
+            q,
+            stored.filter((ref) => ref.type === 'post').map((ref) => ref.id),
+          )
+        : Promise.resolve(emptyExplorePage<never>()),
+      sources.openings
+        ? this.fetchOpenings(
+            userId,
+            q,
+            stored
+              .filter((ref) => ref.type === 'opening')
+              .map((ref) => ref.id),
+          )
+        : Promise.resolve(emptyExplorePage<OpeningView>()),
+    ]);
+    const ranked = await this.rankPostSources(
+      userId,
+      query,
+      postRes.data,
+      openingRes.data,
+    );
+    return {
+      refs: weaveOpenings(
+        feedRefsFromRanked(ranked.posts),
+        feedRefsFromRanked(ranked.openings),
+      ),
+      totalDocuments: postRes.totalDocuments + openingRes.totalDocuments,
+    };
+  }
+
+  /** Rank media posts and openings separately so post order stays intact. */
+  private async rankPostSources(
+    userId: string,
+    query: ExploreQueryDto,
+    postData: readonly unknown[],
+    openingData: readonly OpeningView[],
+  ): Promise<{ posts: ScoredExploreItem[]; openings: ScoredExploreItem[] }> {
+    const posts = toScoredExploreItems('post', postData);
+    const openings = toScoredExploreItems('opening', openingData);
+    const ctx = await this.buildRankingContext(userId, query, [
+      ...posts,
+      ...openings,
+    ]);
+    return {
+      posts: rankExploreItems(posts, ctx),
+      openings: rankExploreItems(openings, ctx),
+    };
+  }
+
+  private async storeFeedSession(
+    sessionKey: string,
+    session: ExploreFeedSession,
+  ): Promise<void> {
+    await this.redis.setEx(
+      sessionKey,
+      EXPLORE_FEED_SESSION_TTL_SECONDS,
+      JSON.stringify(session),
+    );
   }
 
   private async exploreRankedFresh(
@@ -286,8 +471,38 @@ export class ExploreService {
     };
   }
 
-  private async hydrateByIds(
-    type: ExploreItemType,
+  private async hydrateRefs(
+    userId: string,
+    refs: ExploreFeedRef[],
+  ): Promise<ScoredExploreItem[]> {
+    const idsByType = new Map<ExploreFeedItemType, string[]>();
+    for (const ref of refs) {
+      const list = idsByType.get(ref.type) ?? [];
+      list.push(ref.id);
+      idsByType.set(ref.type, list);
+    }
+
+    const loaded = new Map<string, unknown>();
+    await Promise.all(
+      [...idsByType.entries()].map(async ([type, ids]) => {
+        const rows = await this.hydrateByType(userId, type, ids);
+        for (const row of rows) {
+          const id = String((row as { _id?: unknown })._id ?? '');
+          if (id) loaded.set(feedRefKey({ type, id }), row);
+        }
+      }),
+    );
+
+    return refs.flatMap((ref) => {
+      const data = loaded.get(feedRefKey(ref));
+      if (data == null) return [];
+      return [{ type: ref.type, data, score: 0 } as ScoredExploreItem];
+    });
+  }
+
+  private async hydrateByType(
+    userId: string,
+    type: ExploreFeedItemType,
     ids: string[],
   ): Promise<unknown[]> {
     switch (type) {
@@ -301,8 +516,8 @@ export class ExploreService {
         });
       case 'post':
         return this.postService.findByIdsForExplore(ids);
-      default:
-        return [];
+      case 'opening':
+        return this.openingsService.findByIds(ids, userId);
     }
   }
 
@@ -319,6 +534,8 @@ export class ExploreService {
         };
       case 'post':
         return { type: 'post', data: item.data };
+      case 'opening':
+        return { type: 'opening', data: item.data };
     }
   }
 
@@ -330,6 +547,7 @@ export class ExploreService {
     if (!items.length) return items;
 
     const refs = items
+      .filter((item) => item.type !== 'opening')
       .map((item) => ({
         entityType: item.type as EngagementEntityType,
         entityId: String((item.data as { _id?: unknown })._id ?? ''),
@@ -344,6 +562,7 @@ export class ExploreService {
     ]);
 
     return items.map((item) => {
+      if (item.type === 'opening') return item;
       const entityId = String((item.data as { _id?: unknown })._id ?? '');
       const key = `${item.type}:${entityId}`;
       const likeCount = stats.get(key)?.likeCount ?? 0;
@@ -402,7 +621,6 @@ export class ExploreService {
       status: TeamStatus.ACTIVE,
       sportType: query.sportType,
       search,
-      lookingForMembers: query.lookingForMembers,
       location: query.location,
       page: query.page,
       limit: query.limit,
@@ -423,17 +641,46 @@ export class ExploreService {
     );
   }
 
-  private async fetchPosts(userId: string, query: ExploreQueryDto) {
+  private async fetchPosts(
+    userId: string,
+    query: ExploreQueryDto,
+    excludeIds?: string[],
+  ) {
     const search = query.q?.trim() || undefined;
 
-    return this.postService.findMany(userId, {
-      status: PostStatus.PUBLISHED,
-      search,
-      sportType: query.sportType,
-      location: query.location,
-      page: query.page,
-      limit: query.limit,
-    });
+    return this.postService.findMany(
+      userId,
+      {
+        status: PostStatus.PUBLISHED,
+        search,
+        sportType: query.sportType,
+        location: query.location,
+        page: query.page,
+        limit: query.limit,
+      },
+      excludeIds?.length ? { excludeIds } : undefined,
+    );
+  }
+
+  private async fetchOpenings(
+    userId: string,
+    query: ExploreQueryDto,
+    excludeIds?: string[],
+  ) {
+    const search = query.q?.trim() || undefined;
+    return this.openingsService.findMany(
+      {
+        status: OpeningStatus.OPEN,
+        sportType: query.sportType,
+        page: query.page,
+        limit: query.limit,
+      },
+      userId,
+      {
+        excludeIds,
+        search,
+      },
+    );
   }
 
   private async buildRankingContext(
@@ -453,10 +700,13 @@ export class ExploreService {
       this.usersService.findById(userId, 'playerSportStats'),
     ]);
 
-    const refs = items.map((item) => ({
-      entityType: item.type as EngagementEntityType,
-      entityId: String((item.data as { _id?: unknown })._id ?? ''),
-    }));
+    const refs = items
+      .filter((item) => item.type !== 'opening')
+      .map((item) => ({
+        entityType: item.type as EngagementEntityType,
+        entityId: String((item.data as { _id?: unknown })._id ?? ''),
+      }))
+      .filter((ref) => ref.entityId);
     const stats = await this.engagementService.getStatsMap(refs);
 
     const viewerSports = new Set(
@@ -505,4 +755,50 @@ export class ExploreService {
 function stripPlayerLocation(player: PublicProfile): PublicProfile {
   const { lastLocation: _ignored, ...rest } = player;
   return rest;
+}
+
+function postSources(postKind: ExploreQueryDto['postKind']): {
+  posts: boolean;
+  openings: boolean;
+} {
+  switch (postKind) {
+    case 'media':
+      return { posts: true, openings: false };
+    case 'opening':
+      return { posts: false, openings: true };
+    case 'all':
+    default:
+      return { posts: true, openings: true };
+  }
+}
+
+function emptyExplorePage<T>(): PaginatedResult<T> {
+  return {
+    data: [],
+    totalDocuments: 0,
+    page: 1,
+    limit: 0,
+    totalPages: 0,
+  };
+}
+
+function feedRefKey(ref: ExploreFeedRef): string {
+  return `${ref.type}:${ref.id}`;
+}
+
+function feedRefsFromRanked(
+  ranked: ScoredExploreItem[],
+  type?: ExploreItemType,
+): ExploreFeedRef[] {
+  const refs: ExploreFeedRef[] = [];
+  for (const item of ranked) {
+    const id = String((item.data as { _id?: unknown })._id ?? '');
+    if (!id) continue;
+    if (item.type === 'opening' || item.type === 'post') {
+      refs.push({ type: item.type, id });
+      continue;
+    }
+    if (type) refs.push({ type, id });
+  }
+  return refs;
 }

@@ -8,7 +8,6 @@ import {
 import { sportTypeSchema } from '../../core/sports/sport-types';
 
 const visibilitySchema = z.enum(['public', 'private']);
-const joinModeSchema = z.enum(['open', 'approval']);
 const teamStatusSchema = z.enum(['active', 'inactive', 'archived']);
 const genderCategorySchema = z.enum(['male', 'female', 'mixed']);
 const preferredTimeSlotSchema = z.enum(['morning', 'afternoon', 'evening']);
@@ -39,31 +38,18 @@ const teamBaseSchema = z.object({
   socialLinks: socialLinksSchema,
   foundedYear: z.number().int().min(1800).max(2100).optional(),
   genderCategory: genderCategorySchema.optional(),
-  maxPendingJoinRequests: z.number().int().min(0).max(1000),
   logo: z.string().trim().max(2048).optional(),
   coverImages: z.array(z.string().trim().min(1).max(2048)).max(20).optional(),
   tags: z.array(z.string().trim().min(1).max(50)).max(20).optional(),
   preferredPlayDays: z.array(dayOfWeekSchema).max(7).optional(),
   preferredTimeSlot: preferredTimeSlotSchema.optional(),
-  lookingForMembers: z.boolean().optional(),
   pinnedNotices: z.array(z.string().trim().min(1).max(500)).max(10).optional(),
 });
 
-const privateCannotUseOpenJoin = (d: {
-  visibility?: 'public' | 'private';
-  joinMode?: 'open' | 'approval';
-}) => !(d.visibility === 'private' && d.joinMode === 'open');
-
-const createBodyShape = teamBaseSchema.extend({
+const CreateTeamSchema = teamBaseSchema.extend({
   sportType: sportTypeSchema,
   visibility: visibilitySchema,
-  joinMode: joinModeSchema,
   location: geoLocationSchema.optional(),
-});
-
-const CreateTeamSchema = createBodyShape.refine(privateCannotUseOpenJoin, {
-  message: 'Private teams cannot use open join mode',
-  path: ['joinMode'],
 });
 
 const UpdateTeamSchema = teamBaseSchema
@@ -71,7 +57,6 @@ const UpdateTeamSchema = teamBaseSchema
   .extend(
     z.object({
       visibility: visibilitySchema.optional(),
-      joinMode: joinModeSchema.optional(),
       status: teamStatusSchema.optional(),
     }).shape,
   )
@@ -79,10 +64,6 @@ const UpdateTeamSchema = teamBaseSchema
     location: geoLocationPartialSchema.nullable().optional(),
     logo: z.string().trim().max(2048).optional(),
     coverImages: z.array(z.string().trim().min(1).max(2048)).max(20).optional(),
-  })
-  .refine(privateCannotUseOpenJoin, {
-    message: 'Private teams cannot use open join mode',
-    path: ['joinMode'],
   });
 
 const TeamFilterSchema = z
@@ -91,10 +72,6 @@ const TeamFilterSchema = z
     status: teamStatusSchema.optional(),
     sportType: sportTypeSchema.optional(),
     genderCategory: genderCategorySchema.optional(),
-    lookingForMembers: z
-      .enum(['true', 'false'])
-      .transform((v) => v === 'true')
-      .optional(),
     page: z.coerce.number().min(1).default(1),
     limit: z.coerce.number().min(1).max(50).default(10),
     location: nearbyLocationQuerySchema.optional(),

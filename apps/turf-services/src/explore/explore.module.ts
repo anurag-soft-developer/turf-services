@@ -5,6 +5,7 @@ import { UsersModule } from '../users/users.module';
 import { PostModule } from '../post/post.module';
 import { FollowingsModule } from '../followings/followings.module';
 import { EngagementModule } from '../engagement/engagement.module';
+import { OpeningsModule } from '../openings/openings.module';
 import { ExploreController } from './explore.controller';
 import { ExploreService } from './explore.service';
 
@@ -16,6 +17,7 @@ import { ExploreService } from './explore.service';
     PostModule,
     FollowingsModule,
     EngagementModule,
+    OpeningsModule,
   ],
   controllers: [ExploreController],
   providers: [ExploreService],

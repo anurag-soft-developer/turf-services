@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -371,6 +372,96 @@ export class TournamentInviteService {
       },
     );
     return invitation.populate('team', TEAM_SUMMARY);
+  }
+
+  /**
+   * Adds a team from an accepted opening enrollment.
+   * Accepts a pending request when one exists, otherwise writes an accepted request.
+   */
+  async recordAcceptedRequest(
+    userId: string,
+    tournamentId: string,
+    teamId: string,
+  ) {
+    const tournament = await requireTournament(
+      this.tournamentModel,
+      tournamentId,
+    );
+    assertOrganizer(tournament, userId);
+    const team = await requireCricketTeam(
+      this.teamService,
+      teamId,
+      tournament.sportType,
+    );
+    const existing = await this.invitationModel.findOne({
+      kind: InvitationKind.TOURNAMENT_INVITE,
+      tournament: tournament._id,
+      team: team._id,
+      status: { $in: [InvitationStatus.PENDING, InvitationStatus.ACCEPTED] },
+    });
+    if (existing?.status === InvitationStatus.ACCEPTED) {
+      return existing;
+    }
+    if (
+      existing?.status === InvitationStatus.PENDING &&
+      existing.direction === TournamentInvitationDirection.REQUEST
+    ) {
+      await this.acceptInvitation(tournament, existing, userId);
+      await notifyEntryDecision(
+        this.notificationService,
+        this.teamMemberModel,
+        {
+          kind: 'tournament_request_accepted',
+          title: 'Request accepted',
+          body: `${team.name} is in ${tournament.name}.`,
+          tournamentId: tournament._id.toString(),
+          invitationId: existing._id.toString(),
+          actorUserId: userId,
+          team,
+        },
+      );
+      return existing;
+    }
+    if (existing) {
+      throw new ConflictException(
+        'This team already has a live entry in the tournament',
+      );
+    }
+    if (tournament.status !== TournamentStatus.INVITING) {
+      throw new BadRequestException('Entries are closed');
+    }
+    if (isTournamentRosterLocked(tournament)) {
+      throw new BadRequestException('The roster is locked');
+    }
+    const accepted = await this.invitationModel.countDocuments({
+      kind: InvitationKind.TOURNAMENT_INVITE,
+      tournament: tournament._id,
+      status: InvitationStatus.ACCEPTED,
+    });
+    if (tournament.maxTeams != null && accepted >= tournament.maxTeams) {
+      throw new BadRequestException('This tournament is full');
+    }
+    const invitation = await this.invitationModel.create({
+      kind: InvitationKind.TOURNAMENT_INVITE,
+      tournament: tournament._id,
+      team: team._id,
+      direction: TournamentInvitationDirection.REQUEST,
+      status: InvitationStatus.ACCEPTED,
+      invitedBy: new Types.ObjectId(userId),
+      acceptedAt: new Date(),
+      decidedAt: new Date(),
+      decidedBy: new Types.ObjectId(userId),
+    });
+    await notifyEntryDecision(this.notificationService, this.teamMemberModel, {
+      kind: 'tournament_request_accepted',
+      title: 'Request accepted',
+      body: `${team.name} is in ${tournament.name}.`,
+      tournamentId: tournament._id.toString(),
+      invitationId: invitation._id.toString(),
+      actorUserId: userId,
+      team,
+    });
+    return invitation;
   }
 
   private async declineRequest(

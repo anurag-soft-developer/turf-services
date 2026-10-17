@@ -17,12 +17,6 @@ export enum TeamVisibility {
   PRIVATE = 'private',
 }
 
-/** Only applies when visibility is public; private teams always use approval. */
-export enum TeamJoinMode {
-  OPEN = 'open',
-  APPROVAL = 'approval',
-}
-
 export enum TeamStatus {
   ACTIVE = 'active',
   INACTIVE = 'inactive',
@@ -145,13 +139,6 @@ export class Team {
   visibility!: TeamVisibility;
 
   @Prop({
-    type: String,
-    enum: Object.values(TeamJoinMode),
-    default: TeamJoinMode.APPROVAL,
-  })
-  joinMode!: TeamJoinMode;
-
-  @Prop({
     type: MongooseSchema.Types.ObjectId,
     ref: User.name,
     required: true,
@@ -169,9 +156,6 @@ export class Team {
 
   @Prop({ type: [String], default: [] })
   coverImages!: string[];
-
-  @Prop({ type: Number, required: true, min: 0, max: 1000 })
-  maxPendingJoinRequests!: number;
 
   @Prop({
     type: String,
@@ -195,9 +179,6 @@ export class Team {
     enum: Object.values(TeamPreferredTimeSlot),
   })
   preferredTimeSlot?: TeamPreferredTimeSlot;
-
-  @Prop({ type: Boolean, default: false })
-  lookingForMembers!: boolean;
 
   /** Pinned announcements shown on the team page. */
   @Prop({ type: [String], default: [] })
@@ -255,6 +236,5 @@ TeamSchema.index({ 'location.coordinates': '2dsphere' }, { sparse: true });
 TeamSchema.index({ visibility: 1, status: 1, sportType: 1 });
 TeamSchema.index({ createdBy: 1 });
 TeamSchema.index({ ownerIds: 1 });
-TeamSchema.index({ lookingForMembers: 1, status: 1 });
 TeamSchema.index({ tags: 1 });
 TeamSchema.index({ sportType: 1, status: 1, rankingPoints: -1 });

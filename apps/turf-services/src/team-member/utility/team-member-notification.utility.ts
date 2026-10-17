@@ -8,32 +8,36 @@ const logger = new Logger('TeamMemberNotification');
 
 export async function notifyTeamJoinRequest(
   notificationService: NotificationService,
-  team: TeamDocument,
-  membershipId: string,
-  requesterUserId: string,
+  params: {
+    team: TeamDocument;
+    enrollmentId: string;
+    openingId: string;
+    requesterUserId: string;
+  },
 ): Promise<void> {
   try {
     await dispatchToUsers(
       notificationService,
-      team.ownerIds.map((id) => id.toString()),
+      params.team.ownerIds.map((id) => id.toString()),
       {
         module: NotificationModule.TEAMS,
         title: 'Join request',
-        body: `Someone requested to join ${team.name}.`,
+        body: `Someone requested to join ${params.team.name}.`,
         data: {
           kind: 'team_join_request',
-          teamId: team._id.toString(),
-          membershipId,
-          actorUserId: requesterUserId,
+          teamId: params.team._id.toString(),
+          enrollmentId: params.enrollmentId,
+          openingId: params.openingId,
+          actorUserId: params.requesterUserId,
         },
-        sourceType: 'teamMember',
-        sourceId: membershipId,
+        sourceType: 'enrollment',
+        sourceId: params.enrollmentId,
       },
-      requesterUserId,
+      params.requesterUserId,
     );
   } catch (err) {
     logger.warn(
-      `notifyTeamJoinRequest failed for team ${team._id.toString()}`,
+      `notifyTeamJoinRequest failed for team ${params.team._id.toString()}`,
       err instanceof Error ? err.stack : String(err),
     );
   }
@@ -45,7 +49,8 @@ export async function notifyTeamJoinResolved(
     recipientUserId: string;
     teamId: string;
     teamName: string;
-    membershipId: string;
+    enrollmentId: string;
+    openingId: string;
     accepted: boolean;
   },
 ): Promise<void> {
@@ -62,14 +67,15 @@ export async function notifyTeamJoinResolved(
       data: {
         kind: params.accepted ? 'team_join_accepted' : 'team_join_rejected',
         teamId: params.teamId,
-        membershipId: params.membershipId,
+        enrollmentId: params.enrollmentId,
+        openingId: params.openingId,
       },
-      sourceType: 'teamMember',
-      sourceId: params.membershipId,
+      sourceType: 'enrollment',
+      sourceId: params.enrollmentId,
     });
   } catch (err) {
     logger.warn(
-      `notifyTeamJoinResolved failed for membership ${params.membershipId}`,
+      `notifyTeamJoinResolved failed for enrollment ${params.enrollmentId}`,
       err instanceof Error ? err.stack : String(err),
     );
   }

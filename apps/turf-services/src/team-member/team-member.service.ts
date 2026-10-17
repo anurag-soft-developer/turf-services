@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  ConflictException,
   ForbiddenException,
   forwardRef,
   Inject,
@@ -19,12 +18,13 @@ import {
 import { TeamService } from '../team/team.service';
 import {
   teamPopulateSelectFields,
-  TeamJoinMode,
-  TeamStatus,
-  TeamVisibility,
-  SPORT_ROSTER_CONFIG,
+  TeamDocument,
   SportType,
 } from '../team/schemas/team.schema';
+import {
+  Opening,
+  OpeningDocument,
+} from '../openings/schemas/opening.schema';
 import { FollowingsService } from '../followings/followings.service';
 import { PaginatedResult } from '../core/interfaces/common';
 import { resolveId } from '../core/utils/mongo-ref.util';
@@ -35,21 +35,34 @@ import {
 } from './dto/team-member.dto';
 import { NotificationService } from '../notification/notification.service';
 import {
-  notifyTeamJoinRequest,
   notifyTeamJoinResolved,
 } from './utility/team-member-notification.utility';
+import {
+  assertCanRequestJoin as assertJoinAllowed,
+  assertNoOpenStint,
+  assertRosterHasRoom,
+} from './util/team-member-asserts.util';
+import {
+  clearConflictingLeadership,
+  liveOpeningId,
+  requireMembership,
+  teamSportOf,
+  toObjectIds,
+} from './util/team-member.util';
 
 @Injectable()
 export class TeamMemberService {
   private static readonly populate = [
     { path: 'user', select: userSelectFields },
-    { path: 'team', select: teamPopulateSelectFields },
+    { path: 'team', select: `${teamPopulateSelectFields} ownerIds` },
     { path: 'reviewedBy', select: userSelectFields },
   ];
 
   constructor(
     @InjectModel(TeamMember.name)
     private teamMemberModel: Model<TeamMemberDocument>,
+    @InjectModel(Opening.name)
+    private openingModel: Model<OpeningDocument>,
     @Inject(forwardRef(() => TeamService))
     private teamService: TeamService,
     private followingsService: FollowingsService,
@@ -84,18 +97,7 @@ export class TeamMemberService {
   async distinctActiveUserIds(
     teamIds: Array<string | Types.ObjectId>,
   ): Promise<string[]> {
-    const objectIds: Types.ObjectId[] = [];
-    for (const id of teamIds) {
-      if (id instanceof Types.ObjectId) {
-        objectIds.push(id);
-        continue;
-      }
-      const raw = String(id);
-      if (!Types.ObjectId.isValid(raw)) {
-        continue;
-      }
-      objectIds.push(new Types.ObjectId(raw));
-    }
+    const objectIds = toObjectIds(teamIds);
     if (!objectIds.length) {
       return [];
     }
@@ -147,8 +149,8 @@ export class TeamMemberService {
     userId: string,
   ): Promise<TeamMemberDocument> {
     const team = await this.teamService.requireTeam(teamId);
-    await this.assertNoOpenStint(teamId, userId);
-    await this.assertRosterHasRoom(teamId, team);
+    await assertNoOpenStint(this.teamMemberModel, teamId, userId);
+    await assertRosterHasRoom(this.teamMemberModel, teamId, team);
 
     const doc = new this.teamMemberModel({
       team: new Types.ObjectId(teamId),
@@ -271,7 +273,7 @@ export class TeamMemberService {
     }
 
     if (sportType) {
-      rows = rows.filter((doc) => this.teamSportOf(doc) === sportType);
+      rows = rows.filter((doc) => teamSportOf(doc) === sportType);
     }
 
     const totalDocuments = rows.length;
@@ -287,70 +289,57 @@ export class TeamMemberService {
     };
   }
 
-  async join(teamId: string, userId: string): Promise<TeamMemberDocument> {
+  /**
+   * Creates an active membership. Caller must ensure the user has no open
+   * stint and the roster has room; those checks run again here.
+   */
+  async insertActiveMember(
+    teamId: string,
+    userId: string,
+    options?: { reviewedBy?: string },
+  ): Promise<TeamMemberDocument> {
     const team = await this.teamService.requireTeam(teamId);
-    this.assertTeamRecruiting(team);
-
-    const uid = new Types.ObjectId(userId);
-    await this.assertNoOpenStint(teamId, userId);
-
-    if (team.visibility === TeamVisibility.PRIVATE) {
-      const allowed = await this.followingsService.isConnectedToAny(
-        userId,
-        team.ownerIds,
-      );
-      if (!allowed) {
-        throw new ForbiddenException(
-          'Only users connected to an owner can join private teams',
-        );
-      }
-    }
-
-    const effectiveOpen =
-      team.visibility === TeamVisibility.PUBLIC &&
-      team.joinMode === TeamJoinMode.OPEN;
-
-    if (effectiveOpen) {
-      await this.assertRosterHasRoom(teamId, team);
-      const doc = new this.teamMemberModel({
-        team: new Types.ObjectId(teamId),
-        user: uid,
-        status: TeamMemberStatus.ACTIVE,
-        lineupCategory: LineupCategory.STARTER,
-        joinedAt: new Date(),
-      });
-      const saved = await doc.save();
-      return (await saved.populate(
-        TeamMemberService.populate,
-      )) as TeamMemberDocument;
-    }
-
-    const pendingCount = await this.teamMemberModel.countDocuments({
-      team: new Types.ObjectId(teamId),
-      status: TeamMemberStatus.PENDING,
-    });
-    if (pendingCount >= team.maxPendingJoinRequests) {
-      throw new ConflictException(
-        'This team is not accepting more join requests',
-      );
-    }
-
+    await assertNoOpenStint(this.teamMemberModel, teamId, userId);
+    await assertRosterHasRoom(this.teamMemberModel, teamId, team);
+    const reviewedBy = options?.reviewedBy;
     const doc = new this.teamMemberModel({
       team: new Types.ObjectId(teamId),
-      user: uid,
-      status: TeamMemberStatus.PENDING,
+      user: new Types.ObjectId(userId),
+      status: TeamMemberStatus.ACTIVE,
       lineupCategory: LineupCategory.STARTER,
+      joinedAt: new Date(),
+      reviewedBy: reviewedBy ? new Types.ObjectId(reviewedBy) : undefined,
+      reviewedAt: reviewedBy ? new Date() : undefined,
     });
     const saved = await doc.save();
-    await notifyTeamJoinRequest(
-      this.notificationService,
-      team,
-      saved._id.toString(),
-      userId,
-    );
     return (await saved.populate(
       TeamMemberService.populate,
     )) as TeamMemberDocument;
+  }
+
+  /**
+   * Recruiting checks shared with enrollment. Does not write a membership.
+   * Pending applications are enrollments, so [pendingCount] is that count.
+   */
+  async assertCanRequestJoin(
+    teamId: string,
+    userId: string,
+    opening: { maxPendingJoinRequests?: number },
+    pendingCount: number,
+  ): Promise<{ team: TeamDocument }> {
+    return assertJoinAllowed(
+      this.teamService,
+      this.followingsService,
+      this.teamMemberModel,
+      teamId,
+      userId,
+      opening,
+      pendingCount,
+    );
+  }
+
+  async join(_teamId: string, _userId: string): Promise<never> {
+    throw new BadRequestException('Request to join through the opening');
   }
 
   async acceptRequest(
@@ -361,12 +350,12 @@ export class TeamMemberService {
     const team = await this.teamService.requireTeam(teamId);
     this.teamService.assertOwner(team, ownerUserId);
 
-    const m = await this.requireMembership(membershipId, teamId);
+    const m = await requireMembership(this.teamMemberModel, membershipId, teamId);
     if (m.status !== TeamMemberStatus.PENDING) {
       throw new BadRequestException('Membership is not pending');
     }
 
-    await this.assertRosterHasRoom(teamId, team);
+    await assertRosterHasRoom(this.teamMemberModel, teamId, team);
 
     m.status = TeamMemberStatus.ACTIVE;
     m.joinedAt = new Date();
@@ -377,7 +366,8 @@ export class TeamMemberService {
       recipientUserId: m.user.toString(),
       teamId,
       teamName: team.name,
-      membershipId,
+      enrollmentId: m._id.toString(),
+      openingId: (await liveOpeningId(this.openingModel, teamId)) ?? teamId,
       accepted: true,
     });
     return (await m.populate(TeamMemberService.populate)) as TeamMemberDocument;
@@ -391,7 +381,7 @@ export class TeamMemberService {
     const team = await this.teamService.requireTeam(teamId);
     this.teamService.assertOwner(team, ownerUserId);
 
-    const m = await this.requireMembership(membershipId, teamId);
+    const m = await requireMembership(this.teamMemberModel, membershipId, teamId);
     if (m.status !== TeamMemberStatus.PENDING) {
       throw new BadRequestException('Membership is not pending');
     }
@@ -405,7 +395,8 @@ export class TeamMemberService {
       recipientUserId: m.user.toString(),
       teamId,
       teamName: team.name,
-      membershipId,
+      enrollmentId: m._id.toString(),
+      openingId: (await liveOpeningId(this.openingModel, teamId)) ?? teamId,
       accepted: false,
     });
     return (await m.populate(TeamMemberService.populate)) as TeamMemberDocument;
@@ -511,7 +502,7 @@ export class TeamMemberService {
     const team = await this.teamService.requireTeam(teamId);
     this.teamService.assertOwner(team, ownerUserId);
 
-    const m = await this.requireMembership(membershipId, teamId);
+    const m = await requireMembership(this.teamMemberModel, membershipId, teamId);
     if (m.status !== TeamMemberStatus.ACTIVE) {
       throw new BadRequestException('Can only update active members');
     }
@@ -528,7 +519,8 @@ export class TeamMemberService {
       if (dto.leadershipRole === null) {
         m.leadershipRole = undefined;
       } else {
-        await this.clearConflictingLeadership(
+        await clearConflictingLeadership(
+          this.teamMemberModel,
           teamId,
           m._id.toString(),
           dto.leadershipRole as LeadershipRole,
@@ -562,7 +554,7 @@ export class TeamMemberService {
     const team = await this.teamService.requireTeam(teamId);
     this.teamService.assertOwner(team, ownerUserId);
 
-    const m = await this.requireMembership(membershipId, teamId);
+    const m = await requireMembership(this.teamMemberModel, membershipId, teamId);
     if (m.status !== TeamMemberStatus.ACTIVE) {
       throw new BadRequestException('Only active members can be suspended');
     }
@@ -586,7 +578,7 @@ export class TeamMemberService {
     const team = await this.teamService.requireTeam(teamId);
     this.teamService.assertOwner(team, ownerUserId);
 
-    const m = await this.requireMembership(membershipId, teamId);
+    const m = await requireMembership(this.teamMemberModel, membershipId, teamId);
     if (m.status !== TeamMemberStatus.SUSPENDED) {
       throw new BadRequestException('Member is not suspended');
     }
@@ -595,78 +587,5 @@ export class TeamMemberService {
     m.suspendedUntil = undefined;
     await m.save();
     return (await m.populate(TeamMemberService.populate)) as TeamMemberDocument;
-  }
-
-  private async clearConflictingLeadership(
-    teamId: string,
-    exceptMembershipId: string,
-    role: LeadershipRole,
-  ): Promise<void> {
-    await this.teamMemberModel.updateMany(
-      {
-        team: new Types.ObjectId(teamId),
-        status: TeamMemberStatus.ACTIVE,
-        leadershipRole: role,
-        _id: { $ne: new Types.ObjectId(exceptMembershipId) },
-      },
-      { $unset: { leadershipRole: 1 } },
-    );
-  }
-
-  private async requireMembership(
-    id: string,
-    teamId: string,
-  ): Promise<TeamMemberDocument> {
-    const m = await this.teamMemberModel.findById(id);
-    if (!m || resolveId(m.team) !== resolveId(teamId)) {
-      throw new NotFoundException('Team membership not found');
-    }
-    return m;
-  }
-
-  private assertTeamRecruiting(team: { status: TeamStatus }): void {
-    if (team.status !== TeamStatus.ACTIVE) {
-      throw new BadRequestException('This team is not recruiting');
-    }
-  }
-
-  private async assertRosterHasRoom(
-    teamId: string,
-    team: { sportType: string },
-  ): Promise<void> {
-    const config = SPORT_ROSTER_CONFIG[team.sportType as SportType];
-    const max = config?.max ?? 500;
-    const n = await this.countActiveMembers(teamId);
-    if (n >= max) {
-      throw new ConflictException('Team roster is full');
-    }
-  }
-
-  private teamSportOf(doc: TeamMemberDocument): string | undefined {
-    const team = doc.team;
-    if (!team || typeof team !== 'object') return undefined;
-    return (team as { sportType?: string }).sportType;
-  }
-
-  private async assertNoOpenStint(
-    teamId: string,
-    userId: string,
-  ): Promise<void> {
-    const existing = await this.teamMemberModel.findOne({
-      team: new Types.ObjectId(teamId),
-      user: new Types.ObjectId(userId),
-      status: {
-        $in: [
-          TeamMemberStatus.PENDING,
-          TeamMemberStatus.ACTIVE,
-          TeamMemberStatus.SUSPENDED,
-        ],
-      },
-    });
-    if (existing) {
-      throw new ConflictException(
-        'You already have an active, pending, or suspended membership for this team',
-      );
-    }
   }
 }

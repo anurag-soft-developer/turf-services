@@ -17,10 +17,8 @@ const ExploreQuerySchema = z.object({
   matchStatus: z
     .enum(['all', 'live', 'upcoming', 'completed'])
     .default('all'),
-  lookingForMembers: z
-    .enum(['true', 'false'])
-    .transform((v) => v === 'true')
-    .optional(),
+  /** Posts category only. `all` mixes media posts and openings. */
+  postKind: z.enum(['all', 'media', 'opening']).default('all'),
 });
 
 export class ExploreQueryDto extends createZodDto(ExploreQuerySchema) {}

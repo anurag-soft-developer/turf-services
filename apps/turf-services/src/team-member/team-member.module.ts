@@ -7,6 +7,10 @@ import {
   TeamMembershipSelfController,
 } from './team-member.controller';
 import { TeamModule } from '../team/team.module';
+import {
+  Opening,
+  OpeningSchema,
+} from '../openings/schemas/opening.schema';
 import { FollowingsModule } from '../followings/followings.module';
 import { NotificationModule } from '../notification/notification.module';
 
@@ -14,6 +18,7 @@ import { NotificationModule } from '../notification/notification.module';
   imports: [
     MongooseModule.forFeature([
       { name: TeamMember.name, schema: TeamMemberSchema },
+      { name: Opening.name, schema: OpeningSchema },
     ]),
     forwardRef(() => TeamModule),
     FollowingsModule,

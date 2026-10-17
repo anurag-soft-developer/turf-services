@@ -170,7 +170,6 @@ export class TeamService {
       status,
       sportType,
       genderCategory,
-      lookingForMembers,
       skipTeamsWithSentRequest,
       fromTeamId,
       search,
@@ -212,9 +211,6 @@ export class TeamService {
     }
     if (genderCategory) {
       baseMatch.genderCategory = genderCategory;
-    }
-    if (lookingForMembers !== undefined) {
-      baseMatch.lookingForMembers = lookingForMembers;
     }
 
     if (skipTeamsWithSentRequest && fromTeamId) {

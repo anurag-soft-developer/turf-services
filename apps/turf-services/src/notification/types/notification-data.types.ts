@@ -155,18 +155,21 @@ export type TeamNotificationData =
   | {
       kind: 'team_join_request';
       teamId: string;
-      membershipId: string;
+      enrollmentId: string;
+      openingId: string;
       actorUserId: string;
     }
   | {
       kind: 'team_join_accepted';
       teamId: string;
-      membershipId: string;
+      enrollmentId: string;
+      openingId: string;
     }
   | {
       kind: 'team_join_rejected';
       teamId: string;
-      membershipId: string;
+      enrollmentId: string;
+      openingId: string;
     }
   | {
       kind: 'team_invite';

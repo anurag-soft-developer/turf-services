@@ -3,6 +3,7 @@ import type { TeamMatchDocument } from '../../matchmaking/schemas/team-match.sch
 import type { TeamDocument } from '../../team/schemas/team.schema';
 import type { PublicProfile } from '../../users/interfaces/user.interface';
 import type { ContentPostDocument } from '../../post/schemas/content-post.schema';
+import type { OpeningView } from '../../openings/util/opening-view.util';
 import {
   coordinatesLngLat,
   haversineKm,
@@ -83,10 +84,10 @@ function logNorm(value: number, cap: number): number {
   return Math.min(1, Math.log(1 + value) / Math.log(1 + cap));
 }
 
-function engagementScore(stats: EntityStats): number {
+function engagementScore(stats: EntityStats, includeWatch = true): number {
   const ctr = wilsonLowerBound(stats.views, stats.impressions);
   const views = logNorm(stats.views, 1000);
-  const watch = Math.min(1, stats.watchMs / 120_000);
+  const watch = includeWatch ? Math.min(1, stats.watchMs / 120_000) : 0;
   const likes = logNorm(stats.likeCount, 100);
   return 0.4 * ctr + 0.3 * views + 0.2 * watch + 0.1 * likes;
 }
@@ -111,6 +112,7 @@ function typePrior(item: ScoredExploreItem): number {
       return 0.4;
     }
     case 'post':
+    case 'opening':
       return 0.85;
     case 'team':
       return 0.55;
@@ -177,6 +179,10 @@ function sportMatchScore(item: ScoredExploreItem, ctx: RankingContext): number {
       const sport = postSport(item.data as ContentPostDocument);
       return sport && wanted.has(sport) ? 1 : 0;
     }
+    case 'opening': {
+      const sport = (item.data as OpeningView).sportType;
+      return sport && wanted.has(String(sport)) ? 1 : 0;
+    }
   }
 }
 
@@ -207,6 +213,12 @@ function socialScore(item: ScoredExploreItem, ctx: RankingContext): number {
       if (teamId && ctx.followedTeamIds.has(teamId)) return 1;
       return 0;
     }
+    case 'opening': {
+      const opening = item.data as OpeningView;
+      if (ctx.followedUserIds.has(opening.postedBy)) return 1;
+      if (opening.teamId && ctx.followedTeamIds.has(opening.teamId)) return 1;
+      return 0;
+    }
   }
 }
 
@@ -232,6 +244,8 @@ function distanceKm(item: ScoredExploreItem, origin?: RankingOrigin): number | u
         (item.data as ContentPostDocument).location?.coordinates,
       );
       break;
+    case 'opening':
+      return undefined;
   }
   if (!lngLat) return undefined;
   return haversineKm(origin.lat, origin.lng, lngLat[1], lngLat[0]);
@@ -267,13 +281,21 @@ function searchTextScore(item: ScoredExploreItem, query: string): number {
         textRelevance(tagText, query),
       );
     }
+    case 'opening': {
+      const opening = item.data as OpeningView;
+      return Math.max(
+        textRelevance(opening.title, query),
+        textRelevance(opening.hostName, query),
+      );
+    }
   }
 }
 
 function qualityScore(item: ScoredExploreItem, ctx: RankingContext): number {
-  const stats = ctx.stats.get(statsKey(item)) ?? EMPTY_STATS;
+  const isOpening = item.type === 'opening';
+  const stats = isOpening ? EMPTY_STATS : (ctx.stats.get(statsKey(item)) ?? EMPTY_STATS);
   const recency = recencyDecay(ageHoursFrom(updatedAtOf(item) ?? createdAtOf(item)));
-  const engagement = engagementScore(stats);
+  const engagement = engagementScore(stats, !isOpening);
   const social = socialScore(item, ctx);
   const sport = sportMatchScore(item, ctx);
 
@@ -312,12 +334,8 @@ export function rankExploreItems(
 }
 
 export function toScoredExploreItems(
-  type: 'match' | 'team' | 'player' | 'post',
-  data:
-    | TeamMatchDocument[]
-    | TeamDocument[]
-    | PublicProfile[]
-    | ContentPostDocument[],
+  type: ScoredExploreItem['type'],
+  data: readonly unknown[],
 ): ScoredExploreItem[] {
   return data.map((item) => ({
     type,
